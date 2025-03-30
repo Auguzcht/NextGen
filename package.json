@@ -10,7 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/cli": "^4.0.17",
+    "chart.js": "^4.4.8",
+    "dotenv": "^16.4.7",
+    "firebase": "^11.5.0",
+    "mysql2": "^3.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.4.1",

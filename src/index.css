@@ -152,4 +152,10 @@
     display: none !important;
   }
 }
-@layer utilities;
+@layer utilities {
+  @keyframes loader {
+    0% { width: 0; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+  }
+}
