@@ -1,20 +1,28 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+// Change from alias to relative path
 import { NextGenLogoSvg } from '../assets/index.js';
 
 const MainLayout = ({ children }) => {
+  // Debug log
+  console.log('MainLayout rendering with logo:', NextGenLogoSvg);
+  
   const { user, staffProfile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   const handleLogout = async () => {
     try {
       await signOut();
-      navigate('/login');
+      // Force navigation to login page
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
+      // If logout fails, still try to navigate to login
+      navigate('/login', { replace: true });
     }
   };
 
@@ -38,6 +46,7 @@ const MainLayout = ({ children }) => {
     ] : [])
   ];
 
+  // IMPORTANT: Make sure this return statement is here
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Sidebar */}
@@ -46,13 +55,24 @@ const MainLayout = ({ children }) => {
       <div className={`fixed top-0 left-0 bottom-0 flex flex-col w-64 bg-indigo-800 text-white transition-all duration-300 transform z-50 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} md:static md:z-auto`}>
         <div className="flex-shrink-0 p-4 flex items-center justify-between">
           <Link to="/dashboard" className="flex items-center">
-            <img className="h-8 w-auto mr-2" src={NextGenLogoSvg} alt="NextGen" />
+            {logoError ? (
+              <span className="h-8 w-8 flex items-center justify-center bg-indigo-600 rounded-full mr-2">N</span>
+            ) : (
+              <img 
+                className="h-8 w-auto mr-2" 
+                src={NextGenLogoSvg} 
+                alt="NextGen" 
+                onError={() => setLogoError(true)}
+              />
+            )}
             <span className="text-xl font-semibold">NextGen</span>
           </Link>
-          <button className="md:hidden" onClick={() => setSidebarOpen(false)}>
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button 
+            className="md:hidden rounded-md p-2 inline-flex items-center justify-center text-indigo-200 hover:text-white hover:bg-indigo-700 focus:outline-none"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="sr-only">Close sidebar</span>
+            <i className="ri-close-line text-xl"></i>
           </button>
         </div>
         
@@ -62,11 +82,12 @@ const MainLayout = ({ children }) => {
               const isActive = location.pathname === link.path;
               return (
                 <Link
-                  key={link.name}
+                  key={link.path}
                   to={link.path}
-                  className={`flex items-center px-4 py-2 text-sm rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-indigo-700'}`}
+                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${isActive ? 'bg-indigo-900 text-white' : 'text-indigo-100 hover:bg-indigo-700'}`}
                 >
-                  <span>{link.name}</span>
+                  <i className={`ri-${link.icon} mr-3 text-lg ${isActive ? 'text-white' : 'text-indigo-300 group-hover:text-white'}`}></i>
+                  {link.name}
                 </Link>
               );
             })}
@@ -88,11 +109,20 @@ const MainLayout = ({ children }) => {
             </div>
           )}
           
-          <button
+          <button 
             onClick={handleLogout}
-            className="w-full flex items-center justify-center px-4 py-2 text-sm text-indigo-100 bg-indigo-700 rounded-md hover:bg-indigo-600"
+            className="flex-shrink-0 w-full group block"
           >
-            Sign Out
+            <div className="flex items-center">
+              <div>
+                <i className="ri-logout-box-line text-indigo-300 text-lg group-hover:text-white"></i>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-indigo-100 group-hover:text-white">
+                  Sign Out
+                </p>
+              </div>
+            </div>
           </button>
         </div>
       </div>
@@ -106,9 +136,7 @@ const MainLayout = ({ children }) => {
             onClick={() => setSidebarOpen(true)}
           >
             <span className="sr-only">Open sidebar</span>
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+            <i className="ri-menu-line h-6 w-6"></i>
           </button>
         </div>
         

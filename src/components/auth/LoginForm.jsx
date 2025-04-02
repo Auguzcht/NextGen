@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { NextGenLogo } from '../../assets/index.js';
+import { NextGenLogo } from '../../assets/index.js'; // Make sure this import works
 
 const LoginForm = () => {
+  console.log("LoginForm rendering with logo:", NextGenLogo); // Add this debug log
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,14 +34,12 @@ const LoginForm = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 to-purple-800 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white rounded-xl shadow-lg p-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-lg">
+        <div className="flex justify-center mb-8">
+          <img src={NextGenLogo} alt="NextGen Logo" className="h-16 w-auto" />
+        </div>
         <div>
-          <img
-            className="mx-auto h-20 w-auto"
-            src={NextGenLogo}
-            alt="NextGen Ministry"
-          />
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Staff Login
           </h2>

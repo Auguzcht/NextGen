@@ -15,6 +15,7 @@
     "chart.js": "^4.4.8",
     "dotenv": "^16.4.7",
     "firebase": "^11.5.0",
+    "framer-motion": "^12.6.2",
     "mysql2": "^3.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
