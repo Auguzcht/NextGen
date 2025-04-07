@@ -52,7 +52,9 @@ function AppContent() {
   const [initialLoading, setInitialLoading] = useState(true);
   const { user, loading: authLoading } = useAuth();
   
+  // Only log to console instead of showing UI debug element
   console.log('AppContent rendering, initialLoading:', initialLoading, 'authLoading:', authLoading);
+  console.log('Authentication status:', authLoading ? 'Loading...' : (user ? 'Authenticated' : 'Not authenticated'));
 
   // Simulate initial loading
   useEffect(() => {
@@ -63,99 +65,91 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Debug element that shows in all cases
-  const debugElement = process.env.NODE_ENV === 'development' ? (
-    <div className="fixed top-0 left-0 bg-red-500 text-white p-2 z-50">
-      initialLoading: {String(initialLoading)}, authLoading: {String(authLoading)}
-    </div>
-  ) : null;
-
+  // Remove the debug element that was pushing content down
+  
   // Show loading screen during both initialLoading and authLoading
   if (initialLoading || authLoading) {
     return (
-      <>
-        {debugElement}
-        <LoadingScreen />
-      </>
+      <LoadingScreen 
+        finishLoading={() => setInitialLoading(false)} 
+        isInitialLoadingComplete={!authLoading}
+      />
     );
   }
 
   return (
-    <>
-      {debugElement}
-      <Routes>
-        <Route 
-          path="/login" 
-          element={
-            <PublicRoute>
-              <LoginForm />
-            </PublicRoute>
-          } 
-        />
-        <Route 
-          path="/" 
-          element={<Navigate replace to={user ? "/dashboard" : "/login"} />} 
-        />
-        <Route 
-          path="/dashboard" 
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/children" 
-          element={
-            <ProtectedRoute>
-              <ChildrenPage />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/attendance" 
-          element={
-            <ProtectedRoute>
-              <AttendancePage />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/guardians" 
-          element={
-            <ProtectedRoute>
-              <GuardiansPage />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/reports" 
-          element={
-            <ProtectedRoute>
-              <ReportsPage />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/settings" 
-          element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/staff" 
-          element={
-            <ProtectedRoute>
-              <StaffManagementPage />
-            </ProtectedRoute>
-          } 
-        />
-        {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+    <Routes>
+      <Route 
+        path="/login" 
+        element={
+          <PublicRoute>
+            <LoginForm />
+          </PublicRoute>
+        } 
+      />
+      <Route 
+        path="/" 
+        element={<Navigate replace to={user ? "/dashboard" : "/login"} />} 
+      />
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/children" 
+        element={
+          <ProtectedRoute>
+            <ChildrenPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/attendance" 
+        element={
+          <ProtectedRoute>
+            <AttendancePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/guardians" 
+        element={
+          <ProtectedRoute>
+            <GuardiansPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/reports" 
+        element={
+          <ProtectedRoute>
+            <ReportsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/settings" 
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/staff" 
+        element={
+          <ProtectedRoute>
+            <StaffManagementPage />
+          </ProtectedRoute>
+        } 
+      />
+      {/* Catch all route */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

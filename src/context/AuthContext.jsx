@@ -7,74 +7,125 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [staffProfile, setStaffProfile] = useState(null);
+  const [initialized, setInitialized] = useState(false);
 
-  console.log('AuthProvider state:', { user, loading, staffProfile });
-
-  // Use a separate effect to ensure loading state gets updated
-  useEffect(() => {
-    // Force loading to false after a timeout to prevent infinite loading
-    const safetyTimeout = setTimeout(() => {
-      if (loading) {
-        console.log('Safety timeout triggered - forcing loading state to false');
-        setLoading(false);
-      }
-    }, 5000); // 5 seconds max loading time
+  // Function to fetch staff profile
+  const fetchStaffProfile = async (user) => {
+    if (!user?.id) {
+      console.error('Cannot fetch profile - no user ID');
+      setStaffProfile(null);
+      return null;
+    }
     
-    return () => clearTimeout(safetyTimeout);
-  }, [loading]);
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Staff profile query error:', error);
+        setStaffProfile(null);
+        return null;
+      }
+      
+      console.log('Staff profile loaded:', data);
+      setStaffProfile(data);
+      return data;
+    } catch (error) {
+      console.error('Staff profile fetch error:', error);
+      setStaffProfile(null);
+      return null;
+    }
+  };
 
+  // Initialize auth state
   useEffect(() => {
     let mounted = true;
-
+    let safetyTimeout;
+    
     const initializeAuth = async () => {
       console.log('Initializing auth...');
       
       try {
+        // Set a safety timeout to prevent infinite loading
+        safetyTimeout = setTimeout(() => {
+          if (mounted && loading) {
+            console.warn('Safety timeout triggered - forcing loading state to false');
+            setUser(null);
+            setStaffProfile(null);
+            setLoading(false);
+            setInitialized(true);
+          }
+        }, 5000); // 5 second timeout
+
         // Get the current session
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Supabase session error:', error);
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setUser(null);
+            setStaffProfile(null);
+            setLoading(false);
+            setInitialized(true);
+          }
           return;
         }
         
-        console.log('Session data:', data?.session);
-        
-        if (mounted) {
-          if (data?.session?.user) {
-            // Check if session is too old (e.g., more than 8 hours)
-            const sessionCreatedAt = new Date(data.session.created_at);
-            const now = new Date();
-            const hoursElapsed = (now - sessionCreatedAt) / (1000 * 60 * 60);
-            
-            if (hoursElapsed > 8) {
-              // Force logout if session is too old
-              await supabase.auth.signOut();
-              setUser(null);
-              setLoading(false);
-              return;
-            }
-            
-            setUser(data.session.user);
-            try {
-              await fetchStaffProfile(data.session.user);
-            } catch (profileError) {
-              console.error('Error fetching staff profile:', profileError);
-            }
-          } else {
+        // If no active session, clear state
+        if (!data.session) {
+          console.log('No active session found');
+          if (mounted) {
             setUser(null);
+            setStaffProfile(null);
+            setLoading(false);
+            setInitialized(true);
           }
+          return;
+        }
+        
+        console.log('Session found:', data.session.user.id);
+        
+        // Valid session - set user and fetch profile
+        if (mounted) {
+          setUser(data.session.user);
           
-          // Important: Always set loading to false
-          setLoading(false);
-          console.log('Auth initialization complete - loading set to false');
+          try {
+            const profileData = await fetchStaffProfile(data.session.user);
+            
+            // If no staff profile exists for this user, log them out
+            if (!profileData) {
+              console.log('No staff profile found, forcing logout');
+              await supabase.auth.signOut();
+              if (mounted) {
+                setUser(null);
+                setStaffProfile(null);
+              }
+            }
+          } catch (profileError) {
+            console.error('Error fetching staff profile:', profileError);
+          } finally {
+            // Always update these states regardless of the outcome
+            if (mounted) {
+              setLoading(false);
+              setInitialized(true);
+            }
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (mounted) {
+          setUser(null);
+          setStaffProfile(null);
           setLoading(false);
-          console.log('Auth initialization failed - loading set to false anyway');
+          setInitialized(true);
+        }
+      } finally {
+        // Clear the safety timeout since we've completed initialization
+        if (safetyTimeout) {
+          clearTimeout(safetyTimeout);
         }
       }
     };
@@ -89,61 +140,88 @@ export function AuthProvider({ children }) {
         
         if (!mounted) return;
         
-        if (session?.user) {
-          setUser(session.user);
-          try {
-            await fetchStaffProfile(session.user);
-          } catch (error) {
-            console.error('Error fetching staff profile on auth change:', error);
+        if (event === 'SIGNED_OUT') {
+          if (mounted) {
+            setUser(null);
+            setStaffProfile(null);
+            setLoading(false);
+            setInitialized(true);
+          }
+          return;
+        }
+        
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('User signed in:', session.user.id);
+          
+          if (mounted) {
+            setUser(session.user);
+            
+            try {
+              await fetchStaffProfile(session.user);
+            } catch (error) {
+              console.error('Error fetching profile after sign in:', error);
+            } finally {
+              setLoading(false);
+              setInitialized(true);
+            }
+          }
+        } else if (session?.user) {
+          if (mounted) {
+            setUser(session.user);
+            
+            try {
+              await fetchStaffProfile(session.user);
+            } catch (error) {
+              console.error('Error fetching profile for session user:', error);
+            } finally {
+              setLoading(false);
+              setInitialized(true);
+            }
           }
         } else {
-          setUser(null);
-          setStaffProfile(null);
+          if (mounted) {
+            setUser(null);
+            setStaffProfile(null);
+            setLoading(false);
+            setInitialized(true);
+          }
         }
       }
     );
 
     return () => {
       mounted = false;
+      // Clear safety timeout on unmount
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+      }
       if (authListener?.subscription) {
         authListener.subscription.unsubscribe();
       }
     };
   }, []);
 
-  // Function to fetch staff profile
-  const fetchStaffProfile = async (user) => {
-    if (!user?.id) {
-      console.error('Cannot fetch profile - no user ID');
-      setStaffProfile(null);
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (error) {
-        console.error('Staff profile query error:', error);
-        setStaffProfile(null);
-        return;
-      }
-      
-      console.log('Staff profile loaded:', data);
-      setStaffProfile(data);
-    } catch (error) {
-      console.error('Staff profile fetch error:', error);
-      setStaffProfile(null);
-    }
-  };
-
   // Function to sign in users
   const signIn = async (email, password) => {
     try {
+      setLoading(true);
+      setInitialized(false);
       console.log('Attempting sign in for:', email);
+      
+      // First clear any existing tokens and sessions
+      localStorage.clear(); // Clear all localStorage first
+      
+      // Explicitly sign out before signing in
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error('Error during pre-signin signout:', signOutError);
+        // Continue anyway
+      }
+      
+      // Add a short delay to ensure signout completes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -151,14 +229,50 @@ export function AuthProvider({ children }) {
       
       if (error) {
         console.error('Sign in error:', error);
+        setUser(null);
+        setStaffProfile(null);
         throw error;
       }
       
       console.log('Sign in successful:', data?.user?.id);
+      
+      // Load staff profile
+      if (data.user) {
+        try {
+          const profileData = await fetchStaffProfile(data.user);
+          
+          // If no staff profile exists for this user, throw error
+          if (!profileData) {
+            console.error('No staff profile found for user');
+            await supabase.auth.signOut();
+            setUser(null);
+            setStaffProfile(null);
+            throw new Error('No staff profile found for this account. Please contact your administrator.');
+          }
+          
+          // Set user and profile state after successful login
+          setUser(data.user);
+          setStaffProfile(profileData);
+          
+          return data;
+        } catch (profileError) {
+          console.error('Error fetching staff profile after login:', profileError);
+          await supabase.auth.signOut();
+          setUser(null);
+          setStaffProfile(null);
+          throw new Error('Error loading staff profile. Please try again.');
+        }
+      }
+      
       return data;
     } catch (error) {
       console.error('Sign in exception:', error);
+      setUser(null);
+      setStaffProfile(null);
       throw error;
+    } finally {
+      setLoading(false);
+      setInitialized(true);
     }
   };
 
@@ -166,65 +280,56 @@ export function AuthProvider({ children }) {
   const signOut = async () => {
     try {
       console.log('Signing out user');
+      setLoading(true);
       
-      // Clear local state
+      // Clear local state first
       setUser(null);
       setStaffProfile(null);
       
-      // Also clear localStorage of any Supabase tokens
-      // This is a safeguard in case the Supabase signOut doesn't fully clear everything
-      localStorage.removeItem('supabase.auth.token');
+      // Clear all localStorage
+      localStorage.clear();
       
-      // Then call the API
-      const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error('Sign out error:', error);
-        throw error;
+      // Clear cookies related to auth (if any)
+      document.cookie.split(';').forEach(cookie => {
+        const [name] = cookie.trim().split('=');
+        if (name.includes('sb-') || name.includes('supabase')) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;`;
+        }
+      });
+
+      // Then call the API to sign out
+      try {
+        await supabase.auth.signOut();
+        console.log('Sign out API call successful');
+      } catch (error) {
+        console.error('Sign out API call error:', error);
+        // Continue with the process even if API call fails
       }
       
-      console.log('Sign out successful');
+      console.log('Sign out process completed');
+      
+      // Use a standard navigation instead of setting window.location directly
+      return true;
     } catch (error) {
       console.error('Sign out exception:', error);
       throw error;
-    }
-  };
-
-  // Function to sign up users
-  const signUp = async (email, password, userData) => {
-    try {
-      console.log('Attempting sign up for:', email);
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: userData
-        }
-      });
-      
-      if (error) {
-        console.error('Sign up error:', error);
-        throw error;
-      }
-      
-      console.log('Sign up successful:', data?.user?.id);
-      return data;
-    } catch (error) {
-      console.error('Sign up exception:', error);
-      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   // Context value
   const value = {
     user,
-    loading,
+    loading: loading || !initialized, // Only consider loaded when both loading is false and we've initialized
     staffProfile,
     signIn,
     signOut,
-    signUp,
-    fetchStaffProfile
+    fetchStaffProfile,
+    initialized
   };
+
+  console.log('AuthProvider state:', value);
 
   return (
     <AuthContext.Provider value={value}>
