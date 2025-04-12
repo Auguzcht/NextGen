@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 :root {
+  --nextgen-blue: #30cee4;
+  --nextgen-blue-light: #5cd7e9;
+  --nextgen-blue-dark: #1ca7bc;
+  --nextgen-orange: #fb7610;
+  --nextgen-orange-light: #fc9544;
+  --nextgen-orange-dark: #e66300;
+
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -94,5 +101,39 @@ button:focus-visible {
   }
   button {
     background-color: #f9f9f9;
+  }
+}
+
+/* Add custom effects and utilities */
+@layer components {
+  .animate-in {
+    animation: animateIn 0.3s ease-out;
+  }
+  
+  .fade-in {
+    opacity: 0;
+    animation-fill-mode: forwards;
+  }
+  
+  /* NextGen specific form controls */
+  .nextgen-form-input {
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue;
+  }
+  
+  .nextgen-form-select {
+    @apply block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue rounded-md;
+  }
+  
+  .nextgen-form-checkbox {
+    @apply h-4 w-4 text-nextgen-blue border-gray-300 rounded focus:ring-nextgen-blue;
+  }
+  
+  /* NextGen specific buttons */
+  .btn-nextgen-primary {
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-blue hover:bg-nextgen-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-blue;
+  }
+  
+  .btn-nextgen-secondary {
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-orange hover:bg-nextgen-orange-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-orange;
   }
 }

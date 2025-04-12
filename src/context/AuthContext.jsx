@@ -1,13 +1,16 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect, useContext, useRef } from 'react';
 import supabase from '../services/supabase.js';
 
-const AuthContext = createContext();
+// Create and export the context
+export const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [staffProfile, setStaffProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [loginRedirectInProgress, setLoginRedirectInProgress] = useState(false);
+  const manualSignInInProgress = useRef(false);
 
   // Function to fetch staff profile
   const fetchStaffProfile = async (user) => {
@@ -153,6 +156,27 @@ export function AuthProvider({ children }) {
         if (event === 'SIGNED_IN' && session?.user) {
           console.log('User signed in:', session.user.id);
           
+          // CRITICAL: Skip automatic redirect if this is a manual sign-in
+          // This prevents the double redirect
+          if (manualSignInInProgress.current) {
+            console.log('Manual sign-in in progress, skipping automatic session handling');
+            // Still set the user to keep context in sync
+            if (mounted) {
+              setUser(session.user);
+              
+              try {
+                await fetchStaffProfile(session.user);
+              } catch (error) {
+                console.error('Error fetching profile after manual sign in:', error);
+              } finally {
+                setLoading(false);
+                setInitialized(true);
+              }
+            }
+            return;
+          }
+          
+          // For automatic sign-ins (like page refresh), proceed normally
           if (mounted) {
             setUser(session.user);
             
@@ -202,14 +226,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Function to sign in users
-  const signIn = async (email, password) => {
+  const signIn = async (email, password, rememberMe) => {
     try {
       setLoading(true);
-      setInitialized(false);
-      console.log('Attempting sign in for:', email);
+      // Set the flag to indicate a manual sign-in is in progress
+      manualSignInInProgress.current = true;
       
       // First clear any existing tokens and sessions
-      localStorage.clear(); // Clear all localStorage first
+      localStorage.clear(); 
+      
+      // Explicitly reset redirection state
+      setLoginRedirectInProgress(false);
       
       // Explicitly sign out before signing in
       try {
@@ -231,6 +258,7 @@ export function AuthProvider({ children }) {
         console.error('Sign in error:', error);
         setUser(null);
         setStaffProfile(null);
+        manualSignInInProgress.current = false;
         throw error;
       }
       
@@ -247,6 +275,7 @@ export function AuthProvider({ children }) {
             await supabase.auth.signOut();
             setUser(null);
             setStaffProfile(null);
+            manualSignInInProgress.current = false;
             throw new Error('No staff profile found for this account. Please contact your administrator.');
           }
           
@@ -254,12 +283,16 @@ export function AuthProvider({ children }) {
           setUser(data.user);
           setStaffProfile(profileData);
           
+          // Keep loading false so PublicRoute doesn't show loading screen
+          setLoading(false);
+          
           return data;
         } catch (profileError) {
           console.error('Error fetching staff profile after login:', profileError);
           await supabase.auth.signOut();
           setUser(null);
           setStaffProfile(null);
+          manualSignInInProgress.current = false;
           throw new Error('Error loading staff profile. Please try again.');
         }
       }
@@ -269,10 +302,14 @@ export function AuthProvider({ children }) {
       console.error('Sign in exception:', error);
       setUser(null);
       setStaffProfile(null);
+      setLoading(false);
+      setLoginRedirectInProgress(false);
+      manualSignInInProgress.current = false;
       throw error;
     } finally {
-      setLoading(false);
       setInitialized(true);
+      // Note: we don't reset manualSignInInProgress.current here
+      // It will be cleared when LoginForm completes its redirect
     }
   };
 
@@ -315,18 +352,34 @@ export function AuthProvider({ children }) {
       throw error;
     } finally {
       setLoading(false);
+      manualSignInInProgress.current = false;
     }
+  };
+
+  // Improve the clearLoginFlags function to be more robust
+  const clearLoginFlags = () => {
+    console.log('Clearing login flags');
+    
+    // Use setTimeout to ensure this happens after the current execution cycle
+    setTimeout(() => {
+      setLoginRedirectInProgress(false);
+      manualSignInInProgress.current = false;
+      console.log('Login flags cleared');
+    }, 0);
   };
 
   // Context value
   const value = {
     user,
-    loading: loading || !initialized, // Only consider loaded when both loading is false and we've initialized
+    loading: loading || !initialized,
     staffProfile,
     signIn,
     signOut,
     fetchStaffProfile,
-    initialized
+    initialized,
+    loginRedirectInProgress,
+    setLoginRedirectInProgress,
+    clearLoginFlags // Make sure this is here
   };
 
   console.log('AuthProvider state:', value);
@@ -338,6 +391,13 @@ export function AuthProvider({ children }) {
   );
 }
 
+// Export the hook
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  
+  return context;
 }

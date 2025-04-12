@@ -5,7 +5,6 @@ import ngLogo from '../../assets/NextGen-Logo.svg';
 const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   const [isMounted, setIsMounted] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
   
   // Initialize mounting state
   useEffect(() => {
@@ -13,26 +12,9 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     return () => clearTimeout(timeout);
   }, []);
 
+  // Handle exit animation timings
   useEffect(() => {
-    // Simulate loading progress
-    let interval;
-    
-    if (!isExiting) {
-      interval = setInterval(() => {
-        setLoadingProgress(prev => {
-          const target = isInitialLoadingComplete ? 100 : 90;
-          const increment = Math.random() * 3 + (target - prev) * 0.05;
-          return Math.min(prev + increment, target);
-        });
-      }, 150);
-    }
-    
-    return () => clearInterval(interval);
-  }, [isExiting, isInitialLoadingComplete]);
-
-  // Handle exit animation timing
-  useEffect(() => {
-    // Start exit animation when initialLoading is complete
+    // Start exit animation when initialLoading is complete (if provided)
     const shouldStartExit = isInitialLoadingComplete !== undefined ? 
       isInitialLoadingComplete : true;
     
@@ -40,7 +22,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     
     if (shouldStartExit) {
       exitTimer = setTimeout(() => {
-        setLoadingProgress(100);
         setIsExiting(true);
       }, 2800);
       
@@ -55,9 +36,9 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     };
   }, [finishLoading, isInitialLoadingComplete]);
 
-  // Pre-generate random positions for geometric shapes
+  // Pre-generate random positions for geometric shapes - REDUCED FROM 30 TO 15
   const shapeProps = useMemo(() => {
-    return Array.from({ length: 30 }, () => ({
+    return Array.from({ length: 15 }, () => ({
       top: Math.random() * 100,
       left: Math.random() * 100,
       opacity: 0.2 + (Math.random() * 0.3),
@@ -65,11 +46,11 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
       rotate: 45 + (Math.random() * 90),
       exitY: (Math.random() > 0.5 ? -40 : 40) * (Math.random() + 0.5),
       exitX: (Math.random() > 0.5 ? -40 : 40) * (Math.random() + 0.5),
-      type: Math.random() > 0.6 ? 'circle' : Math.random() > 0.5 ? 'square' : 'triangle'
+      type: Math.random() > 0.7 ? 'circle' : Math.random() > 0.5 ? 'square' : 'triangle'
     }));
   }, []);
 
-  // Light beam animation variants (replacing steam animation)
+  // Light beam animation variants
   const lightBeamVariants = {
     initial: { opacity: 0, y: 0 },
     animate: {
@@ -92,7 +73,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     }
   };
 
-  // Geometric shape variants (replacing coffee bean variants)
+  // Geometric shape variants
   const shapeVariants = {
     initial: { opacity: 0, scale: 0, rotate: 45 },
     animate: (i) => ({
@@ -166,7 +147,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
       {!isExiting ? (
         <motion.div 
           key="loading-screen"
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-nextgen-blue/5 overflow-hidden"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-nextgen-blue/10 overflow-hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -182,9 +163,8 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             textAlign: 'center',
           }}
         >
-          {/* Animated background pattern */}
+          {/* Background pattern */}
           <div className="absolute inset-0 overflow-hidden">
-            {/* Subtle waves animation */}
             <motion.div 
               className="absolute inset-0 opacity-20"
               animate={{
@@ -199,10 +179,10 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               style={{
                 backgroundImage: 'radial-gradient(circle at center, rgba(48, 206, 228, 0.2) 0%, transparent 50%)',
                 backgroundSize: '120vw 120vh',
+                willChange: 'background-position',
               }}
             />
             
-            {/* Geometric shape particles (replacing coffee beans) */}
             <div className="absolute -inset-[10%] opacity-25">
               {shapeProps.map((shape, i) => {
                 let ShapeElement;
@@ -218,7 +198,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                     height: '25px',
                   }} />;
                 } else {
-                  // Triangle
                   ShapeElement = <div className="absolute bg-nextgen-blue" style={{
                     width: '30px',
                     height: '30px',
@@ -248,7 +227,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             </div>
           </div>
 
-          {/* Main content */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -265,9 +243,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               margin: '0 auto'
             }}
           >
-            {/* Logo with light beam effect (replacing coffee steam) */}
             <div className="relative mb-8">
-              {/* Light beam animation */}
               <motion.div 
                 className="absolute -top-10 left-1/2 transform -translate-x-1/2 flex justify-center space-x-1.5"
                 initial="initial"
@@ -290,9 +266,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                 ))}
               </motion.div>
               
-              {/* Logo container with glowing effect */}
               <div className="relative w-32 h-32 mb-6 flex justify-center items-center">
-                {/* Pulsing glow effect */}
                 <motion.div
                   className="absolute inset-0 rounded-full bg-gradient-to-r from-nextgen-blue to-nextgen-orange opacity-50 blur-lg"
                   animate={{ 
@@ -312,9 +286,8 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                   }}
                 />
                 
-                {/* Secondary glow */}
                 <motion.div
-                  className="absolute inset-2 rounded-full bg-gradient-to-tr from-nextgen-blue-light/50 to-nextgen-orange-light/40 opacity-40 blur-md"
+                  className="absolute inset-2 rounded-full bg-gradient-to-tr from-nextgen-blue-light/50 to-nextgen-orange-light/40 opacity: 40 blur-md"
                   animate={{ 
                     rotate: [0, 180],
                     scale: [0.95, 1.05, 0.95],
@@ -340,7 +313,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                   }}
                 />
                 
-                {/* Logo with entrance animation */}
                 <motion.div
                   initial={{ scale: 0.8, opacity: 0, rotate: -5 }}
                   animate={{ scale: 1, opacity: 1, rotate: 0 }}
@@ -366,7 +338,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               </div>
             </div>
             
-            {/* Progress bar with shimmer effect */}
+            {/* FIXED PROGRESS BAR LIKE TRACKNTOMS */}
             <motion.div
               className="w-72 h-2.5 bg-gray-100 rounded-full overflow-hidden mt-4 relative"
               initial={{ opacity: 0, width: "60%" }}
@@ -378,19 +350,18 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               }}
               transition={{ delay: 0.4, duration: 0.6 }}
             >
-              {/* Progress fill */}
+              {/* Fixed progress fill with predictable timing */}
               <motion.div
                 className="h-full bg-gradient-to-r from-nextgen-blue to-nextgen-orange rounded-full relative"
                 initial={{ width: 0 }}
-                animate={{ width: `${loadingProgress}%` }}
+                animate={{ width: "100%" }}
                 exit={{ width: "100%" }}
                 transition={{ 
-                  duration: 0.3,
+                  duration: 2.6,
                   ease: "easeInOut"
                 }}
               />
               
-              {/* Shimmer effect with continuous animation */}
               <motion.div
                 className="absolute top-0 bottom-0 w-20 bg-gradient-to-r from-transparent via-white to-transparent opacity-30"
                 animate={{
@@ -405,7 +376,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               />
             </motion.div>
             
-            {/* Loading percentage */}
+            {/* Loading percentage - static fade animation */}
             <motion.div
               className="text-nextgen-blue text-sm mt-2"
               initial={{ opacity: 0 }}
@@ -413,10 +384,9 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               exit={{ opacity: 0 }}
               transition={{ delay: 0.5 }}
             >
-              {Math.round(loadingProgress)}%
+              Loading...
             </motion.div>
             
-            {/* Text with character-by-character animation */}
             <div className="overflow-hidden mt-5">
               <div className="flex justify-center">
                 {loadingText.split("").map((char, i) => (
@@ -435,7 +405,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               </div>
             </div>
             
-            {/* Subtitle with fade in */}
             <motion.p
               className="text-nextgen-blue-dark/80 mt-2 text-xs font-light tracking-wide"
               initial={{ opacity: 0, y: 5 }}
@@ -453,7 +422,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               {subText}
             </motion.p>
 
-            {/* Dots animation */}
             <div className="flex space-x-2 mt-8">
               {[0, 1, 2].map(i => (
                 <motion.div 
@@ -479,9 +447,8 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             </div>
           </motion.div>
           
-          {/* Exit wipe effect - horizontal reveal */}
           <motion.div 
-            className="fixed inset-0 bg-nextgen-blue z-[9999] transform origin-left"
+            className="fixed inset-0 bg-nextgen-blue z-60 transform origin-left"
             variants={wipeVariants}
             initial="initial"
             animate="animate"
@@ -489,9 +456,8 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             style={{ overflow: 'hidden' }}
           />
           
-          {/* Second wipe effect - slightly delayed */}
           <motion.div 
-            className="fixed inset-0 bg-white z-[9998] transform origin-left"
+            className="fixed inset-0 bg-white z-50 transform origin-left"
             initial={{ scaleX: 0, originX: 0 }}
             animate={{ scaleX: 0 }}
             exit={{ 
@@ -508,7 +474,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
       ) : (
         <motion.div 
           key="exit-screen"
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-indigo-50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-nextgen-blue/10"
           initial={{ opacity: 1 }}
           animate={{ 
             opacity: 0,

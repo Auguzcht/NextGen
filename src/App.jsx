@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import LoadingScreen from './components/common/LoadingScreen.jsx';
 import LoginForm from './components/auth/LoginForm.jsx';
@@ -10,62 +10,96 @@ import GuardiansPage from './pages/GuardiansPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import StaffManagementPage from './pages/StaffManagementPage.jsx';
+import LoginPage from './pages/LoginPage';
 import './App.css';
 
-// Protected route component
+// Protected route component - prevents access to routes when not authenticated
 const ProtectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, loginRedirectInProgress } = useAuth();
+  const location = useLocation();
   
-  console.log('ProtectedRoute state:', { user, loading }); // Add this
-  
+  // Show loading screen while auth state is being determined
   if (loading) {
-    return <LoadingScreen />; // Use your LoadingScreen instead of a simple spinner
+    return <LoadingScreen 
+      finishLoading={() => {}} 
+      isInitialLoadingComplete={false}
+    />;
   }
   
+  // If no user is logged in, redirect to login
   if (!user) {
-    console.log('No user, redirecting to login'); // Add this
-    return <Navigate to="/login" replace />;
+    // Save the attempted URL for redirecting after login
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
-  console.log('User authenticated, rendering protected content'); // Add this
+  // User is authenticated, render the protected content
   return children;
 };
 
-// Public route component - redirects to dashboard if already logged in
+// Update the PublicRoute component for better debugging
 const PublicRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, loginRedirectInProgress } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   
+  // More detailed debug logging
+  useEffect(() => {
+    if (user) {
+      console.log('PublicRoute - Auth state:', { 
+        userId: user.id,
+        loginRedirectInProgress, 
+        pathname: location.pathname,
+        shouldRedirect: user && !loginRedirectInProgress && location.pathname === '/login'
+      });
+    }
+  }, [user, loginRedirectInProgress, location]);
+  
+  // Show loading screen while auth state is being determined
   if (loading) {
-    return <div className="flex h-screen w-full items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    return <LoadingScreen 
+      finishLoading={() => {}} 
+      isInitialLoadingComplete={true}
+    />;
+  }
+  
+  // CRITICAL: Only redirect if:
+  // 1. User is authenticated
+  // 2. We're not already in the process of redirecting from the login form
+  // 3. We're actually on the login page (to avoid redirect loops)
+  if (user && !loginRedirectInProgress && location.pathname === '/login') {
+    console.log('User authenticated in PublicRoute, redirecting to dashboard');
+    // Force a navigation with a small delay to ensure all state is settled
+    setTimeout(() => {
+      navigate('/dashboard', { replace: true });
+    }, 50);
+    
+    // Return a temporary loading indicator while we redirect
+    return <div className="fixed inset-0 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
     </div>;
   }
   
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  
+  // Either no user is logged in or we're in the middle of redirecting, render the public content
   return children;
 };
 
 function AppContent() {
   const [initialLoading, setInitialLoading] = useState(true);
-  const { user, loading: authLoading } = useAuth();
-  
-  // Only log to console instead of showing UI debug element
-  console.log('AppContent rendering, initialLoading:', initialLoading, 'authLoading:', authLoading);
-  console.log('Authentication status:', authLoading ? 'Loading...' : (user ? 'Authenticated' : 'Not authenticated'));
+  const { user, loading: authLoading, loginRedirectInProgress } = useAuth();
+  const location = useLocation();
 
-  // Simulate initial loading
+  useEffect(() => {
+    console.log('AppContent - Current auth state:', { user, authLoading, loginRedirectInProgress });
+  }, [user, authLoading, loginRedirectInProgress]);
+
+  // Effect to disable initial loading screen after a delay
   useEffect(() => {
     const timer = setTimeout(() => {
       setInitialLoading(false);
-    }, 1500);
+    }, 2000); // Show initial loading for at least 2 seconds for a better UX
     
     return () => clearTimeout(timer);
   }, []);
-
-  // Remove the debug element that was pushing content down
   
   // Show loading screen during both initialLoading and authLoading
   if (initialLoading || authLoading) {
@@ -83,7 +117,7 @@ function AppContent() {
         path="/login" 
         element={
           <PublicRoute>
-            <LoginForm />
+            <LoginPage />
           </PublicRoute>
         } 
       />
@@ -99,6 +133,7 @@ function AppContent() {
           </ProtectedRoute>
         } 
       />
+      {/* Other routes remain unchanged */}
       <Route 
         path="/children" 
         element={
@@ -148,18 +183,26 @@ function AppContent() {
         } 
       />
       {/* Catch all route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route 
+        path="*" 
+        element={
+          <Navigate 
+            to={user ? "/dashboard" : "/login"} 
+            replace 
+          />
+        } 
+      />
     </Routes>
   );
 }
 
 function App() {
   return (
-      <Router basename="/nextgen">
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </Router>
+    <Router basename="/nextgen">
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </Router>
   );
 }
 
