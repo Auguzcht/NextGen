@@ -59,36 +59,34 @@ img {
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--nextgen-blue);
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: var(--nextgen-blue-dark);
 }
 
 h1 {
-  font-size: 3.2em;
+  font-size: 2.5em;
   line-height: 1.1;
 }
 
+/* Reset default button styles to prevent conflicts with our custom buttons */
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-family: inherit;
-  background-color: #FFF6F2;
+  font-size: inherit;
   cursor: pointer;
-  transition: border-color 0.25s;
 }
 
-button:hover {
-  border-color: #571C1F;
-}
+/* Override default button focus styles */
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 2px solid var(--nextgen-blue);
+  outline-offset: 2px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -97,15 +95,13 @@ button:focus-visible {
     background-color: #ffffff;
   }
   a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
+    color: var(--nextgen-blue-dark);
   }
 }
 
 /* Add custom effects and utilities */
 @layer components {
+  /* Animation utilities */
   .animate-in {
     animation: animateIn 0.3s ease-out;
   }
@@ -113,6 +109,17 @@ button:focus-visible {
   .fade-in {
     opacity: 0;
     animation-fill-mode: forwards;
+  }
+  
+  @keyframes animateIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   
   /* NextGen specific form controls */
@@ -130,10 +137,161 @@ button:focus-visible {
   
   /* NextGen specific buttons */
   .btn-nextgen-primary {
-    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-blue hover:bg-nextgen-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-blue;
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-blue hover:bg-nextgen-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-blue transition-all duration-200;
   }
   
   .btn-nextgen-secondary {
-    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-orange hover:bg-nextgen-orange-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-orange;
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-nextgen-orange hover:bg-nextgen-orange-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-orange transition-all duration-200;
+  }
+
+  .btn-nextgen-outline {
+    @apply inline-flex items-center justify-center px-4 py-2 border border-nextgen-blue text-sm font-medium rounded-md text-nextgen-blue bg-transparent hover:bg-nextgen-blue/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-nextgen-blue transition-all duration-200;
+  }
+
+  .btn-nextgen-ghost {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md text-gray-600 bg-transparent hover:bg-gray-100 focus:outline-none transition-all duration-200;
+  }
+
+  /* Sidebar navigation styles */
+  .sidebar-nav-link {
+    @apply flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 text-white border border-transparent;
+  }
+
+  .sidebar-nav-link-active {
+    @apply bg-nextgen-blue bg-opacity-20 text-white shadow-md shadow-nextgen-blue/20 border-transparent;
+  }
+
+  .sidebar-nav-link-inactive {
+    @apply text-white/80 hover:text-white hover:bg-nextgen-blue/10 border-transparent;
+  }
+
+  .sidebar-nav-button {
+    @apply w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 text-white border-transparent;
+  }
+
+  .sidebar-subpage-link {
+    @apply flex items-center px-4 py-2.5 rounded-lg text-sm transition-all duration-200 border-transparent;
+  }
+
+  .sidebar-subpage-active {
+    @apply text-white font-medium bg-nextgen-blue/20 shadow-sm;
+  }
+
+  .sidebar-subpage-inactive {
+    @apply text-white/80 hover:text-white hover:bg-nextgen-blue/10;
+  }
+
+  .sidebar-icon-container {
+    @apply mr-3 flex items-center justify-center w-6 h-6;
+  }
+
+  .sidebar-icon {
+    @apply h-5 w-5;
+  }
+
+  .sidebar-subpage-dot {
+    @apply w-2 h-2 mr-3 rounded-full;
+  }
+
+  .sidebar-subpage-dot-active {
+    @apply bg-nextgen-blue;
+  }
+
+  .sidebar-subpage-dot-inactive {
+    @apply bg-nextgen-blue/30;
+  }
+
+  /* Sidebar animation keyframes */
+  @keyframes glow {
+    0% {
+      box-shadow: 0 0 5px rgba(48, 206, 228, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(48, 206, 228, 0.3);
+    }
+    100% {
+      box-shadow: 0 0 5px rgba(48, 206, 228, 0.2);
+    }
+  }
+
+  .sidebar-glow-effect {
+    animation: glow 4s infinite alternate;
+  }
+
+  /* Vertical line for subpage sections */
+  .sidebar-subpage-line {
+    @apply absolute left-0 top-0 bottom-0 w-0.5 h-full;
+  }
+
+  .sidebar-subpage-line-bg {
+    @apply w-full bg-nextgen-blue/40 absolute inset-0 rounded-full;
+  }
+
+  .sidebar-subpage-line-highlight {
+    @apply w-full bg-nextgen-blue absolute left-0 rounded-full;
+  }
+
+  /* Layout components */
+  .page-container {
+    @apply w-full h-full;
+  }
+
+  .content-card {
+    @apply bg-white rounded-lg shadow-sm p-6;
+  }
+
+  /* Table styles */
+  .nextgen-table {
+    @apply min-w-full divide-y divide-gray-200;
+  }
+
+  .nextgen-table-header {
+    @apply bg-gray-50;
+  }
+
+  .nextgen-table-header-cell {
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+
+  .nextgen-table-row {
+    @apply bg-white hover:bg-gray-50 transition-colors duration-150;
+  }
+
+  .nextgen-table-cell {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-500;
+  }
+
+  /* Common page elements */
+  .page-title {
+    @apply text-2xl font-bold text-gray-900 mb-4;
+  }
+
+  .page-subtitle {
+    @apply text-lg font-semibold text-nextgen-blue mb-2;
+  }
+
+  .section-divider {
+    @apply my-6 border-t border-gray-200;
+  }
+  
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-badge-success {
+    @apply bg-green-100 text-green-800;
+  }
+  
+  .status-badge-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  
+  .status-badge-danger {
+    @apply bg-red-100 text-red-800;
+  }
+  
+  .status-badge-info {
+    @apply bg-nextgen-blue bg-opacity-10 text-nextgen-blue-dark;
   }
 }

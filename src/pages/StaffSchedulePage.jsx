@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import MainLayout from '../layouts/MainLayout.jsx';
 import supabase from '../services/supabase.js';
 import StaffAssignmentsList from '../components/staff/StaffAssignmentsList.jsx';
 
@@ -78,8 +77,7 @@ const StaffSchedulePage = () => {
   };
 
   return (
-    <MainLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Staff Filter */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Staff Schedule</h2>
@@ -160,8 +158,7 @@ const StaffSchedulePage = () => {
             </div>
           )}
         </div>
-      </div>
-    </MainLayout>
+    </div>
   );
 };
 

@@ -1,10 +1,39 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import ngLogo from '../../assets/NextGen-Logo.svg';
 
 const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   const [isMounted, setIsMounted] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [forceExit, setForceExit] = useState(false);
+  const { user, initialized, loading, resetAuthState } = useAuth();
+  const navigate = useNavigate();
+  
+  // Force exit after safety timeout to prevent infinite loading
+  useEffect(() => {
+    const safetyTimeout = setTimeout(() => {
+      if (!isExiting) {
+        console.log('LoadingScreen - Safety timeout triggered, forcing exit');
+        setForceExit(true);
+        setIsExiting(true);
+        finishLoading && finishLoading();
+        
+        // Force reset auth state to prevent loading loop
+        resetAuthState();
+        
+        // Add direct navigation on safety timeout
+        const redirectTimer = setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 500);
+        
+        return () => clearTimeout(redirectTimer);
+      }
+    }, 10000); // 10 second safety timeout
+    
+    return () => clearTimeout(safetyTimeout);
+  }, [finishLoading, isExiting, navigate, resetAuthState]);
   
   // Initialize mounting state
   useEffect(() => {
@@ -12,31 +41,86 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     return () => clearTimeout(timeout);
   }, []);
 
-  // Handle exit animation timings
+  // Exit strategy based on auth state
+  const handleAuthBasedExit = useCallback(() => {
+    if (initialized) {
+      console.log('LoadingScreen - Auth initialized, preparing to exit');
+      
+      // Short delay before exit animation to ensure state is settled
+      const exitTimer = setTimeout(() => {
+        setIsExiting(true);
+      }, 800);
+      
+      // Slightly longer delay for actual completion
+      const loadingTimer = setTimeout(() => {
+        finishLoading && finishLoading();
+        
+        // If user is null and initialized is true, we need to redirect to login
+        if (!user && initialized && !loading) {
+          console.log('LoadingScreen - No user after initialization, redirecting to login');
+          navigate('/login', { replace: true });
+        }
+      }, 1200);
+      
+      return () => {
+        clearTimeout(exitTimer);
+        clearTimeout(loadingTimer);
+      };
+    }
+    
+    // If not initialized after reasonable time, force it
+    const forcedInitTimer = setTimeout(() => {
+      if (!initialized) {
+        console.log('LoadingScreen - Forcing initialization after delay');
+        setIsExiting(true);
+        finishLoading && finishLoading();
+        // Reset auth state to break the loading loop
+        resetAuthState();
+        navigate('/login', { replace: true });
+      }
+    }, 5000);
+    
+    return () => clearTimeout(forcedInitTimer);
+  }, [initialized, user, loading, finishLoading, navigate, resetAuthState]);
+
+  // Handle exit animation timings based on auth and manual triggers
   useEffect(() => {
-    // Start exit animation when initialLoading is complete (if provided)
-    const shouldStartExit = isInitialLoadingComplete !== undefined ? 
-      isInitialLoadingComplete : true;
+    // Check if we should exit based on initialLoadingComplete prop
+    const shouldStartExit = isInitialLoadingComplete || forceExit;
     
     let exitTimer, loadingTimer;
     
     if (shouldStartExit) {
+      // Exit based on initialLoadingComplete prop
       exitTimer = setTimeout(() => {
         setIsExiting(true);
-      }, 2800);
+      }, 1000);
       
       loadingTimer = setTimeout(() => {
         finishLoading && finishLoading();
-      }, 3200); // Extended to show exit animation
+        
+        // Add direct navigation to ensure we don't get stuck
+        if (!user) {
+          // Also reset auth state
+          resetAuthState();
+          // Force navigation without relying on auth state
+          window.location.href = '/nextgen/login';
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      }, 1400);
+      
+      return () => {
+        clearTimeout(exitTimer);
+        clearTimeout(loadingTimer);
+      };
+    } else {
+      // Otherwise use auth-based exit strategy
+      return handleAuthBasedExit();
     }
-    
-    return () => {
-      clearTimeout(exitTimer);
-      clearTimeout(loadingTimer);
-    };
-  }, [finishLoading, isInitialLoadingComplete]);
+  }, [isInitialLoadingComplete, finishLoading, forceExit, handleAuthBasedExit, user, navigate, resetAuthState]);
 
-  // Pre-generate random positions for geometric shapes - REDUCED FROM 30 TO 15
+  // Pre-generate random positions for geometric shapes
   const shapeProps = useMemo(() => {
     return Array.from({ length: 15 }, () => ({
       top: Math.random() * 100,
@@ -125,9 +209,18 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     })
   };
 
-  // Loading text
-  const loadingText = "Loading NextGen Ministry...";
-  const subText = "Preparing your ministry tools";
+  // Loading text and different messages based on auth state
+  const getLoadingMessage = () => {
+    if (forceExit) return "Resolving session state...";
+    if (user) return "Loading your dashboard...";
+    if (initialized && !user) return "Preparing login page...";
+    return "Loading NextGen Ministry...";
+  };
+  
+  const loadingText = getLoadingMessage();
+  const subText = initialized 
+    ? (user ? "Loading your ministry tools" : "Please sign in to continue") 
+    : "Preparing your ministry tools";
 
   // Wipe animation variants
   const wipeVariants = {
@@ -287,7 +380,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                 />
                 
                 <motion.div
-                  className="absolute inset-2 rounded-full bg-gradient-to-tr from-nextgen-blue-light/50 to-nextgen-orange-light/40 opacity: 40 blur-md"
+                  className="absolute inset-2 rounded-full bg-gradient-to-tr from-nextgen-blue-light/50 to-nextgen-orange-light/40 blur-md"
                   animate={{ 
                     rotate: [0, 180],
                     scale: [0.95, 1.05, 0.95],
@@ -315,22 +408,22 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                 
                 <motion.div
                   initial={{ scale: 0.8, opacity: 0, rotate: -5 }}
-                  animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                  animate={{ 
+                    scale: 1, 
+                    opacity: 1, 
+                    rotate: 0 
+                  }}
                   exit={{ 
-                    scale: 1.2, 
+                    scale: 0.8, 
                     opacity: 0,
-                    y: -20,
                     transition: {
-                      type: "spring",
-                      stiffness: 100,
-                      damping: 10
+                      duration: 0.3,
+                      ease: "easeOut"
                     }
                   }}
                   transition={{ 
-                    delay: 0.3,
-                    duration: 0.8,
-                    type: "spring",
-                    stiffness: 100
+                    duration: 0.5,
+                    ease: "easeOut"
                   }}
                 >
                   <img src={ngLogo} alt="NextGen Logo" className="h-24 w-auto relative z-10" />
@@ -338,7 +431,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               </div>
             </div>
             
-            {/* FIXED PROGRESS BAR LIKE TRACKNTOMS */}
+            {/* Progress bar with visual feedback based on auth state */}
             <motion.div
               className="w-72 h-2.5 bg-gray-100 rounded-full overflow-hidden mt-4 relative"
               initial={{ opacity: 0, width: "60%" }}
@@ -350,16 +443,24 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               }}
               transition={{ delay: 0.4, duration: 0.6 }}
             >
-              {/* Fixed progress fill with predictable timing */}
+              {/* Progress fill that responds to auth state */}
               <motion.div
-                className="h-full bg-gradient-to-r from-nextgen-blue to-nextgen-orange rounded-full relative"
+                className={`h-full rounded-full relative ${
+                  forceExit 
+                    ? "bg-amber-500" 
+                    : initialized && !user 
+                      ? "bg-gradient-to-r from-nextgen-blue to-nextgen-orange" 
+                      : "bg-gradient-to-r from-nextgen-blue to-nextgen-orange"
+                }`}
                 initial={{ width: 0 }}
-                animate={{ width: "100%" }}
-                exit={{ width: "100%" }}
-                transition={{ 
-                  duration: 2.6,
-                  ease: "easeInOut"
+                animate={{ 
+                  width: forceExit ? "70%" : "100%",
+                  transition: {
+                    duration: forceExit ? 0.5 : 2.6,
+                    ease: "easeInOut"
+                  }
                 }}
+                exit={{ width: "100%" }}
               />
               
               <motion.div
@@ -376,7 +477,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               />
             </motion.div>
             
-            {/* Loading percentage - static fade animation */}
+            {/* Loading state message */}
             <motion.div
               className="text-nextgen-blue text-sm mt-2"
               initial={{ opacity: 0 }}
@@ -384,26 +485,35 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
               exit={{ opacity: 0 }}
               transition={{ delay: 0.5 }}
             >
-              Loading...
+              {forceExit ? "Resolving session..." : "Loading..."}
             </motion.div>
             
-            <div className="overflow-hidden mt-5">
-              <div className="flex justify-center">
-                {loadingText.split("").map((char, i) => (
-                  <motion.span
-                    key={i}
-                    className="text-gray-800 font-medium text-base inline-block"
-                    variants={textVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    custom={i}
-                  >
-                    {char === " " ? "\u00A0" : char}
-                  </motion.span>
-                ))}
-              </div>
-            </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={loadingText}
+                className="overflow-hidden mt-5 h-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="flex justify-center">
+                  {loadingText.split("").map((char, i) => (
+                    <motion.span
+                      key={i}
+                      className="text-gray-800 font-medium text-base inline-block"
+                      variants={textVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      custom={i}
+                    >
+                      {char === " " ? "\u00A0" : char}
+                    </motion.span>
+                  ))}
+                </div>
+              </motion.div>
+            </AnimatePresence>
             
             <motion.p
               className="text-nextgen-blue-dark/80 mt-2 text-xs font-light tracking-wide"
@@ -445,8 +555,25 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                 />
               ))}
             </div>
+            
+            {/* Force exit button that appears after safety timeout */}
+            {forceExit && (
+              <motion.button
+                className="mt-8 px-4 py-2 bg-nextgen-blue text-white rounded-md text-sm font-medium hover:bg-nextgen-blue-dark transition-colors"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => {
+                  setIsExiting(true);
+                  finishLoading && finishLoading();
+                  navigate('/login', { replace: true });
+                }}
+              >
+                Continue to Login
+              </motion.button>
+            )}
           </motion.div>
           
+          {/* Animation layers */}
           <motion.div 
             className="fixed inset-0 bg-nextgen-blue z-60 transform origin-left"
             variants={wipeVariants}
@@ -476,14 +603,9 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
           key="exit-screen"
           className="fixed inset-0 z-50 flex items-center justify-center bg-nextgen-blue/10"
           initial={{ opacity: 1 }}
-          animate={{ 
-            opacity: 0,
-            transition: { 
-              delay: 0.3, 
-              duration: 0.3 
-            }
-          }}
+          animate={{ opacity: 0 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
           style={{
             position: 'fixed',
             top: 0,
@@ -494,21 +616,21 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             padding: 0,
             textAlign: 'center'
           }}
+          onAnimationComplete={() => {
+            // Handle navigation on animation complete
+            if (!user) {
+              // Use window.location for a hard navigation to break any loops
+              window.location.href = '/nextgen/login';
+            } else {
+              navigate('/dashboard', { replace: true });
+            }
+          }}
         >
           <motion.div 
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ 
-              scale: [0, 1.2, 1],
-              opacity: 1,
-              transition: {
-                duration: 0.4,
-                times: [0, 0.6, 1],
-                type: "spring",
-                stiffness: 300,
-                damping: 15
-              }
-            }}
-            style={{ display: 'flex', justifyContent: 'center' }}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            transition={{ duration: 0.4 }}
           >
             <img src={ngLogo} alt="NextGen Logo" className="h-24 w-auto" />
           </motion.div>

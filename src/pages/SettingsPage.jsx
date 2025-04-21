@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import MainLayout from '../layouts/MainLayout.jsx';
 import supabase from '../services/supabase.js';
 import EmailSettingsForm from '../components/email/EmailSettingsForm.jsx';
 import EmailTemplatesManager from '../components/email/EmailTemplatesManager.jsx';
@@ -163,7 +162,6 @@ const SettingsPage = () => {
   };
 
   return (
-    <MainLayout>
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-6 px-6">
@@ -215,7 +213,6 @@ const SettingsPage = () => {
           )}
         </div>
       </div>
-    </MainLayout>
   );
 };
 
