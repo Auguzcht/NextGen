@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
+import { Button, Input, Modal } from '../ui';
 
 const StaffAssignmentForm = ({ isOpen, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [staff, setStaff] = useState([]);
   const [services, setServices] = useState([]);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     staff_id: '',
     service_id: '',
@@ -22,6 +24,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess }) => {
 
   const fetchStaffAndServices = async () => {
     setLoading(true);
+    setError(null);
     try {
       // Fetch active staff
       const { data: staffData, error: staffError } = await supabase
@@ -52,6 +55,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess }) => {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -68,6 +72,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setError(null);
 
     try {
       // Check if assignment already exists
@@ -95,147 +100,155 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess }) => {
       onClose();
     } catch (error) {
       console.error('Error creating assignment:', error);
-      alert(`Error: ${error.message}`);
+      setError(error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!isOpen) return null;
+  // Create a footer with action buttons for the modal
+  const modalFooter = (
+    <>
+      <Button
+        variant="ghost"
+        onClick={onClose}
+        disabled={submitting}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        onClick={handleSubmit}
+        disabled={submitting || loading}
+        isLoading={submitting}
+      >
+        {submitting ? 'Assigning...' : 'Assign'}
+      </Button>
+    </>
+  );
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg overflow-hidden shadow-xl max-w-md w-full">
-        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Assign Staff Member</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-500"
-          >
-            <span className="sr-only">Close</span>
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Assign Staff Member"
+      footer={modalFooter}
+      size="md"
+      variant="primary"
+    >
+      {loading ? (
+        <div className="py-8 flex justify-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-nextgen-blue"></div>
         </div>
+      ) : (
+        <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="space-y-4">
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">
+                    {error}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
-        {loading ? (
-          <div className="px-4 py-5 sm:p-6 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          <div>
+            <label htmlFor="staff_id" className="block text-sm font-medium text-gray-700">
+              Staff Member
+            </label>
+            <select
+              id="staff_id"
+              name="staff_id"
+              value={formData.staff_id}
+              onChange={handleInputChange}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm rounded-md"
+              required
+            >
+              {staff.map((staffMember) => (
+                <option key={staffMember.staff_id} value={staffMember.staff_id}>
+                  {staffMember.first_name} {staffMember.last_name}
+                </option>
+              ))}
+            </select>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="px-4 py-5 sm:p-6 space-y-4">
-              <div>
-                <label htmlFor="staff_id" className="block text-sm font-medium text-gray-700">
-                  Staff Member
-                </label>
-                <select
-                  id="staff_id"
-                  name="staff_id"
-                  value={formData.staff_id}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  required
-                >
-                  {staff.map((staffMember) => (
-                    <option key={staffMember.staff_id} value={staffMember.staff_id}>
-                      {staffMember.first_name} {staffMember.last_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
-              <div>
-                <label htmlFor="service_id" className="block text-sm font-medium text-gray-700">
-                  Service
-                </label>
-                <select
-                  id="service_id"
-                  name="service_id"
-                  value={formData.service_id}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  required
-                >
-                  {services.map((service) => (
-                    <option key={service.service_id} value={service.service_id}>
-                      {service.service_name} ({service.day_of_week})
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div>
+            <label htmlFor="service_id" className="block text-sm font-medium text-gray-700">
+              Service
+            </label>
+            <select
+              id="service_id"
+              name="service_id"
+              value={formData.service_id}
+              onChange={handleInputChange}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm rounded-md"
+              required
+            >
+              {services.map((service) => (
+                <option key={service.service_id} value={service.service_id}>
+                  {service.service_name} ({service.day_of_week})
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label htmlFor="assignment_date" className="block text-sm font-medium text-gray-700">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  id="assignment_date"
-                  name="assignment_date"
-                  value={formData.assignment_date}
-                  onChange={handleInputChange}
-                  className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                  required
-                />
-              </div>
+          <div>
+            <label htmlFor="assignment_date" className="block text-sm font-medium text-gray-700">
+              Date
+            </label>
+            <Input
+              type="date"
+              id="assignment_date"
+              name="assignment_date"
+              value={formData.assignment_date}
+              onChange={handleInputChange}
+              required
+              fullWidth
+            />
+          </div>
 
-              <div>
-                <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                  Role
-                </label>
-                <select
-                  id="role"
-                  name="role"
-                  value={formData.role}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  required
-                >
-                  <option value="helper">Helper</option>
-                  <option value="teacher">Teacher</option>
-                  <option value="leader">Leader</option>
-                  <option value="check-in">Check-in</option>
-                </select>
-              </div>
+          <div>
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+              Role
+            </label>
+            <select
+              id="role"
+              name="role"
+              value={formData.role}
+              onChange={handleInputChange}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm rounded-md"
+              required
+            >
+              <option value="helper">Helper</option>
+              <option value="teacher">Teacher</option>
+              <option value="leader">Leader</option>
+              <option value="check-in">Check-in</option>
+            </select>
+          </div>
 
-              <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-                  Notes
-                </label>
-                <textarea
-                  id="notes"
-                  name="notes"
-                  rows="3"
-                  value={formData.notes}
-                  onChange={handleInputChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md"
-                ></textarea>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 bg-gray-50 text-right sm:px-6">
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mr-3"
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                disabled={submitting}
-              >
-                {submitting ? 'Saving...' : 'Assign'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+          <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+              Notes
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              rows="3"
+              value={formData.notes}
+              onChange={handleInputChange}
+              className="shadow-sm focus:ring-nextgen-blue focus:border-nextgen-blue mt-1 block w-full sm:text-sm border border-gray-300 rounded-md"
+            ></textarea>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 };
 

@@ -1,15 +1,36 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
+import { Card, Button, Table, Input, Badge } from '../components/ui';
+import { motion } from 'framer-motion';
+import AttendanceFilters from '../components/attendance/AttendanceFilters.jsx';
+import AttendanceCheckIn from '../components/attendance/AttendanceCheckIn.jsx';
 
 const AttendancePage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('checkin');
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
   const [attendanceList, setAttendanceList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [checkingIn, setCheckingIn] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [error, setError] = useState(null);
+
+  // Initialize the active tab based on URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab && ['checkin', 'records'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [location]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    navigate(`/attendance?tab=${tab}`, { replace: true });
+  };
 
   useEffect(() => {
     fetchServices();
@@ -32,11 +53,12 @@ const AttendancePage = () => {
       setServices(data || []);
       
       // Set first service as default if available
-      if (data && data.length > 0) {
+      if (data && data.length > 0 && !selectedService) {
         setSelectedService(data[0].service_id);
       }
     } catch (error) {
       console.error('Error fetching services:', error);
+      setError('Failed to load services. Please try again later.');
     }
   };
 
@@ -66,54 +88,15 @@ const AttendancePage = () => {
       setAttendanceList(data || []);
     } catch (error) {
       console.error('Error fetching attendance:', error);
+      setError('Failed to load attendance records. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  const searchChildren = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('children')
-        .select(`
-          *,
-          age_categories (category_name)
-        `)
-        .or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,formal_id.ilike.%${searchQuery}%`)
-        .eq('is_active', true)
-        .limit(10);
-
-      if (error) throw error;
-      
-      // Filter out children already in attendance
-      const filteredResults = data.filter(child => 
-        !attendanceList.some(attendance => attendance.children.child_id === child.child_id)
-      );
-      
-      setSearchResults(filteredResults || []);
-    } catch (error) {
-      console.error('Error searching children:', error);
-    }
-  };
-
-  useEffect(() => {
-    // Debounce search
-    const timer = setTimeout(() => {
-      searchChildren();
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, attendanceList]);
-
   const handleCheckIn = async (childId) => {
     if (!selectedService) return;
     
-    setCheckingIn(true);
     try {
       // Get current staff email
       const { data: { session } } = await supabase.auth.getSession();
@@ -130,15 +113,9 @@ const AttendancePage = () => {
       
       // Refresh attendance list
       fetchAttendance();
-      
-      // Clear search
-      setSearchQuery('');
-      setSearchResults([]);
     } catch (error) {
       console.error('Error checking in child:', error);
-      alert(`Error checking in child: ${error.message}`);
-    } finally {
-      setCheckingIn(false);
+      setError(`Failed to check in child: ${error.message}`);
     }
   };
 
@@ -155,7 +132,7 @@ const AttendancePage = () => {
       fetchAttendance();
     } catch (error) {
       console.error('Error checking out child:', error);
-      alert(`Error checking out child: ${error.message}`);
+      setError(`Failed to check out child: ${error.message}`);
     }
   };
 
@@ -187,172 +164,241 @@ const AttendancePage = () => {
     
     return age;
   };
+  
+  // Define table columns for attendance records
+  const attendanceColumns = [
+    {
+      header: "ID",
+      accessor: (row) => row.children.formal_id || 'N/A',
+      cellClassName: "font-medium text-gray-900"
+    },
+    {
+      header: "Name",
+      cell: (row) => (
+        <div>
+          <div className="font-medium text-gray-800">
+            {row.children.first_name} {row.children.last_name}
+          </div>
+          {row.children.gender && (
+            <div className="text-xs text-gray-500">
+              {row.children.gender === 'M' ? 'Male' : 'Female'}
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      header: "Age / Group",
+      cell: (row) => (
+        <div>
+          <span>{calculateAge(row.children.birthdate)} yrs</span>
+          {row.children.age_categories?.category_name && (
+            <Badge variant="primary" size="xs" className="ml-2">
+              {row.children.age_categories?.category_name}
+            </Badge>
+          )}
+        </div>
+      )
+    },
+    {
+      header: "Check In",
+      cell: (row) => (
+        <div>
+          <div>{formatTime(row.check_in_time)}</div>
+          <div className="text-xs text-gray-500">by {row.checked_in_by || 'Unknown'}</div>
+        </div>
+      )
+    },
+    {
+      header: "Check Out",
+      accessor: (row) => formatTime(row.check_out_time)
+    },
+    {
+      header: "Actions",
+      cell: (row) => !row.check_out_time && (
+        <Button
+          variant="primary"
+          size="xs"
+          onClick={() => handleCheckOut(row.attendance_id)}
+        >
+          Check Out
+        </Button>
+      )
+    }
+  ];
+
+  // Render the active tab content
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'checkin':
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Check In</h3>
+              
+              <AttendanceFilters
+                services={services}
+                selectedService={selectedService}
+                setSelectedService={setSelectedService}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+              />
+              
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <AttendanceCheckIn
+                  selectedService={selectedService}
+                  onCheckIn={handleCheckIn}
+                  attendanceList={attendanceList}
+                  disabled={!selectedService}
+                />
+              </div>
+            </div>
+            
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
+                Attendance for {new Date(selectedDate).toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </h3>
+              
+              <Table
+                data={attendanceList}
+                columns={attendanceColumns}
+                isLoading={loading}
+                noDataMessage="No children checked in for this service and date"
+                highlightOnHover={true}
+                variant="primary"
+                size="sm"
+              />
+            </div>
+          </div>
+        );
+        
+      case 'records':
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Attendance Records</h3>
+              
+              <AttendanceFilters
+                services={services}
+                selectedService={selectedService}
+                setSelectedService={setSelectedService}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+              />
+            </div>
+            
+            <div className="mt-4">
+              <Table
+                data={attendanceList}
+                columns={attendanceColumns}
+                isLoading={loading}
+                noDataMessage="No attendance records found for the selected criteria"
+                highlightOnHover={true}
+                variant="primary"
+                stickyHeader={true}
+              />
+            </div>
+          </div>
+        );
+        
+      default:
+        return <div>Select a tab to view attendance</div>;
+    }
+  };
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <h2 className="text-xl font-semibold text-gray-800">Attendance Tracking</h2>
-        
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div>
-            <label htmlFor="service-select" className="block text-sm font-medium text-gray-700 mb-1">
-              Service
-            </label>
-            <select
-              id="service-select"
-              value={selectedService || ''}
-              onChange={(e) => setSelectedService(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+    <div className="page-container">
+      <Card
+        title="Attendance Management"
+        titleColor="text-nextgen-blue-dark"
+        variant="default"
+        className="mb-6"
+        animate
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          </svg>
+        }
+      >
+        <div className="border-b border-gray-200 -mt-2">
+          <div className="flex space-x-2 md:space-x-6">
+            <Button
+              variant={activeTab === 'checkin' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => handleTabChange('checkin')}
+              className="px-4 rounded-b-none rounded-t-lg"
+              fullWidth
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              }
+              iconPosition="left"
             >
-              <option value="">Select Service</option>
-              {services.map((service) => (
-                <option key={service.service_id} value={service.service_id}>
-                  {service.service_name} ({service.day_of_week})
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label htmlFor="date-select" className="block text-sm font-medium text-gray-700 mb-1">
-              Date
-            </label>
-            <input
-              type="date"
-              id="date-select"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <label htmlFor="search-input" className="block text-sm font-medium text-gray-700 mb-1">
-          Check In Child
-        </label>
-        <div className="relative">
-          <input
-            id="search-input"
-            type="text"
-            placeholder="Search by name or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={!selectedService}
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <div className="absolute right-3 top-2.5 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-            </svg>
+              Check-in
+            </Button>
+            
+            <Button
+              variant={activeTab === 'records' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => handleTabChange('records')}
+              className="px-4 rounded-b-none rounded-t-lg"
+              fullWidth
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+              iconPosition="left"
+            >
+              Records
+            </Button>
           </div>
         </div>
         
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <div className="mt-2 bg-white border border-gray-300 rounded-md shadow-sm max-h-64 overflow-y-auto">
-            <ul className="divide-y divide-gray-200">
-              {searchResults.map((child) => (
-                <li key={child.child_id} className="p-3 hover:bg-gray-50">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-gray-800">
-                        {child.first_name} {child.last_name} 
-                        <span className="ml-2 text-sm text-gray-500">({child.formal_id || 'No ID'})</span>
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {calculateAge(child.birthdate)} years old • {child.age_categories?.category_name || 'No category'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleCheckIn(child.child_id)}
-                      disabled={checkingIn}
-                      className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+        <motion.div 
+          className="px-1 py-6"
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-md p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm">{error}</p>
+                </div>
+                <div className="ml-auto pl-3">
+                  <div className="-mx-1.5 -my-1.5">
+                    <button 
+                      onClick={() => setError(null)}
+                      className="inline-flex rounded-md p-1.5 text-red-500 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
-                      Check In
+                      <span className="sr-only">Dismiss</span>
+                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
                     </button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          Attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-        </h3>
-
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : attendanceList.length === 0 ? (
-          <div className="bg-gray-50 p-4 text-center rounded-md">
-            <p className="text-gray-500">No children checked in for this service and date</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Age / Group
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Check In
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Check Out
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {attendanceList.map((attendance) => (
-                  <tr key={attendance.attendance_id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {attendance.children.formal_id || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {attendance.children.first_name} {attendance.children.last_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {calculateAge(attendance.children.birthdate)} yrs / {attendance.children.age_categories?.category_name || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatTime(attendance.check_in_time)} by {attendance.checked_in_by || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatTime(attendance.check_out_time)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {!attendance.check_out_time && (
-                        <button
-                          onClick={() => handleCheckOut(attendance.attendance_id)}
-                          className="px-3 py-1 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                          Check Out
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {renderTabContent()}
+        </motion.div>
+      </Card>
     </div>
   );
 };

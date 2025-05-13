@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import supabase from '../../services/supabase.js';
+import { Button, Badge } from '../ui';
+import { motion } from 'framer-motion';
 
 const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredentials }) => {
   const [updatingId, setUpdatingId] = useState(null);
@@ -24,7 +26,7 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-hidden border border-gray-200 rounded-lg shadow">
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
@@ -57,9 +59,19 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
             </tr>
           ) : (
             staffMembers.map((staff) => (
-              <tr key={staff.staff_id} className="hover:bg-gray-50">
+              <motion.tr 
+                key={staff.staff_id} 
+                whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
+                className="group"
+              >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {staff.first_name} {staff.last_name}
+                  <div className="flex items-center">
+                    <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-sm mr-3">
+                      {staff.first_name.charAt(0)}
+                      {staff.last_name.charAt(0)}
+                    </div>
+                    <span>{staff.first_name} {staff.last_name}</span>
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {staff.email}
@@ -71,55 +83,71 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
                   <span className="capitalize">{staff.role}</span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${staff.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  <Badge variant={staff.is_active ? "success" : "danger"} size="sm">
                     {staff.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  </Badge>
                   {staff.user_id && (
-                    <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                    <Badge variant="primary" size="sm" className="ml-2">
                       Has Login
-                    </span>
+                    </Badge>
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button
-                    onClick={() => onView(staff.staff_id)}
-                    className="text-indigo-600 hover:text-indigo-900 mr-3"
-                  >
-                    View
-                  </button>
-                  <button 
-                    onClick={() => onEdit(staff)}
-                    className="text-indigo-600 hover:text-indigo-900 mr-3"
-                  >
-                    Edit
-                  </button>
-                  {!staff.user_id && (
-                    <button
-                      onClick={() => onCreateCredentials(staff)}
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      Create Login
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => toggleActiveStatus(staff.staff_id, staff.is_active)}
-                    disabled={updatingId === staff.staff_id}
-                    className="text-indigo-600 hover:text-indigo-900 disabled:opacity-50"
-                  >
-                    {updatingId === staff.staff_id ? (
-                      <span className="flex items-center">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <div className="flex justify-end items-center space-x-2">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => onView(staff.staff_id)}
+                      className="text-nextgen-blue"
+                      icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                        Updating...
-                      </span>
-                    ) : (
-                      staff.is_active ? 'Deactivate' : 'Activate'
+                      }
+                    >
+                      View
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => onEdit(staff)}
+                      className="text-nextgen-blue"
+                      icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      }
+                    >
+                      Edit
+                    </Button>
+                    {!staff.user_id && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => onCreateCredentials(staff)}
+                        className="text-green-600"
+                        icon={
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                          </svg>
+                        }
+                      >
+                        Create Login
+                      </Button>
                     )}
-                  </button>
+                    <Button
+                      variant={staff.is_active ? "danger" : "success"}
+                      size="xs"
+                      onClick={() => toggleActiveStatus(staff.staff_id, staff.is_active)}
+                      disabled={updatingId === staff.staff_id}
+                      isLoading={updatingId === staff.staff_id}
+                    >
+                      {staff.is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+                  </div>
                 </td>
-              </tr>
+              </motion.tr>
             ))
           )}
         </tbody>

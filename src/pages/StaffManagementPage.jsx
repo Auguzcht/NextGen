@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
-import supabase, { supabaseAdmin } from '../services/supabase.js'; // Import supabaseAdmin
+import { useLocation, useNavigate } from 'react-router-dom';
+import supabase, { supabaseAdmin } from '../services/supabase.js';
 import StaffList from '../components/staff/StaffList.jsx';
 import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
 import StaffAssignmentForm from '../components/staff/StaffAssignmentForm.jsx';
+import StaffAssignmentsList from '../components/staff/StaffAssignmentsList.jsx';
+import { Card, Button, Input } from '../components/ui';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const StaffManagementPage = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('list');
   const [staffMembers, setStaffMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -19,18 +26,37 @@ const StaffManagementPage = () => {
   const [selectedStaffForCredentials, setSelectedStaffForCredentials] = useState(null);
   const [credentialsStatus, setCredentialsStatus] = useState({ loading: false, error: null, success: null });
 
+  // Initialize the active tab based on URL parameters
   useEffect(() => {
-    fetchStaffMembers();
-  }, []);
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab && ['list', 'assignments'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [location]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    navigate(`/staff?tab=${tab}`, { replace: true });
+  };
 
   useEffect(() => {
-    // Debounce search
-    const timer = setTimeout(() => {
+    if (activeTab === 'list') {
       fetchStaffMembers();
-    }, 300);
-    
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    // Debounce search when on list tab
+    if (activeTab === 'list') {
+      const timer = setTimeout(() => {
+        fetchStaffMembers();
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchQuery, activeTab]);
 
   const fetchStaffMembers = async () => {
     setLoading(true);
@@ -132,85 +158,193 @@ const StaffManagementPage = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h2 className="text-xl font-semibold text-gray-800">Staff Management</h2>
-          
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-            <div className="relative flex-grow">
-              <input
-                type="text"
-                placeholder="Search staff..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <div className="absolute right-3 top-2.5 text-gray-400">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                </svg>
+  // Get icon based on active tab
+  const getTabIcon = () => {
+    switch (activeTab) {
+      case 'list':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        );
+      case 'assignments':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Render the active tab content
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'list':
+        return (
+          <div className="space-y-6">
+            {/* Improved search and add staff layout */}
+            <div className="flex flex-col md:flex-row gap-4 md:items-end mb-0">
+              <div className="flex-grow w-full">
+                <label htmlFor="staff-search" className="block text-sm font-medium text-gray-700 mb-1">
+                  Search Staff
+                </label>
+                <Input
+                  id="staff-search"
+                  type="text"
+                  placeholder="Search by name, email, or role..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  startIcon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                    </svg>
+                  }
+                  fullWidth
+                  className="h-10"
+                />
+              </div>
+              
+              <div className="w-full md:w-auto flex-shrink-0 md:self-end md:pb-[16px]">
+                <Button
+                  variant="primary"
+                  onClick={() => setIsAddModalOpen(true)}
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                  }
+                  className="h-10 w-full md:w-auto"
+                >
+                  Add Staff
+                </Button>
               </div>
             </div>
-            
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors whitespace-nowrap"
-              >
-                Add Staff
-              </button>
+
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
+              </div>
+            ) : (
+              <StaffList 
+                staffMembers={staffMembers} 
+                onRefresh={fetchStaffMembers}
+                onView={handleViewStaff}
+                onEdit={handleEditStaff}
+                onCreateCredentials={handleCreateUserCredentials}
+              />
+            )}
+
+            {/* Quick access to staff schedule overview */}
+            <div className="bg-white shadow rounded-lg p-6 mt-6">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Staff Schedule Overview</h3>
+              <p className="mb-4 text-gray-600">View and manage upcoming staff assignments</p>
               
-              <button
-                onClick={() => setIsAssignmentModalOpen(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors whitespace-nowrap"
-              >
-                Assign Staff
-              </button>
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-gray-600">Total Active Staff: </span>
+                  <span className="font-medium">{staffMembers.filter(s => s.is_active).length}</span>
+                </div>
+                
+                <Button
+                  variant="primary"
+                  onClick={() => handleTabChange('assignments')}
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  }
+                >
+                  View Assignments
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : (
-          <StaffList 
-            staffMembers={staffMembers} 
-            onRefresh={fetchStaffMembers}
-            onView={handleViewStaff}
-            onEdit={handleEditStaff}
-            onCreateCredentials={handleCreateUserCredentials}
-          />
-        )}
-      </div>
-
-      {/* Quick access to staff schedule overview */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Staff Schedule Overview</h3>
-        <p className="mb-4 text-gray-600">View and manage upcoming staff assignments</p>
+        );
         
-        <div className="flex justify-between items-center">
-          <div>
-            <span className="text-gray-600">Total Active Staff: </span>
-            <span className="font-medium">{staffMembers.filter(s => s.is_active).length}</span>
+      case 'assignments':
+        return (
+          <div className="space-y-6">
+            {/* Modified StaffAssignmentsList component will handle the add button inside */}
+            <StaffAssignmentsList 
+              onAddClick={() => setIsAssignmentModalOpen(true)}
+            />
+          </div>
+        );
+        
+      default:
+        return <div>Select a tab to view staff management options</div>;
+    }
+  };
+
+  return (
+    <div className="page-container">
+      <Card
+        title="Staff Management"
+        titleColor="text-nextgen-blue-dark"
+        variant="default"
+        className="mb-6"
+        animate
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        }
+      >
+        <div className="border-b border-gray-200 -mt-2">
+          <div className="flex space-x-2 md:space-x-6">
+            <Button
+              variant={activeTab === 'list' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => handleTabChange('list')}
+              className="px-4 rounded-b-none rounded-t-lg"
+              fullWidth
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              }
+              iconPosition="left"
+            >
+              Staff List
+            </Button>
+            
+            <Button
+              variant={activeTab === 'assignments' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => handleTabChange('assignments')}
+              className="px-4 rounded-b-none rounded-t-lg"
+              fullWidth
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              }
+              iconPosition="left"
+            >
+              Assignments
+            </Button>
+          </div>
+        </div>
+        
+        <motion.div 
+          className="px-1 py-6"
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex items-center mb-6">
+            {getTabIcon()}
+            <h2 className="text-xl font-semibold text-nextgen-blue-dark ml-2">
+              {activeTab === 'list' ? 'Staff List' : 'Staff Assignments'}
+            </h2>
           </div>
           
-          <div>
-            <a 
-              href="/staff-schedule"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              View Schedule
-              <svg className="ml-2 -mr-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </a>
-          </div>
-        </div>
-      </div>
+          {renderTabContent()}
+        </motion.div>
+      </Card>
 
       {/* Add/Edit Staff Modal */}
       {isAddModalOpen && (
@@ -227,8 +361,6 @@ const StaffManagementPage = () => {
           isOpen={isAssignmentModalOpen}
           onClose={() => setIsAssignmentModalOpen(false)}
           onSuccess={() => {
-            // After successfully assigning staff, we don't need to refresh the staff list
-            // as assignments are not displayed here
             setIsAssignmentModalOpen(false);
           }}
         />
@@ -308,7 +440,7 @@ const UserCredentialsModal = ({ staff, onClose, onSubmit, status }) => {
 
         {status.loading ? (
           <div className="px-4 py-5 sm:p-6 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
           </div>
         ) : status.success ? (
           <div className="px-4 py-5 sm:p-6">
@@ -358,7 +490,7 @@ const UserCredentialsModal = ({ staff, onClose, onSubmit, status }) => {
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
                   minLength="8"
                   required
                 />
@@ -373,26 +505,26 @@ const UserCredentialsModal = ({ staff, onClose, onSubmit, status }) => {
                   id="confirm-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
                   minLength="8"
                   required
                 />
               </div>
             </div>
             <div className="px-4 py-3 bg-gray-50 text-right sm:px-6">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 onClick={onClose}
-                className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mr-3"
+                className="mr-3"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 type="submit"
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Create Credentials
-              </button>
+              </Button>
             </div>
           </form>
         )}

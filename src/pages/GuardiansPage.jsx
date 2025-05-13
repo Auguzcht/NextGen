@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import supabase from '../services/supabase.js';
 import AddGuardianForm from '../components/guardians/AddGuardianForm.jsx';
+import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
+import { motion } from 'framer-motion';
 
 const GuardiansPage = () => {
   const [guardians, setGuardians] = useState([]);
@@ -103,180 +105,191 @@ const GuardiansPage = () => {
     setViewMode(null);
   };
 
-  return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-gray-800">Guardian Management</h2>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
-        >
-          Add Guardian
-        </button>
-      </div>
+  // Define table columns for guardians
+  const columns = [
+    {
+      header: "Name",
+      accessor: (row) => `${row.first_name} ${row.last_name}`,
+      cellClassName: "font-medium text-gray-900"
+    },
+    {
+      header: "Contact",
+      cell: (row) => (
+        <div>
+          {row.phone_number && (
+            <div className="mb-1 text-gray-600">{row.phone_number}</div>
+          )}
+          {row.email && (
+            <div className="text-nextgen-blue">{row.email}</div>
+          )}
+        </div>
+      )
+    },
+    {
+      header: "Relationship",
+      accessor: "relationship",
+      cell: (row) => row.relationship || 'Not specified'
+    },
+    {
+      header: "Children",
+      cell: (row) => {
+        if (!row.child_guardian || row.child_guardian.length === 0) {
+          return <span className="text-gray-400">No children</span>;
+        }
+        
+        return (
+          <div className="space-y-1">
+            {row.child_guardian.map((cg) => (
+              <div key={cg.child_id} className="flex items-center">
+                <span>
+                  {cg.children.first_name} {cg.children.last_name}
+                  {cg.is_primary && (
+                    <Badge
+                      variant="primary"
+                      size="xs"
+                      className="ml-2"
+                    >
+                      Primary
+                    </Badge>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+    },
+    {
+      header: "Actions",
+      cell: (row) => (
+        <div className="flex justify-end space-x-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleViewGuardian(row);
+            }}
+          >
+            View
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditGuardian(row);
+            }}
+          >
+            Edit
+          </Button>
+        </div>
+      ),
+      width: "120px"
+    }
+  ];
 
-      <div className="mb-6">
-        <div className="relative">
-          <input
+  // Render pagination controls
+  const renderPagination = () => {
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+            <span className="font-medium">
+              {Math.min(currentPage * itemsPerPage, (totalPages * itemsPerPage))}
+            </span>{' '}
+            of <span className="font-medium">{totalPages * itemsPerPage}</span> results
+          </p>
+        </div>
+        <div className="flex space-x-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          
+          {[...Array(totalPages)].map((_, i) => (
+            <Button
+              key={i}
+              variant={currentPage === i + 1 ? "primary" : "outline"}
+              size="sm"
+              onClick={() => handlePageChange(i + 1)}
+            >
+              {i + 1}
+            </Button>
+          ))}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="page-container">
+      <Card
+        title="Guardian Management"
+        titleColor="text-nextgen-blue-dark"
+        variant="default"
+        animate
+        className="mb-6"
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        }
+      >
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <Input
             type="text"
             placeholder="Search by name, phone, or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            startIcon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
+            }
+            className="md:w-1/2"
           />
-          <div className="absolute right-3 top-2.5 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-            </svg>
-          </div>
+          
+          <Button
+            variant="primary"
+            onClick={() => setIsAddModalOpen(true)}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+            }
+          >
+            Add Guardian
+          </Button>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-        </div>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Contact
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Relationship
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Children
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {guardians.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
-                      No guardians found
-                    </td>
-                  </tr>
-                ) : (
-                  guardians.map((guardian) => (
-                    <tr key={guardian.guardian_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {guardian.first_name} {guardian.last_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {guardian.phone_number && (
-                          <div className="mb-1">{guardian.phone_number}</div>
-                        )}
-                        {guardian.email && (
-                          <div className="text-indigo-600">{guardian.email}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {guardian.relationship || 'Not specified'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {guardian.child_guardian?.length > 0 ? (
-                          <div className="space-y-1">
-                            {guardian.child_guardian.map((cg) => (
-                              <div key={cg.child_id} className="flex items-center">
-                                <span>
-                                  {cg.children.first_name} {cg.children.last_name}
-                                  {cg.is_primary && (
-                                    <span className="ml-2 text-xs font-semibold text-indigo-600">
-                                      (Primary)
-                                    </span>
-                                  )}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          'No children'
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleViewGuardian(guardian)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-3"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => handleEditGuardian(guardian)}
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6 mt-4">
-              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
-                    <span className="font-medium">
-                      {Math.min(currentPage * itemsPerPage, (totalPages * itemsPerPage))}
-                    </span>{' '}
-                    of <span className="font-medium">{totalPages * itemsPerPage}</span> results
-                  </p>
-                </div>
-                <div>
-                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                    <button
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 ${
-                        currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      Previous
-                    </button>
-                    {[...Array(totalPages)].map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handlePageChange(i + 1)}
-                        className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
-                          currentPage === i + 1
-                            ? 'bg-indigo-50 text-indigo-600 z-10'
-                            : 'text-gray-500 hover:bg-gray-50'
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 ${
-                        currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      Next
-                    </button>
-                  </nav>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+        <Table
+          data={guardians}
+          columns={columns}
+          isLoading={loading}
+          noDataMessage="No guardians found"
+          onRowClick={handleViewGuardian}
+          highlightOnHover={true}
+          variant="primary"
+          stickyHeader
+        />
+        
+        {totalPages > 1 && renderPagination()}
+      </Card>
       
       {/* Add Guardian Modal */}
       {isAddModalOpen && (
@@ -288,120 +301,114 @@ const GuardiansPage = () => {
 
       {/* Guardian Detail View */}
       {selectedGuardian && viewMode === 'view' && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-semibold text-gray-800">Guardian Details</h2>
-              <button 
-                onClick={closeDetailView}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Modal
+          title="Guardian Details"
+          isOpen={true}
+          onClose={closeDetailView}
+          size="lg"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card
+              title="Contact Information"
+              variant="minimal"
+              className="h-full"
+            >
+              <div className="space-y-4">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Contact Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">Name</p>
-                      <p className="mt-1">{selectedGuardian.first_name} {selectedGuardian.last_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">Phone</p>
-                      <p className="mt-1">{selectedGuardian.phone_number || 'Not provided'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">Email</p>
-                      <p className="mt-1">{selectedGuardian.email || 'Not provided'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">Relationship</p>
-                      <p className="mt-1">{selectedGuardian.relationship || 'Not specified'}</p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-medium text-gray-500">Name</p>
+                  <p className="mt-1 text-gray-900 font-medium">{selectedGuardian.first_name} {selectedGuardian.last_name}</p>
                 </div>
-
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Associated Children</h3>
-                  {selectedGuardian.child_guardian?.length > 0 ? (
-                    <ul className="divide-y divide-gray-200">
-                      {selectedGuardian.child_guardian.map((cg) => (
-                        <li key={cg.child_id} className="py-3">
-                          <div className="flex justify-between">
-                            <div>
-                              <p className="font-medium">
-                                {cg.children.first_name} {cg.children.last_name}
-                                {cg.is_primary && (
-                                  <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
-                                    Primary
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-sm text-gray-500 mt-1">
-                                ID: {cg.children.formal_id || 'N/A'} • 
-                                Age: {calculateAge(cg.children.birthdate)} • 
-                                Group: {cg.children.age_categories?.category_name || 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-gray-500 italic">No children associated with this guardian</p>
-                  )}
+                  <p className="text-sm font-medium text-gray-500">Phone</p>
+                  <p className="mt-1 text-gray-800">{selectedGuardian.phone_number || 'Not provided'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Email</p>
+                  <p className="mt-1 text-gray-800">{selectedGuardian.email || 'Not provided'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Relationship</p>
+                  <p className="mt-1 text-gray-800">{selectedGuardian.relationship || 'Not specified'}</p>
                 </div>
               </div>
+            </Card>
 
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => handleEditGuardian(selectedGuardian)}
-                  className="ml-3 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Edit Guardian
-                </button>
-              </div>
-            </div>
+            <Card
+              title="Associated Children"
+              variant="minimal"
+              className="h-full"
+            >
+              {selectedGuardian.child_guardian?.length > 0 ? (
+                <div className="divide-y divide-gray-100">
+                  {selectedGuardian.child_guardian.map((cg) => (
+                    <motion.div 
+                      key={cg.child_id} 
+                      className="py-3"
+                      whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {cg.children.first_name} {cg.children.last_name}
+                            {cg.is_primary && (
+                              <Badge variant="primary" size="sm" className="ml-2">
+                                Primary
+                              </Badge>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            ID: {cg.children.formal_id || 'N/A'} • 
+                            Age: {calculateAge(cg.children.birthdate)} • 
+                            Group: {cg.children.age_categories?.category_name || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 italic py-4">No children associated with this guardian</p>
+              )}
+            </Card>
           </div>
-        </div>
+
+          <div className="mt-6 flex justify-end">
+            <Button
+              variant="primary"
+              onClick={() => handleEditGuardian(selectedGuardian)}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              }
+            >
+              Edit Guardian
+            </Button>
+          </div>
+        </Modal>
       )}
 
-      {/* Guardian Edit Form - This will be completed in the future */}
+      {/* Guardian Edit Form */}
       {selectedGuardian && viewMode === 'edit' && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-semibold text-gray-800">Edit Guardian</h2>
-              <button 
-                onClick={closeDetailView}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-6">
-              {/* Edit form will be implemented later */}
-              <p className="text-gray-500 text-center py-4">Edit functionality will be implemented in future updates.</p>
-              
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={closeDetailView}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+        <Modal
+          title="Edit Guardian"
+          isOpen={true}
+          onClose={closeDetailView}
+          size="lg"
+        >
+          <div className="py-6">
+            <p className="text-gray-500 text-center">Edit functionality will be implemented in future updates.</p>
           </div>
-        </div>
+          
+          <div className="mt-6 flex justify-end">
+            <Button
+              variant="outline"
+              onClick={closeDetailView}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );
