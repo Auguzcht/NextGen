@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { NextGenLogo } from '../../assets';
+import { getStorage, ref, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../services/firebase';
 
 // Page title mapping for NextGen
 const pageTitles = {
@@ -37,13 +39,56 @@ const pageTitles = {
 };
 
 const Header = ({ toggleSidebar, isSidebarOpen }) => {
-  const { user, staffProfile, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [profileImageUrl, setProfileImageUrl] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   
+  // Get profile image from Firebase Storage
+  useEffect(() => {
+    const fetchProfileImage = async () => {
+      if (!user?.uid) return;
+
+      try {
+        // First try to get from staff profile_image_url if exists
+        if (user.profile_image_url) {
+          setProfileImageUrl(user.profile_image_url);
+          return;
+        }
+
+        // If no direct URL, try to get from Firebase Storage using path
+        const storagePath = user.profile_image_path || `NextGen/staff-photos/${user.uid}`;
+        const storageRef = ref(storage, storagePath);
+        
+        try {
+          const url = await getDownloadURL(storageRef);
+          setProfileImageUrl(url);
+          
+          // Optionally update the staff record with the URL for faster future access
+          // This would need to be implemented in your database update function
+          if (url && !user.profile_image_url) {
+            // Update staff record with new URL
+            // This is just a placeholder - implement your actual update logic
+            console.log('Would update staff record with URL:', url);
+          }
+        } catch (error) {
+          if (error.code === 'storage/object-not-found') {
+            console.log('No profile image found in storage');
+          } else {
+            console.error('Error fetching profile image:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Error in profile image fetch:', error);
+      }
+    };
+
+    fetchProfileImage();
+  }, [user]);
+
   // Get current page title and description
   const currentPath = location.pathname;
   const pathParts = currentPath.split('/');
@@ -57,23 +102,20 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
   
   // Create personalized page info with user's name
   const pageInfo = useMemo(() => {
-    // Deep copy the base info to avoid modifying the original object
     const info = { ...basePageInfo };
     
-    // Personalize description with user's name if available
-    if (staffProfile && info.description.includes('Welcome')) {
-      info.description = `Welcome to NextGen Ministry, ${staffProfile.first_name}`;
+    if (user && info.description.includes('Welcome')) {
+      info.description = `Welcome to NextGen Ministry, ${user.first_name || user.email?.split('@')[0]}`;
     }
     
     return info;
-  }, [basePageInfo, staffProfile]);
+  }, [basePageInfo, user]);
 
-  // Generate consistent random gradient for user
+  // Generate consistent random gradient for user avatar fallback
   const userGradient = useMemo(() => {
     if (!user) return 'bg-gradient-to-br from-nextgen-blue-dark to-nextgen-orange-dark';
     
-    // Use user ID or name to create a consistent gradient
-    const seed = staffProfile?.staff_id || user?.id || 'default';
+    const seed = user.uid || 'default';
     const colors = [
       'from-nextgen-blue to-nextgen-blue-dark',
       'from-nextgen-orange to-nextgen-orange-dark',
@@ -85,7 +127,6 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       'from-orange-500 to-amber-500'
     ];
     
-    // Simple hash function to pick a consistent color
     let hash = 0;
     for (let i = 0; i < seed.length; i++) {
       hash = seed.charCodeAt(i) + ((hash << 5) - hash);
@@ -93,7 +134,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     
     const index = Math.abs(hash % colors.length);
     return `bg-gradient-to-br ${colors[index]}`;
-  }, [user, staffProfile]);
+  }, [user]);
 
   // Handle scroll effect for dynamic header
   useEffect(() => {
@@ -140,20 +181,24 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
 
   // Avatar rendering function - checks if user has profile image
   const renderAvatar = () => {
-    if (staffProfile?.profile_image) {
+    if (profileImageUrl) {
       return (
         <img 
-          src={staffProfile.profile_image} 
-          alt={`${staffProfile.first_name} ${staffProfile.last_name}`}
+          src={profileImageUrl} 
+          alt={`${user?.first_name || ''} ${user?.last_name || ''}`}
           className="h-full w-full object-cover rounded-full"
+          onError={(e) => {
+            e.target.onerror = null; // Prevent infinite loop
+            setProfileImageUrl(null); // Fall back to initials
+          }}
         />
       );
     } else {
       return (
         <div className={`h-full w-full rounded-full flex items-center justify-center text-white ${userGradient}`}>
           <span className="font-medium text-sm">
-            {staffProfile?.first_name?.charAt(0) || user?.email?.charAt(0)}
-            {staffProfile?.last_name?.charAt(0) || ''}
+            {user?.first_name?.charAt(0) || user?.email?.charAt(0)}
+            {user?.last_name?.charAt(0) || ''}
           </span>
         </div>
       );
@@ -238,7 +283,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                 </div>
                 <span className="hidden md:flex items-center space-x-1">
                   <span className="font-medium text-base text-nextgen-blue-dark">
-                    {staffProfile?.first_name || user?.email?.split('@')[0]}
+                    {user?.first_name || user?.email?.split('@')[0]}
                   </span>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-nextgen-blue-dark/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -263,13 +308,16 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                         </div>
                         <div>
                           <p className="font-bold text-nextgen-blue-dark">
-                            {staffProfile?.first_name || ''} {staffProfile?.last_name || ''}
+                            {user?.first_name || ''} {user?.last_name || ''}
                           </p>
                           <p className="text-xs text-nextgen-orange/80 truncate">{user?.email}</p>
                         </div>
                       </div>
                       <div className="text-xs text-nextgen-blue-dark/70 mt-1 bg-white/50 rounded-md p-1.5 backdrop-blur-sm">
                         <span className="font-medium">Last login:</span> {new Date().toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-nextgen-blue-dark/70 mt-1 bg-white/50 rounded-md p-1.5 backdrop-blur-sm">
+                        <span className="font-medium">Role:</span> {user?.role || 'Staff'}
                       </div>
                     </div>
                     

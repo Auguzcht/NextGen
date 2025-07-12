@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -7,15 +7,14 @@ import { Button, Input, Alert, Spinner } from '../ui';
 const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
-  const redirectInitiated = useRef(false);
   
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, setLoginRedirectInProgress, clearLoginFlags, user } = useAuth();
+  const { login } = useAuth();
   
   // Get the redirect path from location state or default to dashboard
   const from = location.state?.from?.pathname || '/dashboard';
@@ -54,33 +53,14 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
 
   // Effect to handle the redirect after successful authentication
   useEffect(() => {
-    // Check if we're authenticated and loginSuccess is true
-    if (user && loginSuccess && !redirectInitiated.current) {
-      console.log('User authenticated and loginSuccess is true, initiating redirect...');
-      redirectInitiated.current = true;
-      
-      // Set global redirect flag to true
-      setLoginRedirectInProgress(true);
-      
-      // Redirect with a delay to allow for animation
+    if (loginSuccess) {
       const redirectTimer = setTimeout(() => {
-        console.log('Navigating to dashboard...');
         navigate(from, { replace: true });
-        
-        // Reset the redirect flag after a delay to ensure navigation completes
-        const cleanupTimer = setTimeout(() => {
-          console.log('Resetting redirect flags...');
-          setLoginRedirectInProgress(false);
-          clearLoginFlags();
-          redirectInitiated.current = false;
-        }, 500); // Increased from 100ms to 500ms for more reliability
-        
-        return () => clearTimeout(cleanupTimer);
       }, 1500);
       
       return () => clearTimeout(redirectTimer);
     }
-  }, [user, loginSuccess, navigate, from, setLoginRedirectInProgress, clearLoginFlags]);
+  }, [loginSuccess, navigate, from]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -93,26 +73,25 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
     if (onLoginStart) onLoginStart();
 
     try {
-      // Show loading state in the button (keep this delay)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Attempt to login
+      const result = await login(email, password, rememberMe);
       
-      // Don't set loginRedirectInProgress here - REMOVE THIS LINE
-      // setLoginRedirectInProgress(true);
-      
-      // Attempt to sign in
-      await signIn(email, password, rememberMe);
-      
-      // If we get here, authentication was successful
-      setLoginSuccess(true);
-      
-      if (onLoginSuccess) onLoginSuccess();
-      
-      // No need to clear form values here since we're redirecting
+      if (result.success) {
+        setLoginSuccess(true);
+        if (onLoginSuccess) onLoginSuccess();
+        
+        // Navigate after a short delay
+        setTimeout(() => {
+          navigate(result.redirectTo, { replace: true });
+        }, 1000);
+      } else {
+        setError(result.error);
+        setLoading(false);
+      }
     } catch (error) {
       console.error('Login error:', error);
-      setError('Invalid email or password. Please try again.');
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
-      setLoginRedirectInProgress(false); // Reset flag on error
     }
   };
 
@@ -208,7 +187,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                 >
                   Email address
                 </label>
-                <motion.input
+                <Input
                   id="email-address"
                   name="email"
                   type="email"
@@ -216,11 +195,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 
-                    focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue
-                    transition-all duration-200"
                   placeholder="Enter your email"
-                  whileFocus={{ scale: 1.01 }}
                   disabled={loading}
                 />
               </motion.div>
@@ -232,7 +207,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                 >
                   Password
                 </label>
-                <motion.input
+                <Input
                   id="password"
                   name="password"
                   type="password"
@@ -240,11 +215,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 
-                    focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue
-                    transition-all duration-200"
                   placeholder="Enter your password"
-                  whileFocus={{ scale: 1.01 }}
                   disabled={loading}
                 />
               </motion.div>

@@ -14,47 +14,33 @@ import StaffManagementPage from './pages/StaffManagementPage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
+import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 
 // AuthCheck component for route protection
 const AuthCheck = () => {
-  const { user, loading, initialized, refreshSession } = useAuth();
+  const { user, loading, session } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [initialLoading, setInitialLoading] = useState(true);
   
-  // Handle stalled auth state
-  useEffect(() => {
-    const stalledTimer = setTimeout(() => {
-      if (loading) {
-        console.log('Auth check - Forcing refresh after timeout');
-        refreshSession();
-        // Force end the loading state after another short delay
-        setTimeout(() => setInitialLoading(false), 2000);
-      }
-    }, 5000);
-    
-    return () => clearTimeout(stalledTimer);
-  }, [loading, refreshSession]);
-  
-  // Show loading screen during initial load
   useEffect(() => {
     const timer = setTimeout(() => {
       setInitialLoading(false);
-    }, 2000); // Show loading for at least 2 seconds for better UX
+    }, 2000);
     
     return () => clearTimeout(timer);
   }, []);
   
-  // While loading auth state, show loading screen
-  if ((initialLoading || (loading && !initialized))) {
+  // Show loading screen during initial load
+  if (initialLoading || loading) {
     return <LoadingScreen finishLoading={() => setInitialLoading(false)} />;
   }
   
-  // If no user, redirect to login
-  if (!user) {
-    console.log('No authenticated user, redirecting to login');
+  // If no session, redirect to login
+  if (!session) {
+    console.log('No authenticated session, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
@@ -110,25 +96,24 @@ const MainLayout = () => {
 
 // PublicRoute component for login page
 const PublicRoute = () => {
-  const { user, loading, loginRedirectInProgress, initialized } = useAuth();
+  const { user, loading, session } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
-  // If user is already logged in and on login page, redirect to dashboard
   useEffect(() => {
-    if (user && !loginRedirectInProgress && location.pathname === '/login') {
-      console.log('User already authenticated, redirecting to dashboard');
+    if (session && location.pathname === '/login') {
+      console.log('Session exists, redirecting to dashboard');
       navigate('/dashboard', { replace: true });
     }
-  }, [user, loginRedirectInProgress, navigate, location]);
+  }, [session, navigate, location]);
   
   // Show loading while auth is initializing
-  if (loading && !initialized) {
+  if (loading) {
     return <LoadingScreen isInitialLoadingComplete={true} />;
   }
   
   // If user is already logged in, redirect them
-  if (user && !loginRedirectInProgress) {
+  if (session) {
     return <Navigate to="/dashboard" replace />;
   }
   
@@ -202,6 +187,29 @@ function App() {
       <AuthProvider>
         <AppContent />
       </AuthProvider>
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          // Optional: customize your toast styles
+          duration: 4000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+          },
+          success: {
+            duration: 3000,
+            theme: {
+              primary: '#4aed88',
+            },
+          },
+          error: {
+            duration: 5000,
+            theme: {
+              primary: '#ff4b4b',
+            },
+          },
+        }} 
+      />
     </Router>
   );
 }

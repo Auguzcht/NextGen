@@ -44,12 +44,7 @@ const Sidebar = () => {
     { 
       name: 'Reports', 
       path: '/reports', 
-      icon: 'document-report',
-      subpages: [
-        { name: 'Attendance', path: '/reports?tab=attendance' },
-        { name: 'Growth', path: '/reports?tab=growth' },
-        { name: 'Weekly', path: '/reports?tab=weekly' }
-      ]
+      icon: 'document-report' 
     },
     
     // Settings without subpages

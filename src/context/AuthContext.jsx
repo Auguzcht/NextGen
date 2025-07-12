@@ -1,600 +1,316 @@
 import { createContext, useState, useEffect, useContext, useRef } from 'react';
-import supabase from '../services/supabase.js';
+import { toast } from 'react-hot-toast';
+import supabase from '../services/supabase';
 
-// Create and export the context
-export const AuthContext = createContext();
+export const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
+export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [staffProfile, setStaffProfile] = useState(null);
+  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
-  const [loginRedirectInProgress, setLoginRedirectInProgress] = useState(false);
-  const manualSignInInProgress = useRef(false);
-  const authInitialized = useRef(false);
-  const lastSignInAttempt = useRef(0);
-  
-  // Store session in ref to avoid triggering re-renders
-  const sessionRef = useRef(null);
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const initializedRef = useRef(false);
 
-  // Function to fetch staff profile
-  const fetchStaffProfile = async (user) => {
-    if (!user?.id) {
-      console.log('Cannot fetch profile - no user ID');
-      setStaffProfile(null);
-      return null;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (error) {
-        console.log('Staff profile query error:', error);
-        setStaffProfile(null);
-        return null;
-      }
-      
-      console.log('Staff profile loaded:', data?.staff_id);
-      setStaffProfile(data);
-      return data;
-    } catch (error) {
-      console.log('Staff profile fetch error:', error);
-      setStaffProfile(null);
-      return null;
-    }
-  };
-
-  // Initialize auth state - only once
-  useEffect(() => {
-    let mounted = true;
-    let safetyTimeout;
-    
-    // Prevent double initialization
-    if (authInitialized.current) {
+  // Fetch staff profile from staff table
+  const fetchStaffProfile = async (authUser) => {
+    if (!authUser) {
+      setUser(null);
       return;
     }
     
-    authInitialized.current = true;
-    
-    const initializeAuth = async () => {
-      console.log('Initializing auth...');
+    try {
+      console.log('Fetching staff profile for:', authUser.id);
       
-      try {
-        // Set a longer safety timeout
-        safetyTimeout = setTimeout(() => {
-          if (mounted && loading) {
-            console.warn('Safety timeout triggered - forcing loading state to false');
-            setUser(null);
-            setStaffProfile(null);
-            setLoading(false);
-            setInitialized(true);
-          }
-        }, 12000); // Extended to 12 seconds to ensure everything loads
-
-        // Get the current session
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.log('Supabase session error:', error);
-          if (mounted) {
-            resetAuthState();
-          }
-          return;
-        }
-        
-        sessionRef.current = data.session;
-        
-        // If no active session, clear state
-        if (!data.session) {
-          console.log('No active session found');
-          if (mounted) {
-            resetAuthState();
-          }
-          return;
-        }
-        
-        console.log('Session found:', data.session.user.id);
-        
-        // Valid session - set user and fetch profile
-        if (mounted) {
-          setUser(data.session.user);
-          
-          try {
-            const profileData = await fetchStaffProfile(data.session.user);
-            
-            // If no staff profile exists for this user, log them out
-            if (!profileData) {
-              console.log('No staff profile found, forcing logout');
-              
-              // Use Promise timeout to avoid hanging
-              await Promise.race([
-                supabase.auth.signOut(),
-                new Promise(resolve => setTimeout(resolve, 2000))
-              ]);
-              
-              if (mounted) {
-                resetAuthState();
-              }
-            } else {
-              // Profile found, explicitly set loading to false
-              if (mounted) {
-                // CRITICAL: Force refresh here to ensure new state is recognized
-                setLoading(false);
-                setInitialized(true);
-                console.log('Auth initialized with valid profile, setting loading to false');
-                
-                // Clear any manual sign-in flag that might be hanging
-                manualSignInInProgress.current = false;
-              }
-            }
-          } catch (profileError) {
-            console.log('Error fetching staff profile:', profileError);
-            resetAuthState();
-          }
-        }
-      } catch (error) {
-        console.log('Auth initialization error:', error);
-        if (mounted) {
-          resetAuthState();
-        }
-      } finally {
-        // Clear the safety timeout since we've completed initialization
-        if (safetyTimeout) {
-          clearTimeout(safetyTimeout);
-        }
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
       }
-    };
-
-    // Initialize auth with a small delay to avoid race conditions
-    // This helps resolve the multiple client instances issue
-    setTimeout(() => {
-      initializeAuth();
-    }, 100);
-
-    // Helper function to reset auth state
-    const resetAuthState = () => {
-      setUser(null);
-      setStaffProfile(null);
-      setLoading(false);
-      setInitialized(true);
-      sessionRef.current = null;
-      manualSignInInProgress.current = false;
-      setLoginRedirectInProgress(false);
-    };
-
-    // Set up auth state listener with debouncing to prevent rapid state changes
-    let debounceTimer = null;
-    
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (!data) {
+        console.warn('No staff record found for user:', authUser.id);
         
-        if (!mounted) return;
+        // Create fallback user object with ministry-specific roles
+        const fallbackUser = { 
+          id: authUser.id,
+          email: authUser.email,
+          role: authUser.user_metadata?.role || 'Staff',
+          first_name: authUser.user_metadata?.first_name || 'Unknown',
+          last_name: authUser.user_metadata?.last_name || 'User',
+          status: 'Active'
+        };
         
-        // Clear any pending debounce
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-        }
+        setUser(fallbackUser);
         
-        // Debounce auth state changes to prevent race conditions
-        debounceTimer = setTimeout(async () => {
-          if (!mounted) return;
+        // Try to create a staff record if missing
+        try {
+          const { error: insertError } = await supabase.from('staff').insert({
+            user_id: authUser.id,
+            first_name: authUser.user_metadata?.first_name || 'Unknown',
+            last_name: authUser.user_metadata?.last_name || 'User',
+            email: authUser.email,
+            role: authUser.user_metadata?.role || 'Staff',
+            status: 'Active',
+            is_active: true,
+            access_level: 1 // Default to regular staff access
+          });
           
-          if (event === 'SIGNED_OUT') {
-            console.log('User signed out');
-            resetAuthState();
-            return;
+          if (!insertError) {
+            console.log('Created missing staff record for user:', authUser.id);
           }
-          
-          if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-            console.log('User session updated:', session.user.id);
-            
-            // Update session ref
-            sessionRef.current = session;
-            
-            // CRITICAL: Detect and handle duplicate sign-in events
-            const now = Date.now();
-            const isDuplicate = (now - lastSignInAttempt.current) < 5000; // Within 5 seconds
-            lastSignInAttempt.current = now;
-            
-            // Handle user's manual sign-in
-            if (manualSignInInProgress.current) {
-              console.log('Manual sign-in in progress, handling session');
-              
-              // Always set the user to keep context in sync
-              setUser(session.user);
-              
+        } catch (createErr) {
+          console.error('Failed to create staff record:', createErr);
+        }
+      } else {
+        // Map staff record to user object with ministry-specific fields
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          first_name: data.first_name || authUser.user_metadata?.first_name,
+          last_name: data.last_name || authUser.user_metadata?.last_name,
+          role: data.role || authUser.user_metadata?.role || 'Staff',
+          status: data.status || 'Active',
+          access_level: data.access_level || 1,
+          staff_id: data.staff_id
+        });
+      }
+
+      setConnectionStatus('connected');
+    } catch (err) {
+      console.error('Error fetching staff profile:', err);
+      
+      // Set connection status based on error type
+      if (err.message?.includes('network') || err.code === 'NETWORK_ERROR') {
+        setConnectionStatus('disconnected');
+      } else {
+        setConnectionStatus('degraded');
+      }
+      
+      // Fallback to basic user data from auth
+      setUser({
+        id: authUser.id,
+        email: authUser.email,
+        role: authUser.user_metadata?.role || 'Staff',
+        first_name: authUser.user_metadata?.first_name || 'Unknown',
+        last_name: authUser.user_metadata?.last_name || 'User',
+        status: 'Active',
+        access_level: 1
+      });
+    }
+  };
+
+  // Single auth initialization - rely ONLY on onAuthStateChange
+  useEffect(() => {
+    // Prevent multiple initializations
+    if (initializedRef.current) {
+      console.log('Auth already initialized, skipping...');
+      return;
+    }
+
+    console.log('Initializing auth listener...');
+    initializedRef.current = true;
+
+    // Set up the auth state listener - this handles EVERYTHING
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        console.log('Auth state changed:', event, currentSession?.user?.email || 'No session');
+        
+        // Always update session state first
+        setSession(currentSession);
+        
+        switch (event) {
+          case 'INITIAL_SESSION':
+            // This handles both fresh page loads AND returning from inactive tabs
+            if (currentSession) {
+              console.log('Initial session found, fetching user profile');
               try {
-                await fetchStaffProfile(session.user);
-                // Ensure loading state is false after successful profile fetch
-                setLoading(false);
-                setInitialized(true);
-                
-                // Clear the manual sign-in flag AFTER successful setup
-                // Use timeout to ensure state updates first
-                setTimeout(() => {
-                  manualSignInInProgress.current = false;
-                }, 500);
+                await fetchStaffProfile(currentSession.user);
+                setConnectionStatus('connected');
               } catch (error) {
-                console.log('Error fetching profile after manual sign in:', error);
-                resetAuthState();
-              }
-              return;
-            }
-            
-            // For automatic sign-ins (like page refresh), proceed normally
-            if (!isDuplicate) {
-              setUser(session.user);
-              
-              try {
-                await fetchStaffProfile(session.user);
-              } catch (error) {
-                console.log('Error fetching profile after sign in:', error);
-              } finally {
-                setLoading(false);
-                setInitialized(true);
+                console.error('Error during initial profile fetch:', error);
+                setConnectionStatus('degraded');
               }
             } else {
-              console.log('Detected duplicate auth event, ignoring');
+              console.log('No initial session found');
+              setUser(null);
             }
-          } else if (session?.user) {
-            console.log('Session user updated:', session.user.id);
-            
-            // Update session ref
-            sessionRef.current = session;
-            setUser(session.user);
-            
-            try {
-              await fetchStaffProfile(session.user);
-            } catch (error) {
-              console.log('Error fetching profile for session user:', error);
-            } finally {
-              setLoading(false);
-              setInitialized(true);
-            }
-          } else if (event === 'USER_UPDATED') {
-            // Just update initialized state
             setLoading(false);
-            setInitialized(true);
-          }
-        }, 50); // Shorter debounce time for more responsiveness
+            break;
+
+          case 'SIGNED_IN':
+            console.log('User signed in');
+            if (!loading) {
+              try {
+                await fetchStaffProfile(currentSession.user);
+                setConnectionStatus('connected');
+                toast.success('Successfully signed in!');
+              } catch (error) {
+                console.error('Error during sign-in profile fetch:', error);
+                setConnectionStatus('degraded');
+              }
+            }
+            break;
+
+          case 'SIGNED_OUT':
+            console.log('User signed out');
+            setUser(null);
+            setSession(null);
+            setConnectionStatus('connected');
+            setLoading(false);
+            break;
+
+          case 'USER_UPDATED':
+            console.log('User updated');
+            if (currentSession) {
+              try {
+                await fetchStaffProfile(currentSession.user);
+              } catch (error) {
+                console.error('Error during user update profile fetch:', error);
+              }
+            }
+            break;
+
+          case 'TOKEN_REFRESHED':
+            console.log('Token refreshed successfully');
+            setConnectionStatus('connected');
+            break;
+
+          default:
+            console.log('Unhandled auth event:', event);
+        }
       }
     );
 
-    // Set up session refresh with more aggressive timing
-    const setupSessionRefresh = () => {
-      // First do an immediate refresh
-      refreshSessionSilently();
-      
-      const refreshInterval = setInterval(async () => {
-        refreshSessionSilently();
-      }, 1 * 60 * 1000); // Refresh every 1 minute (more frequent)
-      
-      return refreshInterval;
-    };
-    
-    // Helper function for silent session refresh
-    const refreshSessionSilently = async () => {
-      try {
-        // Only refresh if we have a session
-        if (sessionRef.current) {
-          console.log('Refreshing session token...');
-          const { data, error } = await supabase.auth.getSession();
-          
-          if (error) {
-            console.log('Session refresh error:', error);
-            // If refresh fails, try to handle gracefully
-            if (error.message.includes('expired') || error.message.includes('invalid')) {
-              resetAuthState();
-            }
-          } else if (data?.session) {
-            // Update the session reference with the fresh session
-            sessionRef.current = data.session;
-            
-            // If user isn't set but we have a session, update the user
-            if (!user && data.session.user) {
-              setUser(data.session.user);
-              fetchStaffProfile(data.session.user).finally(() => {
-                setLoading(false);
-                setInitialized(true);
-              });
-            }
-          }
-        }
-      } catch (error) {
-        console.log('Error refreshing session:', error);
-      }
-    };
-    
-    // Start session refresh
-    const refreshInterval = setupSessionRefresh();
-
+    // Cleanup function
     return () => {
-      mounted = false;
-      
-      // Clear timers on unmount
-      if (safetyTimeout) clearTimeout(safetyTimeout);
-      if (debounceTimer) clearTimeout(debounceTimer);
-      if (refreshInterval) clearInterval(refreshInterval);
-      
-      if (authListener?.subscription) {
-        authListener.subscription.unsubscribe();
-      }
+      console.log('Cleaning up auth listener');
+      subscription.unsubscribe();
+      initializedRef.current = false;
     };
-  }, []); // Empty dependency array - we only want to run this once
+  }, []); // Empty dependency array - initialize once and only once
 
-  // Function to sign in users with improved error handling and state management
-  const signIn = async (email, password, rememberMe = true) => {
+  // Login function
+  const login = async (email, password, remember = true) => {
     try {
-      console.log('Sign in attempt for:', email);
-      setLoading(true);
-      manualSignInInProgress.current = true;
-      lastSignInAttempt.current = Date.now();
+      console.log('Attempting login for:', email);
       
-      // Clear first - this helps with the stuck login issue
-      setUser(null);
-      setStaffProfile(null);
-      
-      // Clear session and local storage first for clean state
-      localStorage.clear(); 
-      sessionStorage.clear();
-      
-      // Reset flags
-      setLoginRedirectInProgress(false);
-      
-      // Force sign out before signing in to ensure clean state
-      try {
-        await Promise.race([
-          supabase.auth.signOut(),
-          new Promise(resolve => setTimeout(resolve, 2000))
-        ]);
-      } catch (signOutError) {
-        console.log('Error during pre-signin signout:', signOutError);
-        // Continue anyway
+      if (!email || !password) {
+        return {
+          success: false,
+          error: 'Email and password are required'
+        };
       }
-      
-      // Short delay to ensure signout completes and storage is cleared
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Always use persistSession for better UX
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
         options: {
-          persistSession: true
+          persistSession: remember
         }
       });
-      
+
       if (error) {
-        console.log('Sign in error:', error);
-        setUser(null);
-        setStaffProfile(null);
-        manualSignInInProgress.current = false;
-        throw error;
+        console.error('Login error details:', error);
+        return {
+          success: false,
+          error: error.message || 'Failed to sign in. Please check your credentials.'
+        };
       }
+
+      console.log('Login successful for:', email);
       
-      console.log('Sign in successful:', data?.user?.id);
-      
-      // Update session ref
-      sessionRef.current = data.session;
-      
-      // Load staff profile
+      // Wait for profile fetch to complete before returning success
       if (data.user) {
         try {
-          const profileData = await fetchStaffProfile(data.user);
+          await fetchStaffProfile(data.user);
+          setConnectionStatus('connected');
           
-          // If no staff profile exists for this user, throw error
-          if (!profileData) {
-            console.log('No staff profile found for user');
-            await supabase.auth.signOut();
-            setUser(null);
-            setStaffProfile(null);
-            manualSignInInProgress.current = false;
-            throw new Error('No staff profile found for this account. Please contact your administrator.');
-          }
-          
-          // Set user and profile state after successful login
-          setUser(data.user);
-          setStaffProfile(profileData);
-          
-          // Explicitly set loading to false to prevent infinite loading screen
-          setLoading(false);
-          setInitialized(true);
-          
-          return data;
+          return { 
+            success: true,
+            redirectTo: '/dashboard'
+          };
         } catch (profileError) {
-          console.log('Error fetching staff profile after login:', profileError);
-          await supabase.auth.signOut();
-          setUser(null);
-          setStaffProfile(null);
-          manualSignInInProgress.current = false;
-          throw new Error('Error loading staff profile. Please try again.');
+          console.error('Profile fetch error:', profileError);
+          return {
+            success: false,
+            error: 'Failed to load user profile. Please try again.'
+          };
         }
       }
       
-      return data;
+      return {
+        success: false,
+        error: 'No user data received'
+      };
     } catch (error) {
-      console.log('Sign in exception:', error);
-      setUser(null);
-      setStaffProfile(null);
-      setLoading(false);
-      setLoginRedirectInProgress(false);
-      manualSignInInProgress.current = false;
-      setInitialized(true);
-      throw error;
+      console.error('Login error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to sign in. Please check your credentials.'
+      };
     }
   };
 
-  // Function to sign out with improved cleanup
-  const signOut = async () => {
+  // Logout function
+  const logout = async () => {
     try {
-      console.log('Signing out user');
-      setLoading(true);
+      console.log('Logging out user');
       
-      // Clear local state first
-      setUser(null);
-      setStaffProfile(null);
-      sessionRef.current = null;
-      manualSignInInProgress.current = false;
-      
-      // Clear all local storage and session storage
-      localStorage.clear();
-      sessionStorage.clear();
-      
-      // Clear cookies related to auth
-      document.cookie.split(';').forEach(cookie => {
-        const [name] = cookie.trim().split('=');
-        if (name.includes('sb-') || name.includes('supabase')) {
-          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;`;
-        }
-      });
-
-      // Call the API to sign out with a timeout
-      try {
-        await Promise.race([
-          supabase.auth.signOut(),
-          new Promise(resolve => setTimeout(resolve, 2000))
-        ]);
-        console.log('Sign out API call successful');
-      } catch (error) {
-        console.log('Sign out API call error:', error);
-      }
-      
-      console.log('Sign out process completed');
-      window.location.href = '/nextgen/login'; // Force hard navigation to login page
-      return true;
-    } catch (error) {
-      console.log('Sign out exception:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-      setInitialized(true);
-    }
-  };
-
-  // Function to refresh the session with better handling
-  const refreshSession = async () => {
-    try {
-      console.log('Manually refreshing session...');
-      const { data, error } = await supabase.auth.getSession();
+      const { error } = await supabase.auth.signOut();
       
       if (error) {
-        console.log('Session refresh error:', error);
-        if (error.message.includes('expired') || error.message.includes('invalid')) {
-          // Session is invalid, reset auth state
-          resetAuthState();
-        }
-        return false;
+        console.warn('Logout API error:', error);
+        toast.warning('Logged out with some errors. You may need to clear browser data.');
+      } else {
+        toast.success('Logged out successfully');
       }
       
-      if (data?.session) {
-        // Update the session reference
-        sessionRef.current = data.session;
-        
-        // Also update the user object if it exists
-        if (data.session.user && (!user || user.id !== data.session.user.id)) {
-          setUser(data.session.user);
-          await fetchStaffProfile(data.session.user);
-          setLoading(false);
-          setInitialized(true);
-        }
-        
-        return true;
-      }
-      
-      return false;
+      // Force navigation to login page
+      window.location.href = '/login';
     } catch (error) {
-      console.log('Session refresh exception:', error);
-      return false;
-    }
-  };
-
-  // Helper function to reset auth state
-  const resetAuthState = () => {
-    setUser(null);
-    setStaffProfile(null);
-    setLoading(false);
-    setInitialized(true);
-    sessionRef.current = null;
-    manualSignInInProgress.current = false;
-    setLoginRedirectInProgress(false);
-  };
-
-  // Improve the clearLoginFlags function to be more robust
-  const clearLoginFlags = () => {
-    console.log('Clearing login flags');
-    setLoginRedirectInProgress(false);
-    
-    // Use a timeout to ensure other state updates have completed
-    setTimeout(() => {
-      manualSignInInProgress.current = false;
-    }, 300);
-    
-    console.log('Login flags cleared');
-  };
-
-  // Handle browser refresh or tab close
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Send a beacon to refresh the session
-      if (sessionRef.current) {
-        // This is just to ensure the session persists across refreshes
-        navigator.sendBeacon(`${window.location.origin}/nextgen/api/refresh-session`);
-      }
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
-
-  // Force refresh when stalled
-  useEffect(() => {
-    // If we detect we're in a loading state for too long and have a session
-    // but no user, force a session refresh
-    if (loading && !user && sessionRef.current) {
-      const stalledTimer = setTimeout(() => {
-        console.log('Detected stalled loading state with session but no user, forcing refresh');
-        refreshSession().then(success => {
-          if (!success) {
-            console.log('Failed to refresh session, resetting auth state');
-            resetAuthState();
-          }
-        });
-      }, 5000);
+      console.error('Logout error:', error);
+      toast.error('Failed to complete logout properly');
       
-      return () => clearTimeout(stalledTimer);
+      // Force clear state anyway for better UX
+      setUser(null);
+      setSession(null);
     }
-  }, [loading, user]);
+  };
+
+  // Connection status toast notifications
+  useEffect(() => {
+    if (connectionStatus === 'disconnected' && user) {
+      toast.error(
+        'Connection to server lost. Please check your internet connection.', 
+        { 
+          duration: 8000,
+          id: 'connection-lost'
+        }
+      );
+    }
+    
+    if (connectionStatus === 'connected' && user) {
+      toast.dismiss('connection-lost');
+    }
+  }, [connectionStatus, user]);
 
   // Context value
   const value = {
     user,
-    loading: loading || !initialized,
-    staffProfile,
-    signIn,
-    signOut,
-    fetchStaffProfile,
-    initialized,
-    loginRedirectInProgress,
-    setLoginRedirectInProgress,
-    clearLoginFlags,
-    refreshSession,
-    resetAuthState
+    session,
+    loading,
+    login,
+    logout,
+    isAuthenticated: !!session,
+    connectionStatus,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
 // Export the hook
 export function useAuth() {

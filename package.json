@@ -18,7 +18,7 @@
     "dotenv": "^16.4.7",
     "firebase": "^11.5.0",
     "formik": "^2.4.6",
-    "framer-motion": "^12.6.2",
+    "framer-motion": "^12.23.3",
     "mysql2": "^3.14.0",
     "prop-types": "^15.8.1",
     "react": "^19.0.0",
