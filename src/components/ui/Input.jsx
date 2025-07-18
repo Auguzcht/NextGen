@@ -18,6 +18,8 @@ const Input = ({
   success = false,
   required = false,
   type = "text",
+  options = [],  // Add options prop for select
+  selectProps = {}, // Add selectProps
   onChange,
   onFocus,
   onBlur,
@@ -103,7 +105,6 @@ const Input = ({
           `}
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
       
@@ -116,28 +117,57 @@ const Input = ({
           </div>
         )}
         
-        <input
-          id={inputId}
-          type={type}
-          disabled={disabled}
-          className={`
-            block border rounded-md shadow-sm transition-colors duration-200
-            placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
-            disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
-            ${startIcon ? 'pl-10' : ''}
-            ${endIcon ? 'pr-10' : ''}
-            ${variants[variant] || variants.default}
-            ${sizes[size] || sizes.md}
-            ${statusClasses}
-            ${fullWidth ? 'w-full' : 'w-auto'}
-            ${hasValue ? 'bg-white' : ''}
-            ${isFocused ? 'ring-2 ring-opacity-20' : ''}
-          `}
-          onChange={handleChange}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          {...props}
-        />
+        {type === 'select' ? (
+          <select
+            id={inputId}
+            disabled={disabled}
+            className={`
+              block w-full h-[42px] rounded-md shadow-sm transition-colors duration-200
+              border-gray-300 focus:border-nextgen-blue focus:ring-nextgen-blue
+              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
+              text-gray-900 bg-white
+              ${error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : ''}
+              ${startIcon ? 'pl-10' : ''}
+              ${endIcon ? 'pr-10' : ''}
+              ${fullWidth ? 'w-full' : 'w-auto'}
+            `}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...selectProps}
+            {...props}
+          >
+            {options.map(option => (
+              <option key={option.value} value={option.value} className="text-gray-900">
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={inputId}z
+            type={type}
+            disabled={disabled}
+            className={`
+              block border rounded-md shadow-sm transition-colors duration-200
+              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
+              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
+              text-gray-900 bg-white
+              ${startIcon ? 'pl-10' : ''}
+              ${endIcon ? 'pr-10' : ''}
+              ${variants[variant] || variants.default}
+              ${sizes[size] || sizes.md}
+              ${statusClasses}
+              ${fullWidth ? 'w-full' : 'w-auto'}
+              ${hasValue ? 'bg-white' : ''}
+              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+            `}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...props}
+          />
+        )}
         
         {endIcon && (
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
@@ -197,6 +227,13 @@ Input.propTypes = {
   success: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]),
   required: PropTypes.bool,
   type: PropTypes.string,
+  options: PropTypes.arrayOf(
+    PropTypes.shape({
+      value: PropTypes.string,
+      label: PropTypes.string
+    })
+  ),
+  selectProps: PropTypes.object,
   onChange: PropTypes.func,
   onFocus: PropTypes.func,
   onBlur: PropTypes.func

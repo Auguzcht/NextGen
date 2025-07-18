@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import supabase from '../services/supabase.js';
 import AddChildForm from '../components/children/AddChildForm.jsx';
-import { Card, Button, Badge, Table, Input } from '../components/ui';
+import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
 import { motion } from 'framer-motion';
+import Swal from 'sweetalert2';
+import ChildDetailView from '../components/children/ChildDetailView.jsx';
 
 const ChildrenPage = () => {
   const [children, setChildren] = useState([]);
@@ -12,6 +14,11 @@ const ChildrenPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
+
+  // New state variables
+  const [selectedChild, setSelectedChild] = useState(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => {
     fetchChildren();
@@ -49,7 +56,13 @@ const ChildrenPage = () => {
       
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === 'PGRST301') {
+          // Handle unauthorized access
+          throw new Error('Unauthorized access to children records');
+        }
+        throw error;
+      }
       setChildren(data || []);
     } catch (error) {
       console.error('Error fetching children:', error);
@@ -93,34 +106,85 @@ const ChildrenPage = () => {
       header: "ID",
       accessor: "formal_id",
       cellClassName: "font-medium text-gray-900",
-      cell: (row) => row.formal_id || 'N/A'
+      cell: (row) => row.formal_id || 'N/A',
+      width: "100px"
     },
     {
-      header: "Name",
-      accessor: (row) => `${row.first_name} ${row.last_name}`
+      header: "Photo & Name",
+      accessor: (row) => `${row.first_name} ${row.last_name}`,
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          {row.photo_url ? (
+            <img
+              src={row.photo_url}
+              alt={`${row.first_name} ${row.last_name}`}
+              className="h-10 w-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
+              <span className="text-nextgen-blue-dark font-medium text-sm">
+                {row.first_name?.charAt(0)}{row.last_name?.charAt(0)}
+              </span>
+            </div>
+          )}
+          <div className="font-medium text-gray-900">
+            {row.first_name} {row.middle_name ? `${row.middle_name} ` : ''}{row.last_name}
+          </div>
+        </div>
+      ),
+      width: "300px"
+    },
+    {
+      header: "Gender",
+      cell: (row) => (
+        <div className="text-gray-900">
+          {row.gender === 'Male' ? '👦 Male' : '👧 Female'}
+        </div>
+      ),
+      width: "120px"
     },
     {
       header: "Age",
-      accessor: (row) => calculateAge(row.birthdate)
+      cell: (row) => (
+        <div className="text-gray-900">
+          {calculateAge(row.birthdate)} years
+        </div>
+      ),
+      width: "100px"
     },
     {
       header: "Age Group",
       accessor: "age_categories.category_name",
-      cell: (row) => row.age_categories?.category_name || 'Unknown'
+      cell: (row) => (
+        <Badge variant="primary" size="sm">
+          {row.age_categories?.category_name || 'Unknown'}
+        </Badge>
+      ),
+      width: "150px"
     },
     {
-      header: "Primary Guardian",
-      accessor: (row) => {
+      header: "Guardian",
+      cell: (row) => {
         const primaryGuardian = getPrimaryGuardian(row.child_guardian);
-        return primaryGuardian ? `${primaryGuardian.first_name} ${primaryGuardian.last_name}` : 'None';
-      }
+        return primaryGuardian ? (
+          <div className="text-gray-900">
+            {primaryGuardian.first_name} {primaryGuardian.last_name}
+          </div>
+        ) : 'None';
+      },
+      width: "200px"
     },
     {
       header: "Contact",
-      accessor: (row) => {
+      cell: (row) => {
         const primaryGuardian = getPrimaryGuardian(row.child_guardian);
-        return primaryGuardian?.phone_number || primaryGuardian?.email || 'N/A';
-      }
+        return primaryGuardian ? (
+          <div className="text-gray-600">
+            {primaryGuardian.phone_number || primaryGuardian.email || 'No contact'}
+          </div>
+        ) : 'N/A';
+      },
+      width: "180px"
     },
     {
       header: "Status",
@@ -131,29 +195,43 @@ const ChildrenPage = () => {
         >
           {row.is_active ? 'Active' : 'Inactive'}
         </Badge>
-      )
+      ),
+      width: "120px"
     },
     {
       header: "Actions",
-      cellClassName: "text-right",
+      cellClassName: "text-end",
       cell: (row) => (
-        <div className="flex justify-end space-x-2">
+        <div className="flex justify-start gap-2">
           <Button
             variant="ghost"
             size="xs"
-            onClick={() => console.log('Edit child:', row.child_id)}
-          >
-            Edit
-          </Button>
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditChild(row);
+            }}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            }
+          />
           <Button
             variant="ghost"
             size="xs"
-            onClick={() => console.log('View child:', row.child_id)}
-          >
-            View
-          </Button>
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteChild(row);
+            }}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            }
+          />
         </div>
-      )
+      ),
+      width: "120px"
     }
   ];
 
@@ -201,6 +279,66 @@ const ChildrenPage = () => {
           </Button>
         </div>
       </div>
+    );
+  };
+
+  // New handler functions
+  const handleViewChild = (child) => {
+    setSelectedChild(child);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditChild = (child) => {
+    setSelectedChild(child);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteChild = async (child) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "This will deactivate the child's record. This can be undone later.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, deactivate',
+      cancelButtonText: 'Cancel'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const { error } = await supabase
+          .from('children')
+          .update({ is_active: false })
+          .eq('child_id', child.child_id);
+
+        if (error) throw error;
+
+        Swal.fire(
+          'Deactivated!',
+          'The child has been deactivated.',
+          'success'
+        );
+        fetchChildren();
+      } catch (error) {
+        Swal.fire(
+          'Error!',
+          'Failed to deactivate child.',
+          'error'
+        );
+        console.error('Error deactivating child:', error);
+      }
+    }
+  };
+
+  const handleEditSuccess = () => {
+    fetchChildren();
+    setIsEditModalOpen(false);
+    setSelectedChild(null);
+    Swal.fire(
+      'Updated!',
+      'Child information has been updated.',
+      'success'
     );
   };
 
@@ -255,7 +393,7 @@ const ChildrenPage = () => {
           highlightOnHover={true}
           variant="primary"
           stickyHeader={true}
-          onRowClick={(row) => console.log('Row clicked:', row.child_id)}
+          onRowClick={(row) => handleViewChild(row)}
         />
         
         {totalPages > 1 && renderPagination()}
@@ -266,6 +404,28 @@ const ChildrenPage = () => {
         <AddChildForm
           onClose={() => setIsAddModalOpen(false)}
           onSuccess={handleAddChildSuccess}
+        />
+      )}
+
+      {/* Edit Child Modal */}
+      {isEditModalOpen && selectedChild && (
+        <AddChildForm
+          isEdit={true}  // Make sure this is explicitly set
+          onClose={() => setIsEditModalOpen(false)}
+          onSuccess={handleEditSuccess}
+          initialData={selectedChild}
+        />
+      )}
+
+      {/* View Details Modal */}
+      {isViewModalOpen && selectedChild && (
+        <ChildDetailView
+          child={selectedChild}
+          isOpen={isViewModalOpen}
+          onClose={() => {
+            setIsViewModalOpen(false);
+            setSelectedChild(null); // Add this line to clean up
+          }}
         />
       )}
     </div>

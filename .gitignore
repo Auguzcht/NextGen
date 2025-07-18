@@ -27,4 +27,3 @@ dist-ssr
 .env
 
 db_nextgen.sql
-postgre_nextgen.sql
