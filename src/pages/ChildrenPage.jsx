@@ -75,9 +75,16 @@ const ChildrenPage = () => {
     setCurrentPage(page);
   };
 
-  const handleAddChildSuccess = () => {
-    fetchChildren();
-    setIsAddModalOpen(false);
+  const handleAddChildSuccess = async () => {
+    await fetchChildren(); // Wait for fetch to complete
+    
+    // Show success message after list is refreshed
+    Swal.fire({
+      icon: 'success',
+      title: 'Success!',
+      text: 'Child registered successfully',
+      timer: 1500
+    });
   };
 
   const calculateAge = (birthdate) => {
@@ -331,15 +338,18 @@ const ChildrenPage = () => {
     }
   };
 
-  const handleEditSuccess = () => {
-    fetchChildren();
+  const handleEditSuccess = async () => {
+    await fetchChildren(); // Wait for fetch to complete
     setIsEditModalOpen(false);
     setSelectedChild(null);
-    Swal.fire(
-      'Updated!',
-      'Child information has been updated.',
-      'success'
-    );
+    
+    // Show success message after list is refreshed
+    Swal.fire({
+      icon: 'success',
+      title: 'Updated!',
+      text: 'Child information has been updated.',
+      timer: 1500
+    });
   };
 
   return (

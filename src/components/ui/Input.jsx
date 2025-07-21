@@ -143,9 +143,30 @@ const Input = ({
               </option>
             ))}
           </select>
+        ) : type === 'date' ? (
+          <input
+            id={inputId}
+            type="date"
+            disabled={disabled}
+            className={`
+              block border rounded-md shadow-sm transition-colors duration-200
+              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
+              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
+              text-gray-900 bg-white h-[42px] px-3
+              ${variants[variant] || variants.default}
+              ${statusClasses}
+              ${fullWidth ? 'w-full' : 'w-auto'}
+              ${hasValue ? 'bg-white' : ''}
+              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+            `}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...props}
+          />
         ) : (
           <input
-            id={inputId}z
+            id={inputId}
             type={type}
             disabled={disabled}
             className={`

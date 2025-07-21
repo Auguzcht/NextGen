@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
 import FileUpload from '../common/FileUpload.jsx';
+import Swal from 'sweetalert2';
 
 // Add isEdit and initialData props
 const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
@@ -12,7 +13,11 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
   const mapInitialData = (data) => {
     if (!data) return null;
     
-    console.log('Mapping initial data:', data); // Add this debug log
+    console.log('Mapping initial data:', data); // Keep this debug log
+    
+    // Destructure child_guardian to make it clearer
+    const primaryGuardian = data.child_guardian?.[0];
+    const guardianInfo = primaryGuardian?.guardians;
     
     return {
       firstName: data.first_name || '',
@@ -22,16 +27,16 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       gender: data.gender || '',
       formalId: data.formal_id || '',
       ageCategory: data.age_category_id || '',
-      guardianFirstName: data.child_guardian?.[0]?.guardians?.first_name || '',
-      guardianLastName: data.child_guardian?.[0]?.guardians?.last_name || '',
-      guardianPhone: data.child_guardian?.[0]?.guardians?.phone_number || '',
-      guardianEmail: data.child_guardian?.[0]?.guardians?.email || '',
-      guardianRelationship: data.child_guardian?.[0]?.guardians?.relationship || 'Parent',
+      guardianFirstName: guardianInfo?.first_name || '',
+      guardianLastName: guardianInfo?.last_name || '',
+      guardianPhone: guardianInfo?.phone_number || '',
+      guardianEmail: guardianInfo?.email || '',
+      // Get relationship from the guardians table, not from child_guardian
+      guardianRelationship: guardianInfo?.relationship || 'Parent',
       notes: data.notes || ''
     };
   };
 
-  const [loading, setLoading] = useState(false);
   const [ageCategories, setAgeCategories] = useState([]);
   // Update initial form data
   const [formData, setFormData] = useState(mapInitialData(initialData) || {
@@ -51,20 +56,27 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
   const [notification, setNotification] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
   const [imagePath, setImagePath] = useState('');
+  const [loading, setLoading] = useState(false); // Add loading state
 
   useEffect(() => {
     fetchAgeCategories();
   }, []);
 
-  // Add useEffect to handle image URL from initialData
+  // Update the useEffect hook that handles initial data
   useEffect(() => {
-    if (initialData?.photo_url) {
-      setImageUrl(initialData.photo_url);
+    if (isEdit && initialData) {
+      // Set form data
+      setFormData(mapInitialData(initialData));
+      
+      // Set image URL directly from initialData
+      if (initialData.photo_url) {
+        console.log('Setting initial photo URL:', initialData.photo_url);
+        setImageUrl(initialData.photo_url);
+        // Also set the image path if needed
+        setImagePath(`NextGen/child-photos/${initialData.child_id}`);
+      }
     }
-    if (initialData?.photo_path) {
-      setImagePath(initialData.photo_path);
-    }
-  }, [initialData]);
+  }, [isEdit, initialData]);
 
   const fetchAgeCategories = async () => {
     try {
@@ -80,23 +92,52 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     }
   };
 
+  // Add this helper function at the top of the component
+  const formatPhoneNumber = (value) => {
+    if (!value) return value;
+    
+    // Remove all non-numeric characters
+    const cleaned = value.replace(/\D/g, '');
+    
+    // Ensure it starts with '09'
+    if (cleaned.length >= 2) {
+      if (!cleaned.startsWith('09')) {
+        return '09';
+      }
+    }
+    
+    // Truncate to 11 digits
+    return cleaned.slice(0, 11);
+  };
+
+  // Update the handleChange function
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    
+    if (name === 'guardianPhone') {
+      const formattedPhone = formatPhoneNumber(value);
+      setFormData(prev => ({
+        ...prev,
+        [name]: formattedPhone
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
     
     // Clear error when field is updated
     if (errors[name]) {
-      setErrors({
-        ...errors,
+      setErrors(prev => ({
+        ...prev,
         [name]: null
-      });
+      }));
     }
   };
 
   const handleImageUploadComplete = (result) => {
+    console.log('Upload complete:', result); // Add this debug log
     setImageUrl(result.url);
     setImagePath(result.path);
     setNotification({
@@ -137,7 +178,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
   const validate = () => {
     const newErrors = {};
     
-    // Required fields validation with better messages
+    // Required fields validation (keep existing)
     const requiredFields = {
       firstName: 'Please enter the child\'s first name',
       lastName: 'Please enter the child\'s last name',
@@ -153,19 +194,27 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       }
     });
 
-    // Contact method validation
+    // Contact method validation with improved messages
     if (!formData.guardianPhone && !formData.guardianEmail) {
-      newErrors.guardianContact = 'Please provide at least one contact method (phone or email)';
+      newErrors.guardianPhone = 'At least one contact method is required';
+      newErrors.guardianEmail = 'At least one contact method is required';
     }
 
-    // Email format validation
-    if (formData.guardianEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.guardianEmail)) {
-      newErrors.guardianEmail = 'Please enter a valid email address';
+    // Philippine phone number validation (09XXXXXXXXX format)
+    if (formData.guardianPhone) {
+      const phoneRegex = /^09\d{9}$/;
+      const cleanPhone = formData.guardianPhone.replace(/\D/g, '');
+      if (!phoneRegex.test(cleanPhone)) {
+        newErrors.guardianPhone = 'Phone number must start with 09 and have 11 digits';
+      }
     }
 
-    // Phone format validation (optional)
-    if (formData.guardianPhone && !/^\+?[\d\s-()]{10,}$/.test(formData.guardianPhone)) {
-      newErrors.guardianPhone = 'Please enter a valid phone number';
+    // Stricter email validation
+    if (formData.guardianEmail) {
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(formData.guardianEmail)) {
+        newErrors.guardianEmail = 'Please enter a valid email address';
+      }
     }
 
     // Age validation
@@ -185,17 +234,23 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     e.preventDefault();
     
     if (!validate()) {
-      setNotification({
-        type: 'error',
-        message: 'Please correct the errors in the form'
+      Swal.fire({
+        icon: 'error',
+        title: 'Validation Error',
+        text: 'Please check all required fields'
       });
       return;
     }
-    
-    setLoading(true);
+
+    setLoading(true); // Start loading
+    let photoUpdateNeeded = false;
+
     try {
+      // Show loading indicator only in button, not full screen
       if (isEdit) {
-        // Update existing child
+        photoUpdateNeeded = isEdit && imageUrl && imageUrl !== initialData?.photo_url;
+
+        // Update existing child with photo if changed
         const { error: updateError } = await supabase
           .from('children')
           .update({
@@ -204,12 +259,14 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             last_name: formData.lastName.trim(),
             birthdate: formData.birthdate,
             gender: formData.gender.trim(),
+            photo_url: imageUrl || initialData.photo_url, // Remove photo_path
+            notes: formData.notes?.trim() || null
           })
           .eq('child_id', initialData.child_id);
 
         if (updateError) throw updateError;
 
-        // Update guardian info
+        // Update guardian info with correct relationship
         const { error: guardianError } = await supabase
           .from('guardians')
           .update({
@@ -217,11 +274,22 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             last_name: formData.guardianLastName.trim(),
             phone_number: formData.guardianPhone?.trim() || null,
             email: formData.guardianEmail?.trim() || null,
-            relationship: formData.guardianRelationship.trim()
+            relationship: formData.guardianRelationship // Make sure this is included
           })
           .eq('guardian_id', initialData.child_guardian[0].guardian_id);
 
         if (guardianError) throw guardianError;
+
+        // Update child_guardian relationship if needed
+        const { error: relationshipError } = await supabase
+          .from('child_guardian')
+          .update({
+            is_primary: true // Ensure primary status is maintained
+          })
+          .eq('child_id', initialData.child_id)
+          .eq('guardian_id', initialData.child_guardian[0].guardian_id);
+
+        if (relationshipError) throw relationshipError;
       } else {
         // First register the child
         const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
@@ -234,7 +302,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
           p_guardian_last_name: formData.guardianLastName.trim(),
           p_guardian_phone: formData.guardianPhone?.trim() || null,
           p_guardian_email: formData.guardianEmail?.trim() || null,
-          p_guardian_relationship: formData.guardianRelationship.trim()
+          p_guardian_relationship: formData.guardianRelationship.trim(),
+          p_notes: formData.notes?.trim() || null
         });
 
         if (childError) {
@@ -245,46 +314,42 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
           throw new Error('No child ID returned from registration');
         }
 
-        // Only attempt photo update if we have both childData and imageUrl
-        if (imageUrl) {
+        // Update the photo URL immediately after registration if we have one
+        if (imageUrl) { // Only check for imageUrl
           const { error: photoError } = await supabase
             .from('children')
             .update({ 
-              photo_url: imageUrl,
-              photo_path: imagePath 
+              photo_url: imageUrl // Remove photo_path
             })
             .eq('child_id', childData[0].child_id);
 
           if (photoError) {
             console.error('Error updating photo:', photoError);
+            throw new Error('Failed to update child photo');
           }
         }
       }
 
-      setNotification({
-        type: 'success',
-        message: isEdit ? 'Child updated successfully!' : 'Child registered successfully!'
-      });
-      
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 1500);
+      // Instead of showing success alert here, just call onSuccess
+      onSuccess();
+
+      // Close form
+      onClose();
 
     } catch (error) {
-      console.error(isEdit ? 'Error updating child:' : 'Error registering child:', error);
-      setNotification({
-        type: 'error',
-        message: `Failed to ${isEdit ? 'update' : 'register'} child: ${error.message}`
+      console.error(error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message
       });
 
-      // Clean up photo if uploaded
-      if (imagePath) {
+      // Clean up photo if needed
+      if (photoUpdateNeeded && imageUrl) {
         try {
-          const imageRef = ref(storage, imagePath);
+          const imageRef = ref(storage, imageUrl);
           await deleteObject(imageRef);
         } catch (cleanupError) {
-          // Ignore cleanup errors
           console.warn('Error cleaning up image:', cleanupError);
         }
       }
@@ -329,7 +394,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         </div>
 
         {/* Form Content */}
-        <div className="p-6">
+        <div className="p-6 relative">
           {/* Info Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md backdrop-blur-sm shadow-sm">
             <div className="flex">
@@ -349,8 +414,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             </div>
           </div>
 
-          {/* Existing form content */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 relative">
             <div className="grid grid-cols-1 gap-4">
               {/* Photo Section - Full width */}
               <motion.div 
@@ -366,13 +430,32 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 <div className="flex justify-center">
                   <div className="w-full max-w-md">
                     <FileUpload
-                      category="child-photos"
-                      onUploadComplete={handleImageUploadComplete}
-                      onUploadError={handleImageUploadError}
-                      onDeleteComplete={handleImageDelete}
+                      category="NextGen/child-photos"
+                      onUploadComplete={(result) => {
+                        console.log('Upload complete:', result);
+                        setImageUrl(result.url);
+                        setImagePath(result.path);
+                      }}
+                      onUploadError={(error) => {
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Upload Error',
+                          text: error.message
+                        });
+                      }}
+                      onDeleteComplete={() => {
+                        setImageUrl('');
+                        setImagePath('');
+                        Swal.fire({
+                          icon: 'success',
+                          title: 'Photo Removed',
+                          text: 'Photo has been removed successfully',
+                          timer: 1500
+                        });
+                      }}
                       accept="image/*"
                       maxSize={5}
-                      initialPreview={imageUrl}
+                      initialPreview={initialData?.photo_url || imageUrl} // Use initialData.photo_url first
                       previewClass="w-full h-72 object-cover rounded-md"
                       alt={`${formData.firstName} ${formData.lastName}`}
                       className="w-full mb-3"
@@ -425,9 +508,10 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     value={formData.birthdate}
                     onChange={handleChange}
                     error={errors.birthdate}
-                    className="h-[42px]"
                     max={new Date().toISOString().split('T')[0]}
-                    disabled={isEdit} // Correct - birthdate should be locked
+                    disabled={isEdit}
+                    className="h-[42px]"
+                    required
                   />
                   <Input
                     type="select"
@@ -516,6 +600,10 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     value={formData.guardianPhone}
                     onChange={handleChange}
                     error={errors.guardianPhone}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={11}
+                    pattern="^09\d{9}$"
+                    className="h-[42px]"
                   />
                   <Input
                     type="email"
@@ -547,6 +635,29 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   />
                 </div>
               </motion.div>
+
+              {/* Additional Notes Section - New */}
+              <motion.div 
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+              >
+                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
+                  Additional Notes
+                </h3>
+                
+                <Input
+                  type="textarea"
+                  label="Notes"
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleChange}
+                  rows={4}
+                  placeholder="Add any additional notes or important information about the child"
+                  className="w-full"
+                />
+              </motion.div>
             </div>
 
             {/* Form Actions - Move to bottom fixed section */}
@@ -564,13 +675,10 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   type="submit"
                   variant="primary"
                   disabled={loading}
+                  className="relative"
                 >
                   {loading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                    <span className="flex items-center justify-center">
                       {isEdit ? 'Saving Changes...' : 'Registering Child...'}
                     </span>
                   ) : (

@@ -407,7 +407,7 @@ CREATE OR REPLACE FUNCTION check_in_child(
     p_checked_in_by VARCHAR(50)
 ) RETURNS TABLE (
     success BOOLEAN,
-    message VARCHAR(255)
+    message VARCHAR(255)  -- Changed from TEXT to VARCHAR(255) to match expected type
 ) AS $$
 DECLARE
     today_date DATE;
@@ -422,14 +422,14 @@ BEGIN
     -- Validate child exists
     SELECT COUNT(*) INTO child_exists FROM children WHERE child_id = p_child_id AND is_active = TRUE;
     IF child_exists = 0 THEN
-        RETURN QUERY SELECT FALSE, 'Child not found or not active';
+        RETURN QUERY SELECT FALSE::BOOLEAN, 'Child not found or not active'::VARCHAR(255);
         RETURN;
     END IF;
     
     -- Validate service exists
     SELECT COUNT(*) INTO service_exists FROM services WHERE service_id = p_service_id;
     IF service_exists = 0 THEN
-        RETURN QUERY SELECT FALSE, 'Service not found';
+        RETURN QUERY SELECT FALSE, 'Service not found'::VARCHAR(255);
         RETURN;
     END IF;
     
@@ -449,7 +449,7 @@ BEGIN
           AND service_id = p_service_id 
           AND attendance_date = today_date;
           
-        RETURN QUERY SELECT TRUE, 'Check-in time updated successfully';
+        RETURN QUERY SELECT TRUE::BOOLEAN, 'Check-in time updated successfully'::VARCHAR(255);
     ELSE
         -- Create new attendance record
         INSERT INTO attendance (
@@ -466,7 +466,7 @@ BEGIN
             p_checked_in_by
         );
         
-        RETURN QUERY SELECT TRUE, 'Child checked in successfully';
+        RETURN QUERY SELECT TRUE::BOOLEAN, 'Child checked in successfully'::VARCHAR(255);
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -519,7 +519,8 @@ CREATE OR REPLACE FUNCTION register_new_child(
     p_guardian_last_name VARCHAR(50),
     p_guardian_phone VARCHAR(20),
     p_guardian_email VARCHAR(100),
-    p_guardian_relationship VARCHAR(50)
+    p_guardian_relationship VARCHAR(50),
+    p_notes TEXT
 ) RETURNS TABLE (
     child_id INT,
     success BOOLEAN,
@@ -681,9 +682,9 @@ $$ LANGUAGE plpgsql;
 -- Initial data setup
 INSERT INTO services (service_name, start_time, end_time, day_of_week)
 VALUES 
-('Sunday Morning', '09:00:00', '10:30:00', 'Sunday'),
-('Sunday Evening', '17:00:00', '18:30:00', 'Sunday'),
-('Wednesday Kids', '18:30:00', '20:00:00', 'Wednesday');
+('First Service', '10:00:00', '12:00:00', 'Sunday'),
+('Second Service', '13:00:00', '15:00:00', 'Sunday'),
+('Third Service', '15:30:00', '17:30:00', 'Sunday');
 
 INSERT INTO age_categories (category_name, min_age, max_age, description)
 VALUES 

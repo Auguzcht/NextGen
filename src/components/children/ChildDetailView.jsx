@@ -30,56 +30,62 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
       <div className="grid grid-cols-3 gap-6 p-6">
         {/* Left Column - Photo */}
         <div className="col-span-1">
-          {child.photo_url ? (
-            <img
-              src={child.photo_url}
-              alt={`${child.first_name} ${child.last_name}`}
-              className="w-full rounded-lg object-cover aspect-square"
-            />
-          ) : (
-            <div className="w-full rounded-lg bg-nextgen-blue/10 aspect-square flex items-center justify-center">
-              <span className="text-4xl font-medium text-nextgen-blue-dark">
-                {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
-              </span>
+          <div className="border-gray-200 p-4 shadow-sm">
+            {child.photo_url ? (
+              <img
+                src={child.photo_url}
+                alt={`${child.first_name} ${child.last_name}`}
+                className="w-full rounded-lg object-cover aspect-square"
+              />
+            ) : (
+              <div className="w-full rounded-lg bg-nextgen-blue/10 aspect-square flex items-center justify-center">
+                <span className="text-4xl font-medium text-nextgen-blue-dark">
+                  {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
+                </span>
+              </div>
+            )}
+            <div className="mt-4 text-center">
+              <h3 className="text-lg font-bold text-nextgen-blue-dark">
+                {child.first_name} {child.middle_name} {child.last_name}
+              </h3>
+              <p className="text-sm text-gray-500">ID: {child.formal_id || 'N/A'}</p>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Right Column - Details */}
         <div className="col-span-2 space-y-6">
-          <div>
-            <h3 className="text-2xl font-semibold text-gray-900">
-              {child.first_name} {child.middle_name} {child.last_name}
-            </h3>
-            <p className="text-sm text-gray-500">ID: {child.formal_id || 'N/A'}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Age</p>
-              <p className="mt-1 text-gray-900">{calculateAge(child.birthdate)} years old</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Gender</p>
-              <p className="mt-1 text-gray-900">{child.gender}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Age Group</p>
-              <Badge variant="primary" size="sm">
-                {child.age_categories?.category_name || 'Unknown'}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Status</p>
-              <Badge variant={child.is_active ? "success" : "danger"} size="sm">
-                {child.is_active ? 'Active' : 'Inactive'}
-              </Badge>
+          {/* Basic Information Box */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Age</p>
+                <p className="mt-1 text-gray-900">{calculateAge(child.birthdate)} years old</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Gender</p>
+                <p className="mt-1 text-gray-900">{child.gender}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Age Group</p>
+                <Badge variant="primary" size="sm">
+                  {child.age_categories?.category_name || 'Unknown'}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Status</p>
+                <Badge variant={child.is_active ? "success" : "danger"} size="sm">
+                  {child.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
             </div>
           </div>
 
+          {/* Guardian Information Box */}
           {child.child_guardian && (
-            <div>
-              <h4 className="text-lg font-medium mb-2">Guardian Information</h4>
+            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Guardian Information</h4>
               <div className="bg-gray-50 p-4 rounded-lg">
                 {getPrimaryGuardian(child.child_guardian) && (
                   <>

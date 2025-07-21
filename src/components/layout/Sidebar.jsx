@@ -17,15 +17,7 @@ const Sidebar = () => {
   const navLinks = [
     { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
     { name: 'Children', path: '/children', icon: 'child' },
-    { 
-      name: 'Attendance', 
-      path: '/attendance', 
-      icon: 'clipboard-check',
-      subpages: [
-        { name: 'Check-in', path: '/attendance?tab=checkin' },
-        { name: 'Records', path: '/attendance?tab=records' }
-      ]
-    },
+    { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' }, // Remove subpages
     { name: 'Guardians', path: '/guardians', icon: 'users' },
     
     // Only show staff management for coordinators and administrators
@@ -33,7 +25,7 @@ const Sidebar = () => {
       { 
         name: 'Staff', 
         path: '/staff', 
-        icon: 'staff', // Changed from 'users' to 'staff'
+        icon: 'staff',
         subpages: [
           { name: 'Staff List', path: '/staff?tab=list' },
           { name: 'Assignments', path: '/staff?tab=assignments' }
@@ -41,11 +33,7 @@ const Sidebar = () => {
       }
     ] : []),
     
-    { 
-      name: 'Reports', 
-      path: '/reports', 
-      icon: 'document-report' 
-    },
+    { name: 'Reports', path: '/reports', icon: 'document-report' },
     
     // Settings without subpages
     ...(staffProfile?.role === 'Administrator' ? [

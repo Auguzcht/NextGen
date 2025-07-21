@@ -3,44 +3,43 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { Card, Button, Table, Input, Badge } from '../components/ui';
 import { motion } from 'framer-motion';
-import AttendanceFilters from '../components/attendance/AttendanceFilters.jsx';
-import AttendanceCheckIn from '../components/attendance/AttendanceCheckIn.jsx';
 
 const AttendancePage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('checkin');
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState(null);
 
-  // Initialize the active tab based on URL parameters
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab && ['checkin', 'records'].includes(tab)) {
-      setActiveTab(tab);
-    }
-  }, [location]);
-
-  // Update URL when tab changes
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    navigate(`/attendance?tab=${tab}`, { replace: true });
-  };
-
+  // Fetch services on mount
   useEffect(() => {
     fetchServices();
   }, []);
 
+  // Fetch attendance when service or date changes
   useEffect(() => {
     if (selectedService) {
       fetchAttendance();
     }
   }, [selectedService, selectedDate]);
+
+  // Search effect
+  useEffect(() => {
+    if (searchQuery.trim() && selectedService) {
+      const timer = setTimeout(() => {
+        searchChildren();
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setSearchResults([]);
+    }
+  }, [searchQuery, selectedService]);
 
   const fetchServices = async () => {
     try {
@@ -51,58 +50,75 @@ const AttendancePage = () => {
 
       if (error) throw error;
       setServices(data || []);
-      
-      // Set first service as default if available
-      if (data && data.length > 0 && !selectedService) {
-        setSelectedService(data[0].service_id);
-      }
     } catch (error) {
       console.error('Error fetching services:', error);
-      setError('Failed to load services. Please try again later.');
+      setError('Failed to load services');
     }
   };
 
+  // Update the fetchAttendance function to get all children and their current attendance status
   const fetchAttendance = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('attendance')
+      // Get all active children
+      const { data: childrenData, error: childrenError } = await supabase
+        .from('children')
         .select(`
-          *,
-          children (
-            child_id,
-            formal_id,
-            first_name,
-            last_name,
-            gender,
-            birthdate,
-            photo_url,
-            age_category_id,
-            age_categories (category_name)
-          )
+          child_id,
+          formal_id,
+          first_name,
+          last_name,
+          gender,
+          birthdate,
+          photo_url,
+          age_category_id,
+          age_categories (category_name)
         `)
-        .eq('service_id', selectedService)
-        .eq('attendance_date', selectedDate);
+        .eq('is_active', true)
+        .order('first_name');
 
-      if (error) throw error;
-      setAttendanceList(data || []);
+      if (childrenError) throw childrenError;
+
+      // Get attendance records only if service and date are selected
+      let attendanceData = [];
+      if (selectedService && selectedDate) {
+        const { data, error: attendanceError } = await supabase
+          .from('attendance')
+          .select('*')
+          .eq('service_id', selectedService)
+          .eq('attendance_date', selectedDate);
+
+        if (attendanceError) throw attendanceError;
+        attendanceData = data || [];
+      }
+
+      // Transform children data with attendance status
+      const transformedData = (childrenData || []).map(child => ({
+        children: child,
+        child_id: child.child_id,
+        ...attendanceData?.find(a => a.child_id === child.child_id)
+      }));
+
+      setAttendanceList(transformedData);
     } catch (error) {
-      console.error('Error fetching attendance:', error);
-      setError('Failed to load attendance records. Please try again later.');
+      console.error('Error fetching children:', error);
+      setError('Failed to load children list');
     } finally {
       setLoading(false);
     }
   };
 
+  // Update handleCheckIn function
   const handleCheckIn = async (childId) => {
-    if (!selectedService) return;
+    if (!selectedService || !selectedDate) {
+      setError('Please select a service and date first');
+      return;
+    }
     
     try {
-      // Get current staff email
       const { data: { session } } = await supabase.auth.getSession();
       const staffEmail = session?.user?.email || 'Unknown Staff';
       
-      // Call check_in_child function
       const { data, error } = await supabase.rpc('check_in_child', {
         p_child_id: childId,
         p_service_id: selectedService,
@@ -110,26 +126,44 @@ const AttendancePage = () => {
       });
 
       if (error) throw error;
-      
-      // Refresh attendance list
-      fetchAttendance();
+
+      if (data && data[0].success) {
+        // Only update the specific child's attendance status
+        const updatedList = attendanceList.map(item => {
+          if (item.child_id === childId) {
+            return {
+              ...item,
+              attendance_id: data[0].attendance_id,
+              check_in_time: new Date().toTimeString().split(' ')[0],
+              checked_in_by: staffEmail
+            };
+          }
+          return item;
+        });
+        setAttendanceList(updatedList);
+      }
     } catch (error) {
       console.error('Error checking in child:', error);
       setError(`Failed to check in child: ${error.message}`);
     }
   };
 
+  // Update handleCheckOut function
   const handleCheckOut = async (attendanceId) => {
+    if (!attendanceId) return;
+    
     try {
       const { data, error } = await supabase
         .from('attendance')
-        .update({ check_out_time: new Date().toTimeString().split(' ')[0] })
+        .update({ 
+          check_out_time: new Date().toTimeString().split(' ')[0] 
+        })
         .eq('attendance_id', attendanceId);
 
       if (error) throw error;
       
       // Refresh attendance list
-      fetchAttendance();
+      await fetchAttendance();
     } catch (error) {
       console.error('Error checking out child:', error);
       setError(`Failed to check out child: ${error.message}`);
@@ -169,145 +203,158 @@ const AttendancePage = () => {
   const attendanceColumns = [
     {
       header: "ID",
-      accessor: (row) => row.children.formal_id || 'N/A',
-      cellClassName: "font-medium text-gray-900"
+      accessor: row => row.children.formal_id || 'N/A',
+      cellClassName: "font-medium text-gray-900",
+      width: "100px"
     },
     {
-      header: "Name",
+      header: "Photo & Name",
       cell: (row) => (
-        <div>
-          <div className="font-medium text-gray-800">
-            {row.children.first_name} {row.children.last_name}
-          </div>
-          {row.children.gender && (
-            <div className="text-xs text-gray-500">
-              {row.children.gender === 'M' ? 'Male' : 'Female'}
+        <div className="flex items-center gap-3">
+          {row.children.photo_url ? (
+            <img
+              src={row.children.photo_url}
+              alt={`${row.children.first_name} ${row.children.last_name}`}
+              className="h-10 w-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
+              <span className="text-nextgen-blue-dark font-medium text-sm">
+                {row.children.first_name?.charAt(0)}{row.children.last_name?.charAt(0)}
+              </span>
             </div>
           )}
+          <div className="font-medium text-gray-900">
+            {row.children.first_name} {row.children.last_name}
+          </div>
         </div>
-      )
+      ),
+      width: "300px"
     },
     {
       header: "Age / Group",
       cell: (row) => (
-        <div>
-          <span>{calculateAge(row.children.birthdate)} yrs</span>
+        <div className="flex items-center gap-2">
+          <span className="text-gray-900">{calculateAge(row.children.birthdate)} yrs</span>
           {row.children.age_categories?.category_name && (
-            <Badge variant="primary" size="xs" className="ml-2">
+            <Badge variant="primary" size="sm">
               {row.children.age_categories?.category_name}
             </Badge>
           )}
         </div>
-      )
+      ),
+      width: "200px"
     },
     {
       header: "Check In",
-      cell: (row) => (
-        <div>
-          <div>{formatTime(row.check_in_time)}</div>
-          <div className="text-xs text-gray-500">by {row.checked_in_by || 'Unknown'}</div>
-        </div>
-      )
+      cell: (row) => {
+        const attendance = attendanceList.find(a => 
+          a.child_id === row.children.child_id && !a.check_out_time
+        );
+        return attendance ? (
+          <div className="text-gray-900">
+            <div>{formatTime(attendance.check_in_time)}</div>
+            <div className="text-xs text-gray-500">by {attendance.checked_in_by || 'Unknown'}</div>
+          </div>
+        ) : (
+          <span className="text-gray-500">Not checked in</span>
+        );
+      },
+      width: "150px"
     },
     {
       header: "Check Out",
-      accessor: (row) => formatTime(row.check_out_time)
+      cell: (row) => {
+        const attendance = attendanceList.find(a => 
+          a.child_id === row.children.child_id && a.check_out_time
+        );
+        return attendance?.check_out_time ? (
+          <div className="text-gray-900">{formatTime(attendance.check_out_time)}</div>
+        ) : (
+          <span className="text-gray-500">-</span>
+        );
+      },
+      width: "150px"
     },
     {
       header: "Actions",
-      cell: (row) => !row.check_out_time && (
-        <Button
-          variant="primary"
-          size="xs"
-          onClick={() => handleCheckOut(row.attendance_id)}
-        >
-          Check Out
-        </Button>
-      )
+      cell: (row) => {
+        // Get current attendance record for this child
+        const attendance = attendanceList.find(a => 
+          a.child_id === row.children.child_id && !a.check_out_time
+        );
+
+        return (
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              size="xs"
+              onClick={() => handleCheckIn(row.children.child_id)}
+              disabled={attendance} // Disable if already checked in
+            >
+              Check In
+            </Button>
+            <Button
+              variant="danger"
+              size="xs"
+              onClick={() => handleCheckOut(attendance?.attendance_id)}
+              disabled={!attendance} // Disable if not checked in
+            >
+              Check Out
+            </Button>
+          </div>
+        );
+      },
+      width: "150px"
     }
   ];
 
-  // Render the active tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'checkin':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
-              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Check In</h3>
-              
-              <AttendanceFilters
-                services={services}
-                selectedService={selectedService}
-                setSelectedService={setSelectedService}
-                selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
-              />
-              
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <AttendanceCheckIn
-                  selectedService={selectedService}
-                  onCheckIn={handleCheckIn}
-                  attendanceList={attendanceList}
-                  disabled={!selectedService}
-                />
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
-                Attendance for {new Date(selectedDate).toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </h3>
-              
-              <Table
-                data={attendanceList}
-                columns={attendanceColumns}
-                isLoading={loading}
-                noDataMessage="No children checked in for this service and date"
-                highlightOnHover={true}
-                variant="primary"
-                size="sm"
-              />
-            </div>
-          </div>
-        );
-        
-      case 'records':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
-              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Attendance Records</h3>
-              
-              <AttendanceFilters
-                services={services}
-                selectedService={selectedService}
-                setSelectedService={setSelectedService}
-                selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
-              />
-            </div>
-            
-            <div className="mt-4">
-              <Table
-                data={attendanceList}
-                columns={attendanceColumns}
-                isLoading={loading}
-                noDataMessage="No attendance records found for the selected criteria"
-                highlightOnHover={true}
-                variant="primary"
-                stickyHeader={true}
-              />
-            </div>
-          </div>
-        );
-        
-      default:
-        return <div>Select a tab to view attendance</div>;
+  // Update the searchChildren function
+  const searchChildren = async () => {
+    if (!searchQuery.trim() || !selectedService) return;
+    
+    setSearching(true);
+    try {
+      const { data: childrenData, error: childrenError } = await supabase
+        .from('children')
+        .select(`
+          *,
+          age_categories (category_name)
+        `)
+        .or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,formal_id.ilike.%${searchQuery}%`)
+        .eq('is_active', true)
+        .limit(10);
+
+      if (childrenError) throw childrenError;
+
+      // Get attendance records for the selected service and date
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('service_id', selectedService)
+        .eq('attendance_date', selectedDate);
+
+      if (attendanceError) throw attendanceError;
+
+      // Transform children data to match attendance structure
+      const transformedData = (childrenData || []).map(child => ({
+        children: child,
+        child_id: child.child_id,
+        ...attendanceData?.find(a => a.child_id === child.child_id)
+      }));
+
+      // Update search results instead of attendance list
+      setSearchResults(transformedData);
+      
+      // If no search query, refresh the full attendance list
+      if (!searchQuery.trim()) {
+        await fetchAttendance();
+      }
+    } catch (error) {
+      console.error('Error searching children:', error);
+      setError('Failed to search children');
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -325,78 +372,104 @@ const AttendancePage = () => {
           </svg>
         }
       >
-        <div className="border-b border-gray-200 -mt-2">
-          <div className="flex space-x-2 md:space-x-6">
-            <Button
-              variant={activeTab === 'checkin' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => handleTabChange('checkin')}
-              className="px-4 rounded-b-none rounded-t-lg"
-              fullWidth
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              }
-              iconPosition="left"
-            >
-              Check-in
-            </Button>
-            
-            <Button
-              variant={activeTab === 'records' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => handleTabChange('records')}
-              className="px-4 rounded-b-none rounded-t-lg"
-              fullWidth
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              }
-              iconPosition="left"
-            >
-              Records
-            </Button>
-          </div>
-        </div>
-        
         <motion.div 
-          className="px-1 py-6"
-          key={activeTab}
+          className="px-1 py-4"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          {error && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-md p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
+          {/* Your existing check-in content */}
+          <div className="space-y-6">
+            <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm space-y-4">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
+                Check In
+              </h3>
+              
+              {/* Filters Row */}
+              <div className="flex flex-wrap gap-4">
+                {/* Service Select */}
+                <div className="w-72">
+                  <label htmlFor="service-select" className="block text-sm font-medium text-gray-700 mb-1">
+                    Service
+                  </label>
+                  <select
+                    id="service-select"
+                    value={selectedService || ''}
+                    onChange={(e) => setSelectedService(e.target.value)}
+                    className="nextgen-form-select"
+                  >
+                    <option value="">Select Service</option>
+                    {services.map((service) => (
+                      <option key={service.service_id} value={service.service_id}>
+                        {service.service_name} ({service.day_of_week})
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm">{error}</p>
+
+                {/* Date Input */}
+                <div className="w-48">
+                  <label htmlFor="date-select" className="block text-sm font-medium text-gray-700 mb-1">
+                    Date
+                  </label>
+                  <Input
+                    type="date"
+                    id="date-select"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="h-[42px]"
+                  />
                 </div>
-                <div className="ml-auto pl-3">
-                  <div className="-mx-1.5 -my-1.5">
-                    <button 
-                      onClick={() => setError(null)}
-                      className="inline-flex rounded-md p-1.5 text-red-500 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                      <span className="sr-only">Dismiss</span>
-                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
+
+                {/* Search Input */}
+                <div className="flex-1">
+                  <label htmlFor="search-input" className="block text-sm font-medium text-gray-700 mb-1">
+                    Search Child
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="search-input"
+                      type="text"
+                      placeholder="Search by name or ID..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      disabled={!selectedService}
+                      className="nextgen-form-input"
+                    />
+                    <div className="absolute right-3 top-[11px] text-gray-400">
+                      {searching ? (
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          )}
-          
-          {renderTabContent()}
+
+            {/* Attendance List with proper padding matching ChildrenPage */}
+            <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+              <Table
+                data={searchQuery.trim() ? searchResults : attendanceList}
+                columns={attendanceColumns}
+                isLoading={loading}
+                noDataMessage="No children found"
+                highlightOnHover={true}
+                variant="primary"
+                stickyHeader={true}
+                size="md"
+                className="min-w-full divide-y divide-gray-200"
+                headerClassName="bg-gray-50"
+                bodyClassName="bg-white divide-y divide-gray-200"
+              />
+            </div>
+          </div>
         </motion.div>
       </Card>
     </div>
