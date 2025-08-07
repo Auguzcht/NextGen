@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
 import LoginForm from '../components/auth/LoginForm.jsx';
-import { NextGenLogo, NextGenLogoSvg } from '../assets/index.js';
+
+// Use the base URL from Vite to handle both development and production paths
+const NextGenLogo = `${import.meta.env.BASE_URL}NextGen-Logo.png`;
+const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const LoginPage = () => {
   const [showContent, setShowContent] = useState(false);

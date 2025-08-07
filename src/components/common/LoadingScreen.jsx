@@ -2,7 +2,9 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import ngLogo from '../../assets/NextGen-Logo.svg';
+
+// Use the base URL from your environment for correct path resolution
+const ngLogo = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   const [isMounted, setIsMounted] = useState(false);

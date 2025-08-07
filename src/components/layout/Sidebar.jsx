@@ -3,7 +3,9 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useNavigation } from '../../context/NavigationContext.jsx';
-import { NextGenLogoSvg } from '../../assets/index.js';
+
+// Use the base URL from Vite to handle both development and production paths
+const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const Sidebar = () => {
   const { sidebarOpen } = useNavigation();
@@ -12,12 +14,17 @@ const Sidebar = () => {
   const [logoError, setLogoError] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState(null);
   const [activeSubpage, setActiveSubpage] = useState(null);
+  
+  // Reset logo error if sidebar is closed/opened
+  useEffect(() => {
+    setLogoError(false);
+  }, [sidebarOpen]);
 
   // Define navigation items with subpages where appropriate
   const navLinks = [
     { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
     { name: 'Children', path: '/children', icon: 'child' },
-    { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' }, // Remove subpages
+    { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' },
     { name: 'Guardians', path: '/guardians', icon: 'users' },
     
     // Only show staff management for coordinators and administrators
@@ -250,8 +257,11 @@ const Sidebar = () => {
                   <img 
                     className="h-16 w-auto mb-2" 
                     src={NextGenLogoSvg} 
-                    alt="NextGen" 
-                    onError={() => setLogoError(true)}
+                    alt="NextGen"
+                    onError={(e) => {
+                      console.error("Logo failed to load:", e);
+                      setLogoError(true);
+                    }} 
                   />
                 </motion.div>
               )}

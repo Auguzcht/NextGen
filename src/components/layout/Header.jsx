@@ -2,9 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { NextGenLogo } from '../../assets';
+import { useNavigation } from '../../context/NavigationContext';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../services/firebase';
+
+// Define logo path directly from public folder
+const NextGenLogo = '/NextGen-Logo.png';
+const NextGenLogoSvg = '/NextGen-Logo.svg';
 
 // Page title mapping for NextGen
 const pageTitles = {
@@ -38,8 +42,9 @@ const pageTitles = {
   }
 };
 
-const Header = ({ toggleSidebar, isSidebarOpen }) => {
-  const { user, signOut } = useAuth();
+const Header = () => {
+  const { user, logout } = useAuth(); // Change signOut to logout
+  const { toggleSidebar, sidebarOpen } = useNavigation(); // Use from NavigationContext
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -169,11 +174,11 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     day: 'numeric'
   });
 
-  // Handle logout
+  // Handle logout - update to use logout from context
   const handleLogout = async () => {
     try {
-      await signOut();
-      navigate('/login');
+      await logout(); // Use logout instead of signOut
+      // No need for navigate - logout will redirect to login page
     } catch (error) {
       console.error('Logout failed:', error);
     }
@@ -207,7 +212,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
 
   return (
     <motion.header 
-      className={`sticky top-0 z-30 transition-all duration-300 ${
+      className={`sticky top-0 z-30 transition-all duration-300 w-full ${
         scrolled 
           ? "bg-white/95 backdrop-blur-sm shadow-md" 
           : "bg-white border-b border-nextgen-blue/10"
@@ -216,42 +221,66 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      <div 
-        className="transition-all duration-300"
+      {/* Single row header with increased height - adjust width to prevent compression */}
+      <div className="px-4 sm:px-6 lg:px-8 py-5 flex justify-between items-center transition-all duration-300"
         style={{
-          marginLeft: isSidebarOpen ? "260px" : "0px"
+          marginLeft: sidebarOpen ? "0px" : "0px"
         }}
       >
-        {/* Single row header with increased height */}
-        <div className="px-4 sm:px-6 lg:px-8 py-5 grid grid-cols-3 items-center">
-          {/* Left side - Page title and description */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentPath}
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              transition={{ duration: 0.3 }}
-              className="flex flex-col justify-center"
-            >
-              <h1 className="text-xl font-bold text-nextgen-blue-dark">{pageInfo.title}</h1>
-              <p className="text-sm text-nextgen-orange/80">{pageInfo.description}</p>
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Center - Date and time with fixed position */}
-          <motion.div 
-            className="hidden md:flex items-center justify-center"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
-          >
-            <div className="bg-white px-5 py-2 rounded-full shadow-sm border border-nextgen-blue/10 flex items-center">
-              <span className="text-base font-medium text-gray-700 mr-2">{formattedTime}</span>
-              <div className="h-3.5 w-0.5 bg-nextgen-blue/20 mx-2"></div>
-              <span className="text-sm text-nextgen-blue-dark/70">{formattedDate}</span>
+        <div className="grid grid-cols-3 items-center w-full">
+          {/* Left side - Toggle button & Page title */}
+          <div className="flex items-center max-w-lg">
+            {/* Mobile sidebar toggle - fixed width to prevent layout shift */}
+            <div className="w-10 mr-3 flex-shrink-0">
+              <motion.button
+                onClick={toggleSidebar}
+                className="text-nextgen-blue-dark hover:text-nextgen-blue focus:outline-none"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                aria-label="Toggle sidebar"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                </svg>
+              </motion.button>
             </div>
-          </motion.div>
+            
+            {/* Page title with animation - fixed position regardless of sidebar state */}
+            <div className="transition-all duration-300 w-full">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentPath}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex flex-col justify-center"
+                >
+                  <h1 className="text-xl font-bold text-nextgen-blue-dark">{pageInfo.title}</h1>
+                  <p className="text-sm text-nextgen-orange/80 truncate">{pageInfo.description}</p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Center - Date and time - properly centered with drop shadow */}
+          <div className="flex justify-center items-center">
+            <motion.div 
+              className="hidden md:flex items-center justify-center"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+            >
+              <div className="bg-white px-5 py-2 rounded-full shadow-sm border border-nextgen-blue/10 flex items-center relative">
+                {/* Subtle glow effect */}
+                <div className="absolute inset-0 rounded-full bg-nextgen-blue/5 blur-md -z-10"></div>
+                
+                <span className="text-base font-medium text-nextgen-blue-dark mr-2">{formattedTime}</span>
+                <div className="h-3.5 w-0.5 bg-nextgen-blue/20 mx-2"></div>
+                <span className="text-sm text-nextgen-orange-dark/70">{formattedDate}</span>
+              </div>
+            </motion.div>
+          </div>
 
           {/* Right side - User profile */}
           <div className="flex items-center justify-end space-x-5">

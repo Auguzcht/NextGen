@@ -269,8 +269,8 @@ export const AuthProvider = ({ children }) => {
         toast.success('Logged out successfully');
       }
       
-      // Force navigation to login page
-      window.location.href = '/login';
+      // Fix: Use the correct base URL for redirect
+      window.location.href = '/nextgen/login';
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Failed to complete logout properly');
@@ -278,6 +278,9 @@ export const AuthProvider = ({ children }) => {
       // Force clear state anyway for better UX
       setUser(null);
       setSession(null);
+      
+      // Even on error, redirect to login with correct base URL
+      window.location.href = '/nextgen/login';
     }
   };
 
