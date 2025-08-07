@@ -4,7 +4,9 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({ 
-  base: "/nextgen/",
+  // Make the base path conditional like in TrackNToms
+  base: mode === 'production' ? '/' : '/nextgen/',
+  
   plugins: [
     react({
       // Include JSX in .js files
