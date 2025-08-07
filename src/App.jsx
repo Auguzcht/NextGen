@@ -200,8 +200,11 @@ function AppContent() {
 }
 
 function App() {
+  // Use conditional basename based on environment
+  const basePath = import.meta.env.DEV ? "/nextgen" : "/";
+  
   return (
-    <Router basename="/nextgen">
+    <Router basename={basePath}>
       <AuthProvider>
         <AppContent />
       </AuthProvider>
