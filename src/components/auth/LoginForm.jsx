@@ -285,10 +285,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   Demo credentials:
                 </motion.p>
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  Admin: admin@nextgen.com / password
-                </motion.p>
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.0 }}>
-                  Staff: staff@nextgen.com / password
+                  Admin: admin@example.com / AdminPassword123!
                 </motion.p>
               </motion.div>
             </motion.form>
