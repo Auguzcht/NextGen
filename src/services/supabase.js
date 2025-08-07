@@ -15,10 +15,31 @@ const supabaseUrl = getEnv('VITE_SUPABASE_URL');
 const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
 const supabaseServiceKey = getEnv('VITE_SUPABASE_SERVICE_KEY');
 
+// Use global variables to ensure singleton instances
+let _supabase = null;
+let _supabaseAdmin = null;
+
 // Regular client for most operations (limited by RLS)
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const getSupabase = () => {
+  if (!_supabase) {
+    _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true
+      }
+    });
+  }
+  return _supabase;
+};
 
-// Admin client for operations that need to bypass RLS (like user creation)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// Admin client for operations that need to bypass RLS
+const getSupabaseAdmin = () => {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return _supabaseAdmin;
+};
 
+const supabase = getSupabase();
+export const supabaseAdmin = getSupabaseAdmin();
 export default supabase;

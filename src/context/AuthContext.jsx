@@ -205,6 +205,23 @@ export const AuthProvider = ({ children }) => {
         };
       }
 
+      // Check for internet connectivity first
+      try {
+        const networkTest = await fetch('https://www.google.com', { 
+          method: 'HEAD',
+          mode: 'no-cors',
+          cache: 'no-store'
+        });
+        console.log('Network connectivity check passed');
+      } catch (networkError) {
+        console.error('Network connectivity issue detected:', networkError);
+        return {
+          success: false,
+          error: 'Unable to connect to the internet. Please check your network connection.'
+        };
+      }
+
+      // Proceed with login attempt
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -269,8 +286,11 @@ export const AuthProvider = ({ children }) => {
         toast.success('Logged out successfully');
       }
       
-      // Fix: Use the correct base URL for redirect
-      window.location.href = '/nextgen/login';
+      // Get the correct base path from your environment
+      const basePath = import.meta.env.DEV ? '/nextgen' : '/';
+      
+      // Redirect to login page with the correct base URL
+      window.location.href = `${basePath}/login`;
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Failed to complete logout properly');
@@ -279,8 +299,9 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setSession(null);
       
-      // Even on error, redirect to login with correct base URL
-      window.location.href = '/nextgen/login';
+      // Get the correct base path for error case too
+      const basePath = import.meta.env.DEV ? '/nextgen' : '/';
+      window.location.href = `${basePath}/login`;
     }
   };
 
