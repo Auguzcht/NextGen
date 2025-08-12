@@ -286,10 +286,10 @@ export const AuthProvider = ({ children }) => {
         toast.success('Logged out successfully');
       }
       
-      // Get the correct base path from your environment
-      const basePath = import.meta.env.DEV ? '/nextgen' : '/';
+      // Get the correct base path based on environment
+      const basePath = import.meta.env.DEV ? '/nextgen' : '';
       
-      // Redirect to login page with the correct base URL
+      // Use the base path for redirection
       window.location.href = `${basePath}/login`;
     } catch (error) {
       console.error('Logout error:', error);
@@ -299,8 +299,8 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setSession(null);
       
-      // Get the correct base path for error case too
-      const basePath = import.meta.env.DEV ? '/nextgen' : '/';
+      // Also use base path here for error case
+      const basePath = import.meta.env.DEV ? '/nextgen' : '';
       window.location.href = `${basePath}/login`;
     }
   };
