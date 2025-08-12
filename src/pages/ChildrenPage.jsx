@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import supabase from '../services/supabase.js';
 import AddChildForm from '../components/children/AddChildForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
@@ -11,6 +11,7 @@ const ChildrenPage = () => {
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
@@ -19,10 +20,30 @@ const ChildrenPage = () => {
   const [selectedChild, setSelectedChild] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
+  // Debounce search query
   useEffect(() => {
+    // Don't set timer for empty strings or when explicitly clearing
+    if (searchQuery === '') {
+      setDebouncedSearchQuery('');
+      return;
+    }
+    
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setIsSearching(false);
+    }, 300); // 300ms delay
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Use the debounced search query for fetching
+  useEffect(() => {
+    setCurrentPage(1); // Reset to first page when search query changes
     fetchChildren();
-  }, [currentPage, searchQuery]);
+  }, [currentPage, debouncedSearchQuery]);
 
   const fetchChildren = async () => {
     setLoading(true);
@@ -38,17 +59,25 @@ const ChildrenPage = () => {
             guardians(first_name, last_name, phone_number, email)
           )
         `)
-        .order('registration_date', { ascending: false });
+        .order('registration_date', { ascending: true });
 
-      if (searchQuery) {
-        query = query.or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,formal_id.ilike.%${searchQuery}%`);
+      // Only apply search filter if there's actually a search query
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`);
       }
 
-      // Get total count for pagination
-      const { count: totalCount } = await supabase
+      // Get total count for pagination - also only apply search filter if there's a query
+      let countQuery = supabase
         .from('children')
         .select('*', { count: 'exact', head: true });
+        
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        countQuery = countQuery.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`);
+      }
+      
+      const { count: totalCount, error: countError } = await countQuery;
 
+      if (countError) throw countError;
       setTotalPages(Math.ceil(totalCount / itemsPerPage));
       
       // Apply pagination
@@ -107,17 +136,17 @@ const ChildrenPage = () => {
     return primaryGuardian.guardians;
   };
   
-  // Table columns configuration
+  // Table columns configuration - with responsive display
   const columns = [
     {
       header: "ID",
       accessor: "formal_id",
       cellClassName: "font-medium text-gray-900",
       cell: (row) => row.formal_id || 'N/A',
-      width: "100px"
+      width: "80px" // Slightly reduced
     },
     {
-      header: "Photo & Name",
+      header: "Name",
       accessor: (row) => `${row.first_name} ${row.last_name}`,
       cell: (row) => (
         <div className="flex items-center gap-3">
@@ -135,63 +164,40 @@ const ChildrenPage = () => {
             </div>
           )}
           <div className="font-medium text-gray-900">
-            {row.first_name} {row.middle_name ? `${row.middle_name} ` : ''}{row.last_name}
+            {row.first_name} {row.last_name}
           </div>
         </div>
       ),
-      width: "300px"
+      width: "200px" // Reduced from 300px
     },
     {
-      header: "Gender",
+      header: "Age / Group",
       cell: (row) => (
-        <div className="text-gray-900">
-          {row.gender === 'Male' ? '👦 Male' : '👧 Female'}
+        <div className="flex items-center gap-2">
+          <span className="text-gray-900">{calculateAge(row.birthdate)} yrs</span>
+          <Badge variant="primary" size="sm">
+            {row.age_categories?.category_name || 'Unknown'}
+          </Badge>
         </div>
       ),
-      width: "120px"
-    },
-    {
-      header: "Age",
-      cell: (row) => (
-        <div className="text-gray-900">
-          {calculateAge(row.birthdate)} years
-        </div>
-      ),
-      width: "100px"
-    },
-    {
-      header: "Age Group",
-      accessor: "age_categories.category_name",
-      cell: (row) => (
-        <Badge variant="primary" size="sm">
-          {row.age_categories?.category_name || 'Unknown'}
-        </Badge>
-      ),
-      width: "150px"
+      width: "180px" // Increased width slightly to accommodate horizontal layout
     },
     {
       header: "Guardian",
       cell: (row) => {
         const primaryGuardian = getPrimaryGuardian(row.child_guardian);
         return primaryGuardian ? (
-          <div className="text-gray-900">
-            {primaryGuardian.first_name} {primaryGuardian.last_name}
-          </div>
-        ) : 'None';
-      },
-      width: "200px"
-    },
-    {
-      header: "Contact",
-      cell: (row) => {
-        const primaryGuardian = getPrimaryGuardian(row.child_guardian);
-        return primaryGuardian ? (
-          <div className="text-gray-600">
-            {primaryGuardian.phone_number || primaryGuardian.email || 'No contact'}
+          <div>
+            <div className="text-gray-900 truncate max-w-[150px]">
+              {primaryGuardian.first_name} {primaryGuardian.last_name}
+            </div>
+            <div className="text-gray-600 truncate max-w-[150px]">
+              {primaryGuardian.phone_number || primaryGuardian.email || 'No contact'}
+            </div>
           </div>
         ) : 'N/A';
       },
-      width: "180px"
+      width: "150px" // Combined guardian and contact
     },
     {
       header: "Status",
@@ -203,7 +209,7 @@ const ChildrenPage = () => {
           {row.is_active ? 'Active' : 'Inactive'}
         </Badge>
       ),
-      width: "120px"
+      width: "100px" // Slightly reduced
     },
     {
       header: "Actions",
@@ -238,7 +244,7 @@ const ChildrenPage = () => {
           />
         </div>
       ),
-      width: "120px"
+      width: "100px" // Slightly reduced
     }
   ];
 
@@ -378,6 +384,12 @@ const ChildrenPage = () => {
                   <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
                 </svg>
               }
+              endIcon={isSearching ? (
+                <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" />
+                  <path className="opacity-75" fillRule="evenodd" d="M14.243 4.757a6 6 0 10-8.486 8.486A8.962 8.962 0 0112 3a8.962 8.962 0 018.486 6.243 6 6 0 01-8.486-8.486z" clipRule="evenodd" />
+                </svg>
+              ) : null}
               fullWidth
             />
           </div>
@@ -395,16 +407,18 @@ const ChildrenPage = () => {
           </Button>
         </div>
 
-        <Table
-          data={children}
-          columns={columns}
-          isLoading={loading}
-          noDataMessage="No children found"
-          highlightOnHover={true}
-          variant="primary"
-          stickyHeader={true}
-          onRowClick={(row) => handleViewChild(row)}
-        />
+        <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+          <Table
+            data={children}
+            columns={columns}
+            isLoading={loading}
+            noDataMessage="No children found"
+            highlightOnHover={true}
+            variant="primary"
+            stickyHeader={true}
+            onRowClick={(row) => handleViewChild(row)}
+          />
+        </div>
         
         {totalPages > 1 && renderPagination()}
       </Card>

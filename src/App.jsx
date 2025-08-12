@@ -90,7 +90,7 @@ const MainLayoutContent = () => {
         <div className="h-20"></div>
         
         {/* Main content with padding */} 
-        <main className="flex-1 p-4 overflow-y-auto sm:p-6 lg:p-8 relative">
+        <main className="flex-1 p-4 overflow-auto sm:p-6 lg:p-8 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname + location.search}

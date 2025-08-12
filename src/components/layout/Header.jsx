@@ -351,7 +351,7 @@ const Header = () => {
                     </div>
                     
                     {/* Menu items */}
-                    <div className="py-2">                    
+                    <div className='my-2'>                    
                       <hr className="my-2 border-nextgen-blue/10" />
                       
                       <button

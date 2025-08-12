@@ -233,7 +233,7 @@ button:focus-visible {
 
   /* Layout components */
   .page-container {
-    @apply w-full h-full;
+    @apply w-full h-full max-w-full overflow-hidden;
   }
 
   .content-card {

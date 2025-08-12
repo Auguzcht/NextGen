@@ -159,56 +159,61 @@ const Table = ({
   };
 
   return (
-    <div className="overflow-x-auto shadow-sm rounded-lg">
-      <table className={tableClasses} {...props}>
-        <thead className={`${stickyHeader ? 'sticky top-0' : ''}`}>
-          <tr>
-            {columns.map((column, index) => (
-              <th
-                key={`header-${index}`}
-                scope="col"
-                className={`${headerClasses} ${column.className || ''}`}
-                style={column.width ? { width: column.width } : {}}
-              >
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        {isLoading ? (
-          renderSkeleton()
-        ) : data.length === 0 ? (
-          renderNoData()
-        ) : (
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data.map((row, rowIndex) => (
-              <motion.tr
-                key={`row-${row.id || rowIndex}`}
-                className={`
-                  ${selectedVariant.row}
-                  ${stripedRows && rowIndex % 2 ? 'bg-gray-50' : ''}
-                  ${onRowClick ? 'cursor-pointer' : ''}
-                `}
-                onClick={() => onRowClick && onRowClick(row)}
-                initial="initial"
-                whileHover={highlightOnHover ? "hover" : "initial"}
-                variants={rowVariants}
-                transition={{ duration: 0.2 }}
-              >
-                {columns.map((column, colIndex) => (
-                  <td
-                    key={`cell-${rowIndex}-${colIndex}`}
-                    className={`whitespace-nowrap ${selectedSize.cell} ${selectedVariant.cell} ${column.cellClassName || ''}`}
+    // Enhanced responsive container with proper width constraints
+    <div className="overflow-x-auto shadow-sm rounded-lg w-full">
+      <div className="inline-block min-w-full align-middle">
+        <div className="overflow-hidden">
+          <table className={tableClasses} {...props}>
+            <thead className={`${stickyHeader ? 'sticky top-0' : ''}`}>
+              <tr>
+                {columns.map((column, index) => (
+                  <th
+                    key={`header-${index}`}
+                    scope="col"
+                    className={`${headerClasses} ${column.className || ''}`}
+                    style={column.width ? { width: column.width } : {}}
                   >
-                    {column.cell ? column.cell(row) : getCellValue(row, column.accessor)}
-                  </td>
+                    {column.header}
+                  </th>
                 ))}
-              </motion.tr>
-            ))}
-          </tbody>
-        )}
-      </table>
+              </tr>
+            </thead>
+
+            {isLoading ? (
+              renderSkeleton()
+            ) : data.length === 0 ? (
+              renderNoData()
+            ) : (
+              <tbody className="bg-white divide-y divide-gray-200">
+                {data.map((row, rowIndex) => (
+                  <motion.tr
+                    key={`row-${row.id || rowIndex}`}
+                    className={`
+                      ${selectedVariant.row}
+                      ${stripedRows && rowIndex % 2 ? 'bg-gray-50' : ''}
+                      ${onRowClick ? 'cursor-pointer' : ''}
+                    `}
+                    onClick={() => onRowClick && onRowClick(row)}
+                    initial="initial"
+                    whileHover={highlightOnHover ? "hover" : "initial"}
+                    variants={rowVariants}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {columns.map((column, colIndex) => (
+                      <td
+                        key={`cell-${rowIndex}-${colIndex}`}
+                        className={`whitespace-nowrap ${selectedSize.cell} ${selectedVariant.cell} ${column.cellClassName || ''}`}
+                      >
+                        {column.cell ? column.cell(row) : getCellValue(row, column.accessor)}
+                      </td>
+                    ))}
+                  </motion.tr>
+                ))}
+              </tbody>
+            )}
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
