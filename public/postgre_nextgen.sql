@@ -404,20 +404,21 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION check_in_child(
     p_child_id INT,
     p_service_id INT,
-    p_checked_in_by VARCHAR(50)
+    p_checked_in_by VARCHAR(50),
+    p_timezone VARCHAR(50) DEFAULT 'UTC'  -- Add timezone parameter
 ) RETURNS TABLE (
     success BOOLEAN,
-    message VARCHAR(255)  -- Changed from TEXT to VARCHAR(255) to match expected type
+    message VARCHAR(255)
 ) AS $$
 DECLARE
     today_date DATE;
-    current_time_val TIME; 
+    current_time_val TIMESTAMPTZ; 
     child_exists INT;
     service_exists INT;
     already_checked_in INT;
 BEGIN
     today_date := CURRENT_DATE;
-    current_time_val := CURRENT_TIME;
+    current_time_val := CURRENT_TIMESTAMP;  -- Use timestamp with timezone
     
     -- Validate child exists
     SELECT COUNT(*) INTO child_exists FROM children WHERE child_id = p_child_id AND is_active = TRUE;

@@ -105,6 +105,7 @@ const Input = ({
           `}
         >
           {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
       
@@ -122,14 +123,19 @@ const Input = ({
             id={inputId}
             disabled={disabled}
             className={`
-              block w-full h-[42px] rounded-md shadow-sm transition-colors duration-200
-              border-gray-300 focus:border-nextgen-blue focus:ring-nextgen-blue
+              block border rounded-md shadow-sm transition-colors duration-200
+              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
               disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
               text-gray-900 bg-white
-              ${error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : ''}
               ${startIcon ? 'pl-10' : ''}
               ${endIcon ? 'pr-10' : ''}
+              ${variants[variant] || variants.default}
+              ${sizes[size] || sizes.md}
+              ${statusClasses}
               ${fullWidth ? 'w-full' : 'w-auto'}
+              ${hasValue ? 'bg-white' : ''}
+              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+              ${className}
             `}
             onChange={handleChange}
             onFocus={handleFocus}
@@ -158,6 +164,7 @@ const Input = ({
               ${fullWidth ? 'w-full' : 'w-auto'}
               ${hasValue ? 'bg-white' : ''}
               ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+              ${className}
             `}
             onChange={handleChange}
             onFocus={handleFocus}
@@ -182,6 +189,7 @@ const Input = ({
               ${fullWidth ? 'w-full' : 'w-auto'}
               ${hasValue ? 'bg-white' : ''}
               ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+              ${className}
             `}
             onChange={handleChange}
             onFocus={handleFocus}

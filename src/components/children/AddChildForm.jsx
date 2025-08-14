@@ -49,7 +49,18 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     const cachedDraft = localStorage.getItem('nextgen_child_form_draft');
     if (cachedDraft && !isEdit) {
       try {
-        return JSON.parse(cachedDraft);
+        const parsedDraft = JSON.parse(cachedDraft);
+        
+        // Only set the draft flag to true if there's actual content in the draft
+        // and it's not an empty form
+        const hasContent = Object.values(parsedDraft).some(val => 
+          typeof val === 'string' ? val.trim() !== '' : val !== null
+        );
+        
+        if (hasContent) {
+          setIsRestoredDraft(true);
+          return parsedDraft;
+        }
       } catch (e) {
         console.error('Error parsing cached form data:', e);
       }
@@ -88,13 +99,19 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     return '';
   });
   const [loading, setLoading] = useState(false);
+  // Add a state to track if this is a restored draft
+  const [isRestoredDraft, setIsRestoredDraft] = useState(false);
   
   // Save form data to localStorage when it changes (only for new entries)
   useEffect(() => {
     if (!isEdit) {
-      localStorage.setItem('nextgen_child_form_draft', JSON.stringify(formData));
+      // Don't update localStorage if this is the first time the form is being filled
+      // (only update it for actual changes after initial render)
+      if (!isRestoredDraft || formHasData()) {
+        localStorage.setItem('nextgen_child_form_draft', JSON.stringify(formData));
+      }
     }
-  }, [formData, isEdit]);
+  }, [formData, isEdit, isRestoredDraft]);
   
   // Save image data to localStorage when it changes (only for new entries)
   useEffect(() => {
@@ -527,7 +544,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         </div>
 
         {/* Show saved draft indicator */}
-        {!isEdit && formHasData() && !isFormEmpty() && (
+        {!isEdit && isRestoredDraft && (
           <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-6 mt-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
@@ -543,7 +560,10 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
               <div className="ml-auto pl-3">
                 <div className="-mx-1.5 -my-1.5">
                   <button
-                    onClick={clearFormCache}
+                    onClick={() => {
+                      clearFormCache();
+                      setIsRestoredDraft(false);
+                    }}
                     className="inline-flex bg-green-50 rounded-md p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                   >
                     <span className="sr-only">Dismiss</span>

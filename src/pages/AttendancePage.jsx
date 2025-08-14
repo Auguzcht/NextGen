@@ -1,114 +1,165 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { Card, Button, Table, Input, Badge } from '../components/ui';
 import { motion } from 'framer-motion';
 
 const AttendancePage = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
-  const [attendanceList, setAttendanceList] = useState([]);
+  const [checkedInList, setCheckedInList] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [error, setError] = useState(null);
+  const [checkInSuccess, setCheckInSuccess] = useState(false);
 
   // Fetch services on mount
   useEffect(() => {
     fetchServices();
   }, []);
 
-  // Fetch attendance when service or date changes
+  // Fetch checked-in children when service or date changes
   useEffect(() => {
-    if (selectedService) {
-      fetchAttendance();
+    if (selectedService && selectedDate) {
+      fetchCheckedInChildren();
     }
-  }, [selectedService, selectedDate]);
+  }, [selectedService, selectedDate, checkInSuccess]);
 
-  // Search effect
+  // Debounce search query
   useEffect(() => {
-    if (searchQuery.trim() && selectedService) {
-      const timer = setTimeout(() => {
-        searchChildren();
-      }, 300);
-      return () => clearTimeout(timer);
+    setSearching(!!searchQuery);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setSearching(false);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Use debounced search query for fetching
+  useEffect(() => {
+    if (debouncedSearchQuery && selectedService) {
+      searchChildren();
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery, selectedService]);
+  }, [debouncedSearchQuery, selectedService, selectedDate]);
+
+  // Cache fetched data
+  const fetchWithCache = useCallback(async (key, fetchFn) => {
+    const cacheKey = `nextgen_${key}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    const cachedTime = sessionStorage.getItem(`${cacheKey}_time`);
+    
+    // Use cache if it's less than 5 minutes old
+    if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime)) < 300000) {
+      return JSON.parse(cachedData);
+    }
+    
+    // Otherwise fetch fresh data
+    const data = await fetchFn();
+    sessionStorage.setItem(cacheKey, JSON.stringify(data));
+    sessionStorage.setItem(`${cacheKey}_time`, Date.now().toString());
+    return data;
+  }, []);
 
   const fetchServices = async () => {
     try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .order('service_name');
+      const fetchServicesFn = async () => {
+        const { data, error } = await supabase
+          .from('services')
+          .select('*')
+          .order('service_name');
 
-      if (error) throw error;
-      setServices(data || []);
+        if (error) throw error;
+        return data || [];
+      };
+
+      const data = await fetchWithCache('services', fetchServicesFn);
+      setServices(data);
     } catch (error) {
       console.error('Error fetching services:', error);
       setError('Failed to load services');
     }
   };
 
-  // Update the fetchAttendance function to get all children and their current attendance status
-  const fetchAttendance = async () => {
+  // Fetch only already checked-in children for this service/date
+  const fetchCheckedInChildren = async () => {
+    if (!selectedService || !selectedDate) return;
+    
     setLoading(true);
     try {
-      // Get all active children
-      const { data: childrenData, error: childrenError } = await supabase
-        .from('children')
+      const { data, error } = await supabase
+        .from('attendance')
         .select(`
-          child_id,
-          formal_id,
-          first_name,
-          last_name,
-          gender,
-          birthdate,
-          photo_url,
-          age_category_id,
-          age_categories (category_name)
+          *,
+          children (
+            child_id,
+            formal_id,
+            first_name,
+            last_name,
+            birthdate,
+            photo_url,
+            age_categories (category_name)
+          ),
+          services (
+            service_name,
+            day_of_week
+          )
         `)
-        .eq('is_active', true)
-        .order('first_name');
+        .eq('service_id', selectedService)
+        .eq('attendance_date', selectedDate);
 
-      if (childrenError) throw childrenError;
-
-      // Get attendance records only if service and date are selected
-      let attendanceData = [];
-      if (selectedService && selectedDate) {
-        const { data, error: attendanceError } = await supabase
-          .from('attendance')
-          .select('*')
-          .eq('service_id', selectedService)
-          .eq('attendance_date', selectedDate);
-
-        if (attendanceError) throw attendanceError;
-        attendanceData = data || [];
-      }
-
-      // Transform children data with attendance status
-      const transformedData = (childrenData || []).map(child => ({
-        children: child,
-        child_id: child.child_id,
-        ...attendanceData?.find(a => a.child_id === child.child_id)
-      }));
-
-      setAttendanceList(transformedData);
+      if (error) throw error;
+      setCheckedInList(data || []);
     } catch (error) {
-      console.error('Error fetching children:', error);
-      setError('Failed to load children list');
+      console.error('Error fetching checked-in children:', error);
+      setError('Failed to load attendance records');
     } finally {
       setLoading(false);
     }
   };
 
-  // Update handleCheckIn function
+  // Search for children to check in
+  const searchChildren = async () => {
+    if (!debouncedSearchQuery.trim() || !selectedService) return;
+    
+    setSearching(true);
+    try {
+      // First check if any matching children are already checked in
+      const checkedInIds = checkedInList.map(item => item.children?.child_id);
+      
+      const { data, error } = await supabase
+        .from('children')
+        .select(`
+          *,
+          age_categories (category_name)
+        `)
+        .or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`)
+        .eq('is_active', true)
+        .limit(5); // Limit to 5 results for better UX
+
+      if (error) throw error;
+      
+      // Filter out already checked-in children
+      const filteredResults = (data || []).filter(
+        child => !checkedInIds.includes(child.child_id)
+      );
+      
+      setSearchResults(filteredResults);
+    } catch (error) {
+      console.error('Error searching children:', error);
+      setError('Failed to search children');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Handle checking in a child
   const handleCheckIn = async (childId) => {
     if (!selectedService || !selectedDate) {
       setError('Please select a service and date first');
@@ -119,51 +170,86 @@ const AttendancePage = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const staffEmail = session?.user?.email || 'Unknown Staff';
       
-      const { data, error } = await supabase.rpc('check_in_child', {
-        p_child_id: childId,
-        p_service_id: selectedService,
-        p_checked_in_by: staffEmail
-      });
-
-      if (error) throw error;
-
-      if (data && data[0].success) {
-        // Only update the specific child's attendance status
-        const updatedList = attendanceList.map(item => {
-          if (item.child_id === childId) {
-            return {
-              ...item,
-              attendance_id: data[0].attendance_id,
-              check_in_time: new Date().toTimeString().split(' ')[0],
-              checked_in_by: staffEmail
-            };
-          }
-          return item;
-        });
-        setAttendanceList(updatedList);
+      // Get current local time
+      const now = new Date();
+      const localTime = now.toTimeString().split(' ')[0]; // Format: "HH:MM:SS"
+      
+      // First check if child is already checked in today
+      const { data: existingCheckIn, error: checkError } = await supabase
+        .from('attendance')
+        .select('attendance_id')
+        .eq('child_id', childId)
+        .eq('service_id', selectedService)
+        .eq('attendance_date', selectedDate)
+        .maybeSingle();
+        
+      if (checkError) throw checkError;
+      
+      let result;
+      
+      if (existingCheckIn) {
+        // Update existing record
+        result = await supabase
+          .from('attendance')
+          .update({
+            check_in_time: localTime,
+            checked_in_by: staffEmail
+          })
+          .eq('attendance_id', existingCheckIn.attendance_id);
+      } else {
+        // Create new attendance record
+        result = await supabase
+          .from('attendance')
+          .insert({
+            child_id: childId,
+            service_id: selectedService,
+            attendance_date: selectedDate,
+            check_in_time: localTime,
+            checked_in_by: staffEmail
+          });
       }
+      
+      if (result.error) throw result.error;
+      
+      // Reset checkInSuccess to force refresh
+      setCheckInSuccess(prev => !prev);
+      
+      // Clear search results and query
+      setSearchResults([]);
+      setSearchQuery('');
+      
+      // Show success feedback
+      setError(null);
     } catch (error) {
       console.error('Error checking in child:', error);
       setError(`Failed to check in child: ${error.message}`);
     }
   };
 
-  // Update handleCheckOut function
+  // Handle checking out a child
   const handleCheckOut = async (attendanceId) => {
     if (!attendanceId) return;
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const staffEmail = session?.user?.email || 'Unknown Staff';
+      
+      // Get current local time
+      const now = new Date();
+      const localTime = now.toTimeString().split(' ')[0]; // Format: "HH:MM:SS"
+      
       const { data, error } = await supabase
         .from('attendance')
         .update({ 
-          check_out_time: new Date().toTimeString().split(' ')[0] 
+          check_out_time: localTime,
+          checked_out_by: staffEmail
         })
         .eq('attendance_id', attendanceId);
 
       if (error) throw error;
       
-      // Refresh attendance list
-      await fetchAttendance();
+      // Reset checkInSuccess to force refresh of checked-in list
+      setCheckInSuccess(prev => !prev);
     } catch (error) {
       console.error('Error checking out child:', error);
       setError(`Failed to check out child: ${error.message}`);
@@ -174,19 +260,32 @@ const AttendancePage = () => {
     if (!timeString) return 'N/A';
     
     try {
-      // Extract hours and minutes
-      const [hours, minutes] = timeString.split(':');
-      const date = new Date();
-      date.setHours(parseInt(hours, 10));
-      date.setMinutes(parseInt(minutes, 10));
+      // For a time string like "09:00:00"
+      const [hours, minutes, seconds] = timeString.split(':').map(Number);
       
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // Create a date object using the current date
+      const date = new Date();
+      
+      // Set the time components
+      date.setHours(hours);
+      date.setMinutes(minutes);
+      date.setSeconds(seconds || 0);
+      
+      // Format to local time with AM/PM
+      return date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true // Ensures AM/PM display
+      });
     } catch (e) {
+      console.error('Error formatting time:', e);
       return timeString;
     }
   };
 
   const calculateAge = (birthdate) => {
+    if (!birthdate) return 'N/A';
+    
     const today = new Date();
     const birth = new Date(birthdate);
     let age = today.getFullYear() - birth.getFullYear();
@@ -199,164 +298,161 @@ const AttendancePage = () => {
     return age;
   };
   
-  // Define table columns for attendance records
-  const attendanceColumns = [
+  // Search results component
+  const SearchResultsList = () => {
+    if (searchResults.length === 0) {
+      // If actively searching but no results found, show "No results" message
+      if (debouncedSearchQuery && !searching) {
+        return (
+          <div className="mt-4 bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-center">
+            <p className="text-gray-500">No matching children found</p>
+          </div>
+        );
+      }
+      return null;
+    }
+    
+    return (
+      <div className="mt-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm max-h-60 overflow-y-auto">
+        <h4 className="text-sm font-medium text-gray-600 mb-2">Search Results</h4>
+        <div className="space-y-2">
+          {searchResults.map(child => (
+            <div key={child.child_id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-md">
+              <div className="flex items-center gap-3">
+                {child.photo_url ? (
+                  <img
+                    src={child.photo_url}
+                    alt={`${child.first_name} ${child.last_name}`}
+                    className="h-8 w-8 rounded-full object-cover"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+                    }}
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
+                    <span className="text-nextgen-blue-dark font-medium text-xs">
+                      {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <div className="font-medium text-gray-900">
+                    {child.first_name} {child.last_name}
+                  </div>
+                  <div className="text-xs text-gray-500 flex items-center gap-1">
+                    <span>{calculateAge(child.birthdate)} yrs</span>
+                    {child.age_categories?.category_name && (
+                      <Badge variant="primary" size="xs">
+                        {child.age_categories?.category_name}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={() => handleCheckIn(child.child_id)}
+              >
+                Check In
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  
+  // Define table columns for currently checked-in children
+  const checkedInColumns = [
     {
       header: "ID",
-      accessor: row => row.children.formal_id || 'N/A',
+      accessor: row => row.children?.formal_id || 'N/A',
       cellClassName: "font-medium text-gray-900",
       width: "100px"
     },
     {
-      header: "Photo & Name",
+      header: "Name",
       cell: (row) => (
         <div className="flex items-center gap-3">
-          {row.children.photo_url ? (
+          {row.children?.photo_url ? (
             <img
-              src={row.children.photo_url}
-              alt={`${row.children.first_name} ${row.children.last_name}`}
+              src={row.children?.photo_url}
+              alt={`${row.children?.first_name} ${row.children?.last_name}`}
               className="h-10 w-10 rounded-full object-cover"
+              loading="lazy"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+              }}
             />
           ) : (
             <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
               <span className="text-nextgen-blue-dark font-medium text-sm">
-                {row.children.first_name?.charAt(0)}{row.children.last_name?.charAt(0)}
+                {row.children?.first_name?.charAt(0)}{row.children?.last_name?.charAt(0)}
               </span>
             </div>
           )}
           <div className="font-medium text-gray-900">
-            {row.children.first_name} {row.children.last_name}
+            {row.children?.first_name} {row.children?.last_name}
           </div>
         </div>
       ),
-      width: "300px"
+      width: "250px"
     },
     {
       header: "Age / Group",
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <span className="text-gray-900">{calculateAge(row.children.birthdate)} yrs</span>
-          {row.children.age_categories?.category_name && (
+          <span className="text-gray-900">{calculateAge(row.children?.birthdate)} yrs</span>
+          {row.children?.age_categories?.category_name && (
             <Badge variant="primary" size="sm">
-              {row.children.age_categories?.category_name}
+              {row.children?.age_categories?.category_name}
             </Badge>
           )}
         </div>
       ),
-      width: "200px"
+      width: "180px"
     },
     {
       header: "Check In",
-      cell: (row) => {
-        const attendance = attendanceList.find(a => 
-          a.child_id === row.children.child_id && !a.check_out_time
-        );
-        return attendance ? (
-          <div className="text-gray-900">
-            <div>{formatTime(attendance.check_in_time)}</div>
-            <div className="text-xs text-gray-500">by {attendance.checked_in_by || 'Unknown'}</div>
-          </div>
-        ) : (
-          <span className="text-gray-500">Not checked in</span>
-        );
-      },
+      cell: (row) => (
+        <div className="text-gray-900">
+          <div>{formatTime(row.check_in_time)}</div>
+          <div className="text-xs text-gray-500">by {row.checked_in_by || 'Unknown'}</div>
+        </div>
+      ),
       width: "150px"
     },
     {
       header: "Check Out",
-      cell: (row) => {
-        const attendance = attendanceList.find(a => 
-          a.child_id === row.children.child_id && a.check_out_time
-        );
-        return attendance?.check_out_time ? (
-          <div className="text-gray-900">{formatTime(attendance.check_out_time)}</div>
-        ) : (
-          <span className="text-gray-500">-</span>
-        );
-      },
+      cell: (row) => row.check_out_time ? (
+        <div className="text-gray-900">
+          <div>{formatTime(row.check_out_time)}</div>
+          <div className="text-xs text-gray-500">by {row.checked_out_by || 'Unknown'}</div>
+        </div>
+      ) : (
+        <span className="text-gray-500">-</span>
+      ),
       width: "150px"
     },
     {
       header: "Actions",
-      cell: (row) => {
-        // Get current attendance record for this child
-        const attendance = attendanceList.find(a => 
-          a.child_id === row.children.child_id && !a.check_out_time
-        );
-
-        return (
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              size="xs"
-              onClick={() => handleCheckIn(row.children.child_id)}
-              disabled={attendance} // Disable if already checked in
-            >
-              Check In
-            </Button>
-            <Button
-              variant="danger"
-              size="xs"
-              onClick={() => handleCheckOut(attendance?.attendance_id)}
-              disabled={!attendance} // Disable if not checked in
-            >
-              Check Out
-            </Button>
-          </div>
-        );
-      },
-      width: "150px"
+      cell: (row) => (
+        <Button
+          variant="danger"
+          size="xs"
+          onClick={() => handleCheckOut(row.attendance_id)}
+          disabled={!!row.check_out_time} // Disable if already checked out
+        >
+          Check Out
+        </Button>
+      ),
+      width: "100px"
     }
   ];
-
-  // Update the searchChildren function
-  const searchChildren = async () => {
-    if (!searchQuery.trim() || !selectedService) return;
-    
-    setSearching(true);
-    try {
-      const { data: childrenData, error: childrenError } = await supabase
-        .from('children')
-        .select(`
-          *,
-          age_categories (category_name)
-        `)
-        .or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,formal_id.ilike.%${searchQuery}%`)
-        .eq('is_active', true)
-        .limit(10);
-
-      if (childrenError) throw childrenError;
-
-      // Get attendance records for the selected service and date
-      const { data: attendanceData, error: attendanceError } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('service_id', selectedService)
-        .eq('attendance_date', selectedDate);
-
-      if (attendanceError) throw attendanceError;
-
-      // Transform children data to match attendance structure
-      const transformedData = (childrenData || []).map(child => ({
-        children: child,
-        child_id: child.child_id,
-        ...attendanceData?.find(a => a.child_id === child.child_id)
-      }));
-
-      // Update search results instead of attendance list
-      setSearchResults(transformedData);
-      
-      // If no search query, refresh the full attendance list
-      if (!searchQuery.trim()) {
-        await fetchAttendance();
-      }
-    } catch (error) {
-      console.error('Error searching children:', error);
-      setError('Failed to search children');
-    } finally {
-      setSearching(false);
-    }
-  };
 
   return (
     <div className="page-container">
@@ -378,8 +474,19 @@ const AttendancePage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          {/* Your existing check-in content */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md">
+              <div className="flex">
+                <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </div>
+            </div>
+          )}
+          
           <div className="space-y-6">
+            {/* Check-In Form */}
             <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm space-y-4">
               <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
                 Check In
@@ -392,19 +499,20 @@ const AttendancePage = () => {
                   <label htmlFor="service-select" className="block text-sm font-medium text-gray-700 mb-1">
                     Service
                   </label>
-                  <select
+                  <Input
+                    type="select"
                     id="service-select"
                     value={selectedService || ''}
                     onChange={(e) => setSelectedService(e.target.value)}
-                    className="nextgen-form-select"
-                  >
-                    <option value="">Select Service</option>
-                    {services.map((service) => (
-                      <option key={service.service_id} value={service.service_id}>
-                        {service.service_name} ({service.day_of_week})
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'Select Service' },
+                      ...services.map(service => ({
+                        value: service.service_id,
+                        label: `${service.service_name} (${service.day_of_week})`
+                      }))
+                    ]}
+                    className="h-[42px]"
+                  />
                 </div>
 
                 {/* Date Input */}
@@ -426,48 +534,62 @@ const AttendancePage = () => {
                   <label htmlFor="search-input" className="block text-sm font-medium text-gray-700 mb-1">
                     Search Child
                   </label>
-                  <div className="relative">
-                    <input
-                      id="search-input"
-                      type="text"
-                      placeholder="Search by name or ID..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      disabled={!selectedService}
-                      className="nextgen-form-input"
-                    />
-                    <div className="absolute right-3 top-[11px] text-gray-400">
-                      {searching ? (
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                      ) : (
+                  <Input
+                    type="text"
+                    id="search-input"
+                    placeholder="Search by name or ID..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    disabled={!selectedService}
+                    className="h-[42px]"
+                    startIcon={
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                      </svg>
+                    }
+                    endIcon={searching ? (
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : searchQuery ? (
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                         </svg>
-                      )}
-                    </div>
-                  </div>
+                      </button>
+                    ) : null}
+                  />
                 </div>
               </div>
+
+              {/* Search results */}
+              <SearchResultsList />
             </div>
 
-            {/* Attendance List with proper padding matching ChildrenPage */}
-            <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-              <Table
-                data={searchQuery.trim() ? searchResults : attendanceList}
-                columns={attendanceColumns}
-                isLoading={loading}
-                noDataMessage="No children found"
-                highlightOnHover={true}
-                variant="primary"
-                stickyHeader={true}
-                size="md"
-                className="min-w-full divide-y divide-gray-200"
-                headerClassName="bg-gray-50"
-                bodyClassName="bg-white divide-y divide-gray-200"
-              />
+            {/* Currently Checked In List */}
+            <div>
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4 flex justify-between">
+                <span>Currently Checked In</span>
+                <span className="text-sm text-gray-500 mt-1">
+                  {checkedInList.length} {checkedInList.length === 1 ? 'Child' : 'Children'}
+                </span>
+              </h3>
+              <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+                <Table
+                  data={checkedInList}
+                  columns={checkedInColumns}
+                  isLoading={loading}
+                  noDataMessage="No children checked in for this service"
+                  highlightOnHover={true}
+                  variant="primary"
+                  stickyHeader={true}
+                  size="md"
+                />
+              </div>
             </div>
           </div>
         </motion.div>
