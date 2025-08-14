@@ -30,8 +30,14 @@ const FileUpload = ({
 
     setUploading(true);
     try {
+      // Add cache control metadata
       const storageRef = ref(storage, `${category}/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
+      const metadata = {
+        cacheControl: 'public,max-age=31536000', // Cache for 1 year
+        contentType: file.type
+      };
+      
+      const snapshot = await uploadBytes(storageRef, file, metadata);
       const url = await getDownloadURL(snapshot.ref);
       
       setPreview(url);

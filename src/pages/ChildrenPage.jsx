@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import supabase from '../services/supabase.js';
 import AddChildForm from '../components/children/AddChildForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
@@ -21,6 +21,8 @@ const ChildrenPage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
+  const CACHE_DURATION = 60000; // 1 minute in milliseconds
 
   // Debounce search query
   useEffect(() => {
@@ -45,7 +47,16 @@ const ChildrenPage = () => {
     fetchChildren();
   }, [currentPage, debouncedSearchQuery]);
 
-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFresh = false) => {
+    // Check if we can use cached data
+    const now = Date.now();
+    if (!forceFresh && 
+        children.length > 0 && 
+        now - lastFetchTime < CACHE_DURATION && 
+        !debouncedSearchQuery) {
+      return; // Use cached data
+    }
+    
     setLoading(true);
     try {
       let query = supabase
@@ -93,6 +104,7 @@ const ChildrenPage = () => {
         throw error;
       }
       setChildren(data || []);
+      setLastFetchTime(Date.now());
     } catch (error) {
       console.error('Error fetching children:', error);
     } finally {
@@ -129,15 +141,16 @@ const ChildrenPage = () => {
     return age;
   };
 
-  const getPrimaryGuardian = (childGuardians) => {
+  // For expensive calculations like getting guardian info
+  const getPrimaryGuardian = useCallback((childGuardians) => {
     if (!childGuardians || childGuardians.length === 0) return null;
     
     const primaryGuardian = childGuardians.find(cg => cg.is_primary) || childGuardians[0];
     return primaryGuardian.guardians;
-  };
+  }, []);
   
-  // Table columns configuration - with responsive display
-  const columns = [
+  // For table columns that don't need to be recreated on every render
+  const columns = useMemo(() => [
     {
       header: "ID",
       accessor: "formal_id",
@@ -155,6 +168,11 @@ const ChildrenPage = () => {
               src={row.photo_url}
               alt={`${row.first_name} ${row.last_name}`}
               className="h-10 w-10 rounded-full object-cover"
+              loading="lazy" // Add lazy loading
+              onError={(e) => {
+                e.target.onerror = null; // Prevent infinite loop
+                e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`; // Fallback to default image
+              }}
             />
           ) : (
             <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
@@ -246,7 +264,7 @@ const ChildrenPage = () => {
       ),
       width: "100px" // Slightly reduced
     }
-  ];
+  ], [calculateAge, getPrimaryGuardian]); // dependencies
 
   // Pagination buttons
   const renderPagination = () => {

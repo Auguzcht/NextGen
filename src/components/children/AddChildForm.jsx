@@ -38,25 +38,73 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
   };
 
   const [ageCategories, setAgeCategories] = useState([]);
-  // Update initial form data
-  const [formData, setFormData] = useState(mapInitialData(initialData) || {
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    birthdate: '',
-    gender: '',
-    guardianFirstName: '',
-    guardianLastName: '',
-    guardianPhone: '',
-    guardianEmail: '',
-    guardianRelationship: 'Parent',
-    notes: ''
+  // Initialize form data with either initialData, cached data, or defaults
+  const [formData, setFormData] = useState(() => {
+    // If editing, use initialData
+    if (isEdit && initialData) {
+      return mapInitialData(initialData);
+    }
+    
+    // If not editing, check for cached draft
+    const cachedDraft = localStorage.getItem('nextgen_child_form_draft');
+    if (cachedDraft && !isEdit) {
+      try {
+        return JSON.parse(cachedDraft);
+      } catch (e) {
+        console.error('Error parsing cached form data:', e);
+      }
+    }
+    
+    // Default empty form
+    return {
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      birthdate: '',
+      gender: '',
+      guardianFirstName: '',
+      guardianLastName: '',
+      guardianPhone: '',
+      guardianEmail: '',
+      guardianRelationship: 'Parent',
+      notes: ''
+    };
   });
+  
   const [errors, setErrors] = useState({});
   const [notification, setNotification] = useState(null);
-  const [imageUrl, setImageUrl] = useState('');
-  const [imagePath, setImagePath] = useState('');
-  const [loading, setLoading] = useState(false); // Add loading state
+  const [imageUrl, setImageUrl] = useState(() => {
+    // Check if we have a cached image URL
+    if (!isEdit) {
+      return localStorage.getItem('nextgen_child_form_image_url') || '';
+    }
+    return '';
+  });
+  const [imagePath, setImagePath] = useState(() => {
+    // Check if we have a cached image path
+    if (!isEdit) {
+      return localStorage.getItem('nextgen_child_form_image_path') || '';
+    }
+    return '';
+  });
+  const [loading, setLoading] = useState(false);
+  
+  // Save form data to localStorage when it changes (only for new entries)
+  useEffect(() => {
+    if (!isEdit) {
+      localStorage.setItem('nextgen_child_form_draft', JSON.stringify(formData));
+    }
+  }, [formData, isEdit]);
+  
+  // Save image data to localStorage when it changes (only for new entries)
+  useEffect(() => {
+    if (!isEdit && imageUrl) {
+      localStorage.setItem('nextgen_child_form_image_url', imageUrl);
+    }
+    if (!isEdit && imagePath) {
+      localStorage.setItem('nextgen_child_form_image_path', imagePath);
+    }
+  }, [imageUrl, imagePath, isEdit]);
 
   useEffect(() => {
     fetchAgeCategories();
@@ -92,7 +140,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     }
   };
 
-  // Add this helper function at the top of the component
+  // Format phone number helper function
   const formatPhoneNumber = (value) => {
     if (!value) return value;
     
@@ -160,6 +208,13 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         await deleteObject(imageRef);
         setImageUrl('');
         setImagePath('');
+        
+        // Clear cached image data
+        if (!isEdit) {
+          localStorage.removeItem('nextgen_child_form_image_url');
+          localStorage.removeItem('nextgen_child_form_image_path');
+        }
+        
         setNotification({
           type: 'success',
           message: 'Photo removed successfully'
@@ -227,6 +282,79 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Clean up local storage on form close
+  const handleClose = () => {
+    if (!isEdit) {
+      // Ask user if they want to save their draft
+      if (formHasData() && !isFormEmpty()) {
+        Swal.fire({
+          title: 'Save Draft?',
+          text: 'Do you want to save your progress as a draft for later?',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Save Draft',
+          cancelButtonText: 'Discard'
+        }).then((result) => {
+          if (!result.isConfirmed) {
+            // Clear draft data
+            clearFormCache();
+          }
+          onClose();
+        });
+      } else {
+        // If form is empty, just clear and close
+        clearFormCache();
+        onClose();
+      }
+    } else {
+      // If editing, just close
+      onClose();
+    }
+  };
+
+  // Helper to check if the form has any data
+  const formHasData = () => {
+    return (
+      formData.firstName.trim() !== '' ||
+      formData.lastName.trim() !== '' ||
+      formData.middleName.trim() !== '' ||
+      formData.birthdate !== '' ||
+      formData.gender !== '' ||
+      formData.guardianFirstName.trim() !== '' ||
+      formData.guardianLastName.trim() !== '' ||
+      formData.guardianPhone.trim() !== '' ||
+      formData.guardianEmail.trim() !== '' ||
+      formData.guardianRelationship !== 'Parent' ||
+      formData.notes.trim() !== '' ||
+      imageUrl !== ''
+    );
+  };
+
+  // Helper to check if the form is completely empty
+  const isFormEmpty = () => {
+    return (
+      formData.firstName.trim() === '' &&
+      formData.lastName.trim() === '' &&
+      formData.middleName.trim() === '' &&
+      formData.birthdate === '' &&
+      formData.gender === '' &&
+      formData.guardianFirstName.trim() === '' &&
+      formData.guardianLastName.trim() === '' &&
+      formData.guardianPhone.trim() === '' &&
+      formData.guardianEmail.trim() === '' &&
+      formData.guardianRelationship === 'Parent' &&
+      formData.notes.trim() === '' &&
+      imageUrl === ''
+    );
+  };
+
+  // Helper to clear form cache
+  const clearFormCache = () => {
+    localStorage.removeItem('nextgen_child_form_draft');
+    localStorage.removeItem('nextgen_child_form_image_url');
+    localStorage.removeItem('nextgen_child_form_image_path');
   };
 
   // Update handleSubmit to handle both create and edit
@@ -330,7 +458,12 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         }
       }
 
-      // Instead of showing success alert here, just call onSuccess
+      // Clear form cache on successful submission
+      if (!isEdit) {
+        clearFormCache();
+      }
+
+      // Call onSuccess
       onSuccess();
 
       // Close form
@@ -384,7 +517,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             {isEdit ? 'Edit Child Information' : 'Register New Child'}
           </h2>
           <button 
-            onClick={onClose}
+            onClick={handleClose} // Use handleClose instead of onClose
             className="text-gray-400 hover:text-gray-500 transition-colors"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -392,6 +525,37 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             </svg>
           </button>
         </div>
+
+        {/* Show saved draft indicator */}
+        {!isEdit && formHasData() && !isFormEmpty() && (
+          <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-6 mt-4 rounded-md">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-green-700">
+                  Restored from saved draft. Continue where you left off.
+                </p>
+              </div>
+              <div className="ml-auto pl-3">
+                <div className="-mx-1.5 -my-1.5">
+                  <button
+                    onClick={clearFormCache}
+                    className="inline-flex bg-green-50 rounded-md p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    <span className="sr-only">Dismiss</span>
+                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Form Content */}
         <div className="p-6 relative">
@@ -666,7 +830,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={onClose}
+                  onClick={handleClose} // Use handleClose instead of onClose
                   disabled={loading}
                 >
                   Cancel
@@ -674,6 +838,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 <Button
                   type="submit"
                   variant="primary"
+                  onClick={handleSubmit}
                   disabled={loading}
                   className="relative"
                 >
