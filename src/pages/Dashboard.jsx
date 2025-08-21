@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -17,75 +17,128 @@ const Dashboard = () => {
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
+  const CACHE_DURATION = 60000; // 1 minute cache
+
+  // Cache fetched data with session storage
+  const fetchWithCache = useCallback(async (key, fetchFn) => {
+    const cacheKey = `nextgen_dashboard_${key}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    const cachedTime = sessionStorage.getItem(`${cacheKey}_time`);
+    
+    // Use cache if it's less than 1 minute old
+    if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime)) < CACHE_DURATION) {
+      return JSON.parse(cachedData);
+    }
+    
+    // Otherwise fetch fresh data
+    const data = await fetchFn();
+    sessionStorage.setItem(cacheKey, JSON.stringify(data));
+    sessionStorage.setItem(`${cacheKey}_time`, Date.now().toString());
+    return data;
+  }, []);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         // Get children count
-        const { count: childrenCount, error: childrenError } = await supabase
-          .from('children')
-          .select('*', { count: 'exact', head: true });
-        
-        if (childrenError) throw childrenError;
+        const fetchChildrenCount = async () => {
+          const { count, error } = await supabase
+            .from('children')
+            .select('*', { count: 'exact', head: true });
+          
+          if (error) throw error;
+          return count || 0;
+        };
         
         // Get this week's attendance
-        const today = new Date();
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
-        
-        const { data: attendanceData, error: attendanceError } = await supabase
-          .from('attendance')
-          .select('*')
-          .gte('attendance_date', startOfWeek.toISOString().split('T')[0]);
-        
-        if (attendanceError) throw attendanceError;
+        const fetchAttendanceData = async () => {
+          const today = new Date();
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+          
+          const { data, error } = await supabase
+            .from('attendance')
+            .select('*')
+            .gte('attendance_date', startOfWeek.toISOString().split('T')[0]);
+          
+          if (error) throw error;
+          return data || [];
+        };
         
         // Get this month's registrations
-        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        
-        const { data: registrationsData, error: registrationsError } = await supabase
-          .from('children')
-          .select('*')
-          .gte('registration_date', startOfMonth.toISOString().split('T')[0]);
-        
-        if (registrationsError) throw registrationsError;
+        const fetchRegistrationsData = async () => {
+          const today = new Date();
+          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+          
+          const { data, error } = await supabase
+            .from('children')
+            .select('*')
+            .gte('registration_date', startOfMonth.toISOString().split('T')[0]);
+          
+          if (error) throw error;
+          return data || [];
+        };
         
         // Get services count
-        const { count: servicesCount, error: servicesError } = await supabase
-          .from('services')
-          .select('*', { count: 'exact', head: true });
-        
-        if (servicesError) throw servicesError;
-        
-        // Fetch recent activities (latest 5 check-ins)
-        // FIXED: Using attendance_date and check_in_time for ordering instead of created_at
-        const { data: recentCheckIns, error: recentError } = await supabase
-          .from('attendance')
-          .select(`
-            *,
-            children (
-              child_id,
-              first_name,
-              last_name,
-              gender,
-              age_categories (category_name)
-            ),
-            services (service_name)
-          `)
-          .order('attendance_date', { ascending: false })
-          .order('check_in_time', { ascending: false })
-          .limit(5);
+        const fetchServicesCount = async () => {
+          const { count, error } = await supabase
+            .from('services')
+            .select('*', { count: 'exact', head: true });
           
-        if (recentError) throw recentError;
+          if (error) throw error;
+          return count || 0;
+        };
+        
+        // Fetch recent activities (latest 5 check-ins) with improved selection
+        const fetchRecentActivity = async () => {
+          const { data, error } = await supabase
+            .from('attendance')
+            .select(`
+              *,
+              children (
+                child_id,
+                first_name,
+                last_name,
+                gender,
+                photo_url,
+                age_categories (category_name)
+              ),
+              services (service_name),
+              checked_in_by
+            `)
+            .order('attendance_date', { ascending: false })
+            .order('check_in_time', { ascending: false })
+            .limit(6);
+            
+          if (error) throw error;
+          return data || [];
+        };
+        
+        // Use cached functions for all fetches
+        const [
+          childrenCount, 
+          attendanceData, 
+          registrationsData, 
+          servicesCount,
+          recentCheckIns
+        ] = await Promise.all([
+          fetchWithCache('childrenCount', fetchChildrenCount),
+          fetchWithCache('attendanceData', fetchAttendanceData),
+          fetchWithCache('registrationsData', fetchRegistrationsData),
+          fetchWithCache('servicesCount', fetchServicesCount),
+          fetchWithCache('recentActivity', fetchRecentActivity)
+        ]);
         
         setStats({
-          children: childrenCount || 0,
-          attendance: attendanceData?.length || 0,
-          registrations: registrationsData?.length || 0,
-          services: servicesCount || 0
+          children: childrenCount,
+          attendance: attendanceData.length,
+          registrations: registrationsData.length,
+          services: servicesCount
         });
         
-        setRecentActivity(recentCheckIns || []);
+        setRecentActivity(recentCheckIns);
+        setLastFetchTime(Date.now());
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setError('Failed to load dashboard data. Please try again later.');
@@ -95,7 +148,7 @@ const Dashboard = () => {
     };
     
     fetchStats();
-  }, []);
+  }, [fetchWithCache]);
   
   const handleLogout = async () => {
     try {
@@ -135,6 +188,18 @@ const Dashboard = () => {
     }
   };
 
+  // Get staff name from email
+  const getStaffNameFromEmail = (email) => {
+    if (!email) return 'Unknown';
+    // Try to get name from email (before @)
+    const namePart = email.split('@')[0];
+    // Format it with proper capitalization
+    return namePart
+      .split('.')
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
   return (
     <div className="page-container">
       {error && (
@@ -157,6 +222,7 @@ const Dashboard = () => {
         </div>
       </div>
       
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card 
           title="Children"
@@ -283,7 +349,7 @@ const Dashboard = () => {
         </Card>
       </div>
       
-      {/* Recent Activity */}
+      {/* Recent Activity - Improved Design */}
       <Card 
         title="Recent Activity"
         titleColor="text-nextgen-blue-dark"
@@ -329,29 +395,46 @@ const Dashboard = () => {
               {recentActivity.map((activity) => (
                 <motion.div 
                   key={activity.attendance_id} 
-                  className="py-4 flex items-center justify-between"
+                  className="py-4 px-3 flex items-center justify-between hover:bg-gray-50 rounded-md transition-colors"
                   whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
                 >
                   <div className="flex items-center">
-                    <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-sm">
-                      {activity.children?.first_name?.charAt(0) || '?'}
-                      {activity.children?.last_name?.charAt(0) || ''}
-                    </div>
+                    {activity.children?.photo_url ? (
+                      <img
+                        src={activity.children?.photo_url}
+                        alt={`${activity.children?.first_name} ${activity.children?.last_name}`}
+                        className="h-10 w-10 rounded-full object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+                        }}
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-sm">
+                        {activity.children?.first_name?.charAt(0) || '?'}
+                        {activity.children?.last_name?.charAt(0) || ''}
+                      </div>
+                    )}
                     <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
                         {activity.children?.first_name} {activity.children?.last_name}
+                        <Badge variant="primary" size="xs">
+                          {activity.children?.age_categories?.category_name || 'No Age Group'}
+                        </Badge>
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
                         Checked in to {activity.services?.service_name} on {formatDate(activity.attendance_date)}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    <Badge variant="primary" size="sm">
-                      {activity.children?.age_categories?.category_name || 'No Age Group'}
-                    </Badge>
-                    <span className="text-xs text-gray-400 ml-2">
+                  <div className="flex flex-col items-end text-right">
+                    <span className="text-sm font-medium text-nextgen-blue-dark">
                       {formatTime(activity.check_in_time)}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      by {getStaffNameFromEmail(activity.checked_in_by)}
                     </span>
                   </div>
                 </motion.div>
