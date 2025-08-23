@@ -326,8 +326,23 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         onClose();
       }
     } else {
-      // If editing, just close
-      onClose();
+      // If editing, show confirmation dialog like in GuardianForm
+      if (formData.firstName || formData.lastName || formData.middleName || imageUrl !== initialData?.photo_url) {
+        Swal.fire({
+          title: 'Discard Changes?',
+          text: 'Any unsaved changes will be lost.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, discard',
+          cancelButtonText: 'No, keep editing'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            onClose();
+          }
+        });
+      } else {
+        onClose();
+      }
     }
   };
 
