@@ -4,8 +4,8 @@
  * @param {Object} options - Intl.DateTimeFormat options
  * @returns {string} Formatted date string
  */
-export const formatDate = (date, options = {}) => {
-  if (!date) return 'N/A';
+export const formatDate = (dateString, options = {}) => {
+  if (!dateString) return '';
   
   const defaultOptions = {
     weekday: 'long',
@@ -14,14 +14,8 @@ export const formatDate = (date, options = {}) => {
     day: 'numeric',
     ...options
   };
-
-  try {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return new Intl.DateTimeFormat('en-US', defaultOptions).format(d);
-  } catch (e) {
-    console.error('Error formatting date:', e);
-    return String(date);
-  }
+  
+  return new Date(dateString).toLocaleDateString('en-US', defaultOptions);
 };
 
 /**
@@ -88,4 +82,37 @@ export const getRelativeDate = (days) => {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().split('T')[0];
+};
+
+/**
+ * Get the date range for the current month
+ * @returns {Object} Object with start and end dates of the month in YYYY-MM-DD format
+ */
+export const getMonthDateRange = () => {
+  const today = new Date();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  
+  return {
+    start: startOfMonth.toISOString().split('T')[0],
+    end: endOfMonth.toISOString().split('T')[0]
+  };
+};
+
+/**
+ * Get the date range for the current week
+ * @returns {Object} Object with start and end dates of the week in YYYY-MM-DD format
+ */
+export const getWeekDateRange = () => {
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay()); // Start on Sunday
+  
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6); // End on Saturday
+  
+  return {
+    start: startOfWeek.toISOString().split('T')[0],
+    end: endOfWeek.toISOString().split('T')[0]
+  };
 };
