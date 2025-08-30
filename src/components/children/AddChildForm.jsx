@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import supabase from '../../services/supabase.js';
 import { Card, Button, Input, Badge, Alert } from '../ui';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
 import FileUpload from '../common/FileUpload.jsx';
 import Swal from 'sweetalert2';
+import { debounce } from 'lodash';
 
 // Add isEdit and initialData props
 const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
@@ -101,6 +102,13 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
   const [loading, setLoading] = useState(false);
   // Add a state to track if this is a restored draft
   const [isRestoredDraft, setIsRestoredDraft] = useState(false);
+  
+  // New states for guardian search
+  const [guardianSearchQuery, setGuardianSearchQuery] = useState('');
+  const [guardianSearchResults, setGuardianSearchResults] = useState([]);
+  const [isSearchingGuardian, setIsSearchingGuardian] = useState(false);
+  const [showGuardianResults, setShowGuardianResults] = useState(false);
+  const [selectedGuardian, setSelectedGuardian] = useState(null);
   
   // Save form data to localStorage when it changes (only for new entries)
   useEffect(() => {
@@ -301,6 +309,90 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     return Object.keys(newErrors).length === 0;
   };
 
+  // Save guardian search results to localStorage
+  useEffect(() => {
+    if (!isEdit) {
+      localStorage.setItem('nextgen_child_guardian_search', JSON.stringify(guardianSearchResults));
+    }
+  }, [guardianSearchResults, isEdit]);
+
+  // Load guardian search results from localStorage
+  useEffect(() => {
+    if (!isEdit) {
+      const cachedResults = localStorage.getItem('nextgen_child_guardian_search');
+      if (cachedResults) {
+        setGuardianSearchResults(JSON.parse(cachedResults));
+      }
+    }
+  }, [isEdit]);
+
+  // Debounced search function for guardians
+  const debouncedGuardianSearch = useCallback(
+    debounce(async (query) => {
+      if (!query || query.length < 2) {
+        setGuardianSearchResults([]);
+        setIsSearchingGuardian(false);
+        return;
+      }
+
+      setIsSearchingGuardian(true);
+      try {
+        const { data, error } = await supabase
+          .from('guardians')
+          .select('*')
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+          .limit(5);
+
+        if (error) throw error;
+        setGuardianSearchResults(data || []);
+      } catch (error) {
+        console.error('Error searching guardians:', error);
+      } finally {
+        setIsSearchingGuardian(false);
+      }
+    }, 300),
+    []
+  );
+
+  // Update the search trigger effect
+  useEffect(() => {
+    if (formData.guardianFirstName.length >= 2) {
+      debouncedGuardianSearch(formData.guardianFirstName);
+      setShowGuardianResults(true);
+    } else {
+      setGuardianSearchResults([]);
+      setShowGuardianResults(false);
+    }
+  }, [formData.guardianFirstName]);
+
+  // Handler for guardian selection
+  const handleSelectGuardian = (guardian) => {
+    setSelectedGuardian(guardian);
+    setFormData(prev => ({
+      ...prev,
+      guardianFirstName: guardian.first_name,
+      guardianLastName: guardian.last_name,
+      guardianPhone: guardian.phone_number || '',
+      guardianEmail: guardian.email || '',
+      guardianRelationship: guardian.relationship || 'Parent'
+    }));
+    setGuardianSearchQuery('');
+    setShowGuardianResults(false);
+  };
+
+  // Handler to clear selected guardian
+  const handleClearSelectedGuardian = () => {
+    setSelectedGuardian(null);
+    setFormData(prev => ({
+      ...prev,
+      guardianFirstName: '',
+      guardianLastName: '',
+      guardianPhone: '',
+      guardianEmail: '',
+      guardianRelationship: 'Parent'
+    }));
+  };
+
   // Clean up local storage on form close
   const handleClose = () => {
     if (!isEdit) {
@@ -419,7 +511,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             last_name: formData.lastName.trim(),
             birthdate: formData.birthdate,
             gender: formData.gender.trim(),
-            photo_url: imageUrl || initialData.photo_url, // Remove photo_path
+            photo_url: imageUrl || initialData.photo_url,
             notes: formData.notes?.trim() || null
           })
           .eq('child_id', initialData.child_id);
@@ -434,7 +526,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             last_name: formData.guardianLastName.trim(),
             phone_number: formData.guardianPhone?.trim() || null,
             email: formData.guardianEmail?.trim() || null,
-            relationship: formData.guardianRelationship // Make sure this is included
+            relationship: formData.guardianRelationship
           })
           .eq('guardian_id', initialData.child_guardian[0].guardian_id);
 
@@ -451,41 +543,169 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
 
         if (relationshipError) throw relationshipError;
       } else {
-        // First register the child
-        const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
-          p_first_name: formData.firstName.trim(),
-          p_middle_name: formData.middleName?.trim() || null,
-          p_last_name: formData.lastName.trim(),
-          p_birthdate: formData.birthdate,
-          p_gender: formData.gender.trim(),
-          p_guardian_first_name: formData.guardianFirstName.trim(),
-          p_guardian_last_name: formData.guardianLastName.trim(),
-          p_guardian_phone: formData.guardianPhone?.trim() || null,
-          p_guardian_email: formData.guardianEmail?.trim() || null,
-          p_guardian_relationship: formData.guardianRelationship.trim(),
-          p_notes: formData.notes?.trim() || null
-        });
-
-        if (childError) {
-          throw new Error(`Registration failed: ${childError.message}`);
-        }
-
-        if (!childData || !childData[0]?.child_id) {
-          throw new Error('No child ID returned from registration');
-        }
-
-        // Update the photo URL immediately after registration if we have one
-        if (imageUrl) { // Only check for imageUrl
-          const { error: photoError } = await supabase
+        // For new child registration
+        
+        // Check if we're using a selected guardian or need to search for one
+        if (selectedGuardian) {
+          // Use the selected guardian (already linked via UI)
+          // Register child and link to existing guardian
+          const { data: childData, error: childError } = await supabase
             .from('children')
-            .update({ 
-              photo_url: imageUrl // Remove photo_path
+            .insert({
+              first_name: formData.firstName.trim(),
+              middle_name: formData.middleName?.trim() || null,
+              last_name: formData.lastName.trim(),
+              birthdate: formData.birthdate,
+              gender: formData.gender.trim(),
+              photo_url: imageUrl,
+              notes: formData.notes?.trim() || null
             })
-            .eq('child_id', childData[0].child_id);
+            .select('child_id');
 
-          if (photoError) {
-            console.error('Error updating photo:', photoError);
-            throw new Error('Failed to update child photo');
+          if (childError) throw childError;
+
+          if (!childData || !childData[0]?.child_id) {
+            throw new Error('No child ID returned from registration');
+          }
+
+          // Create child-guardian relationship
+          const { error: relationshipError } = await supabase
+            .from('child_guardian')
+            .insert({
+              child_id: childData[0].child_id,
+              guardian_id: selectedGuardian.guardian_id,
+              is_primary: true
+            });
+
+          if (relationshipError) throw relationshipError;
+        } else {
+          // Try to find an existing guardian by email and phone (to avoid duplicates)
+          let existingGuardianId = null;
+          
+          if (formData.guardianEmail || formData.guardianPhone) {
+            const { data: existingGuardians, error: searchError } = await supabase
+              .from('guardians')
+              .select('guardian_id')
+              .or(
+                `${formData.guardianEmail ? `email.eq.${formData.guardianEmail.trim()}` : ''}`+
+                `${formData.guardianEmail && formData.guardianPhone ? ',' : ''}`+
+                `${formData.guardianPhone ? `phone_number.eq.${formData.guardianPhone.trim()}` : ''}`
+              )
+              .eq('first_name', formData.guardianFirstName.trim())
+              .eq('last_name', formData.guardianLastName.trim());
+              
+            if (searchError) throw searchError;
+            
+            if (existingGuardians?.length > 0) {
+              existingGuardianId = existingGuardians[0].guardian_id;
+              
+              // Create the child record
+              const { data: childData, error: childError } = await supabase
+                .from('children')
+                .insert({
+                  first_name: formData.firstName.trim(),
+                  middle_name: formData.middleName?.trim() || null,
+                  last_name: formData.lastName.trim(),
+                  birthdate: formData.birthdate,
+                  gender: formData.gender.trim(),
+                  photo_url: imageUrl,
+                  notes: formData.notes?.trim() || null
+                })
+                .select('child_id');
+  
+              if (childError) throw childError;
+  
+              if (!childData || !childData[0]?.child_id) {
+                throw new Error('No child ID returned from registration');
+              }
+  
+              // Create child-guardian relationship with existing guardian
+              const { error: relationshipError } = await supabase
+                .from('child_guardian')
+                .insert({
+                  child_id: childData[0].child_id,
+                  guardian_id: existingGuardianId,
+                  is_primary: true
+                });
+  
+              if (relationshipError) throw relationshipError;
+            } else {
+              // No existing guardian found, use the register_new_child function
+              const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
+                p_first_name: formData.firstName.trim(),
+                p_middle_name: formData.middleName?.trim() || null,
+                p_last_name: formData.lastName.trim(),
+                p_birthdate: formData.birthdate,
+                p_gender: formData.gender.trim(),
+                p_guardian_first_name: formData.guardianFirstName.trim(),
+                p_guardian_last_name: formData.guardianLastName.trim(),
+                p_guardian_phone: formData.guardianPhone?.trim() || null,
+                p_guardian_email: formData.guardianEmail?.trim() || null,
+                p_guardian_relationship: formData.guardianRelationship.trim(),
+                p_notes: formData.notes?.trim() || null
+              });
+  
+              if (childError) {
+                throw new Error(`Registration failed: ${childError.message}`);
+              }
+  
+              if (!childData || !childData[0]?.child_id) {
+                throw new Error('No child ID returned from registration');
+              }
+  
+              // Update the photo URL immediately after registration if we have one
+              if (imageUrl) {
+                const { error: photoError } = await supabase
+                  .from('children')
+                  .update({ 
+                    photo_url: imageUrl
+                  })
+                  .eq('child_id', childData[0].child_id);
+  
+                if (photoError) {
+                  console.error('Error updating photo:', photoError);
+                  throw new Error('Failed to update child photo');
+                }
+              }
+            }
+          } else {
+            // If no email or phone provided, just use the register_new_child function
+            const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
+              p_first_name: formData.firstName.trim(),
+              p_middle_name: formData.middleName?.trim() || null,
+              p_last_name: formData.lastName.trim(),
+              p_birthdate: formData.birthdate,
+              p_gender: formData.gender.trim(),
+              p_guardian_first_name: formData.guardianFirstName.trim(),
+              p_guardian_last_name: formData.guardianLastName.trim(),
+              p_guardian_phone: formData.guardianPhone?.trim() || null,
+              p_guardian_email: formData.guardianEmail?.trim() || null,
+              p_guardian_relationship: formData.guardianRelationship.trim(),
+              p_notes: formData.notes?.trim() || null
+            });
+
+            if (childError) {
+              throw new Error(`Registration failed: ${childError.message}`);
+            }
+
+            if (!childData || !childData[0]?.child_id) {
+              throw new Error('No child ID returned from registration');
+            }
+
+            // Update the photo URL immediately after registration if we have one
+            if (imageUrl) {
+              const { error: photoError } = await supabase
+                .from('children')
+                .update({ 
+                  photo_url: imageUrl
+                })
+                .eq('child_id', childData[0].child_id);
+
+              if (photoError) {
+                console.error('Error updating photo:', photoError);
+                throw new Error('Failed to update child photo');
+              }
+            }
           }
         }
       }
@@ -761,32 +981,89 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 )}
               </motion.div>
 
-              {/* Guardian Information Section - Keep as is */}
+              {/* Guardian Information Section - Update to disable fields when a parent is selected */}
               <motion.div 
                 className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
               >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
-                  Guardian Information
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-[#571C1F]">
+                    Guardian Information
+                  </h3>
+                  {selectedGuardian && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearSelectedGuardian}
+                      className="text-red-500 border-red-300 hover:bg-red-50"
+                    >
+                      Clear Selection
+                    </Button>
+                  )}
+                </div>
                 
                 {/* Guardian Name Row */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <Input
-                    label="First Name *"
-                    name="guardianFirstName"
-                    value={formData.guardianFirstName}
-                    onChange={handleChange}
-                    error={errors.guardianFirstName}
-                  />
+                <div className="grid grid-cols-2 gap-4 mb-4 relative">
+                  <div className="relative">
+                    <Input
+                      label="First Name *"
+                      name="guardianFirstName"
+                      value={formData.guardianFirstName}
+                      onChange={(e) => {
+                        handleChange(e);
+                        if (!selectedGuardian) {
+                          setGuardianSearchQuery(e.target.value);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Use setTimeout to allow click events on the list to fire first
+                        setTimeout(() => {
+                          setShowGuardianResults(false);
+                        }, 200);
+                      }}
+                      error={errors.guardianFirstName}
+                      disabled={selectedGuardian !== null}
+                    />
+                    
+                    {/* Search Results Dropdown */}
+                    <AnimatePresence>
+                      {showGuardianResults && guardianSearchResults.length > 0 && !selectedGuardian && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute z-50 w-full mt-0 bg-white rounded-md shadow-lg border border-gray-200 max-h-48 overflow-y-auto"
+                        >
+                          {guardianSearchResults.map((guardian) => (
+                            <div
+                              key={guardian.guardian_id}
+                              className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"
+                              onClick={() => handleSelectGuardian(guardian)}
+                            >
+                              <div className="font-medium text-sm text-gray-900">
+                                {guardian.first_name} {guardian.last_name}
+                              </div>
+                              <div className="text-xs text-gray-500 flex gap-2">
+                                {guardian.phone_number && <span>📞 {guardian.phone_number}</span>}
+                                {guardian.email && <span>✉️ {guardian.email}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <Input
                     label="Last Name *"
                     name="guardianLastName"
                     value={formData.guardianLastName}
                     onChange={handleChange}
                     error={errors.guardianLastName}
+                    disabled={selectedGuardian !== null}
                   />
                 </div>
 
@@ -803,6 +1080,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     maxLength={11}
                     pattern="^09\d{9}$"
                     className="h-[42px]"
+                    disabled={selectedGuardian !== null}
                   />
                   <Input
                     type="email"
@@ -811,6 +1089,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     value={formData.guardianEmail}
                     onChange={handleChange}
                     error={errors.guardianEmail}
+                    disabled={selectedGuardian !== null}
                   />
                   <Input
                     type="select" 
@@ -820,7 +1099,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     onChange={handleChange}
                     className="text-gray-900"
                     options={[
-                      { value: "", label: "Select Relationship" },  // Added default option
+                      { value: "", label: "Select Relationship" },
                       { value: "Parent", label: "Parent" },
                       { value: "Grandparent", label: "Grandparent" },
                       { value: "Sibling", label: "Sibling" },
@@ -829,65 +1108,54 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                       { value: "Other", label: "Other" }
                     ]}
                     error={errors.guardianRelationship}
-                    disabled={loading}
+                    disabled={selectedGuardian !== null || loading}
                     required
                   />
                 </div>
-              </motion.div>
 
-              {/* Additional Notes Section - New */}
-              <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.3 }}
-              >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
-                  Additional Notes
-                </h3>
-                
-                <Input
-                  type="textarea"
-                  label="Notes"
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={4}
-                  placeholder="Add any additional notes or important information about the child"
-                  className="w-full"
-                />
+                {/* Selected Guardian Info */}
+                {selectedGuardian && (
+                  <div className="mt-4 bg-blue-50 p-4 rounded-md">
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium text-gray-700">Selected Existing Guardian</span>
+                      <div className="mt-1">
+                        This guardian already exists in the system and will be linked to this child.
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
-            </div>
-
-            {/* Form Actions - Move to bottom fixed section */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-              <div className="flex justify-end space-x-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleClose} // Use handleClose instead of onClose
-                  disabled={loading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  onClick={handleSubmit}
-                  disabled={loading}
-                  className="relative"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center">
-                      {isEdit ? 'Saving Changes...' : 'Registering Child...'}
-                    </span>
-                  ) : (
-                    isEdit ? 'Save Changes' : 'Register Child'
-                  )}
-                </Button>
-              </div>
             </div>
           </form>
+        </div>
+
+        {/* Form Actions - Bottom fixed section */}
+        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+          <div className="flex justify-end space-x-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit" 
+              variant="primary"
+              disabled={loading}
+              className="relative"
+              onClick={handleSubmit} // Add onClick handler as backup
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  {isEdit ? 'Saving Changes...' : 'Registering Child...'}
+                </span>
+              ) : (
+                isEdit ? 'Save Changes' : 'Register Child'
+              )}
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>
