@@ -77,53 +77,31 @@ const ReportsPage = () => {
     { label: 'Last 3 months', value: 'last3months' },
   ];
 
-  useEffect(() => {
-    fetchReportData();
-  }, [timeRange, startDate, endDate]);
-
-  // Handle date preset selection
-  const handleDatePreset = (preset) => {
-    const today = new Date();
-    let start, end;
+  // Fix 1: Improve the fetchWithCache function to properly include filter parameters
+  const fetchWithCache = useCallback(async (key, fetchFn) => {
+    // Create a more specific cache key including all filter parameters
+    const cacheKey = `${key}_${startDate}_${endDate}_${timeRange}`;
     
-    switch(preset) {
-      case 'last7days':
-        end = new Date();
-        start = new Date();
-        start.setDate(today.getDate() - 7);
-        break;
-      case 'last30days':
-        end = new Date();
-        start = new Date();
-        start.setDate(today.getDate() - 30);
-        break;
-      case 'thisMonth':
-        const thisMonth = getMonthDateRange();
-        start = new Date(thisMonth.start);
-        end = new Date(thisMonth.end);
-        break;
-      case 'last3months':
-        end = new Date();
-        start = new Date();
-        start.setMonth(today.getMonth() - 3);
-        break;
-      default:
-        return;
+    // Clear cache when date range changes
+    if (startDate !== dataCache.lastStartDate || endDate !== dataCache.lastEndDate) {
+      // Only keep non-data cache properties
+      const { lastStartDate, lastEndDate, ...rest } = dataCache;
+      setDataCache({
+        lastStartDate: startDate,
+        lastEndDate: endDate
+      });
+      console.log('Cache cleared due to date range change');
     }
     
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
-  };
-
-  // Memoized fetch with caching
-  const fetchWithCache = useCallback(async (key, fetchFn) => {
-    const cacheKey = `${key}_${startDate}_${endDate}`;
     const cachedItem = dataCache[cacheKey];
     
     if (cachedItem && (Date.now() - cachedItem.timestamp) < CACHE_DURATION) {
+      console.log(`Using cached data for ${key}`);
       return cachedItem.data;
     }
     
+    console.log(`Fetching fresh data for ${key}`);
+    // Always fetch fresh data when filters change
     const data = await fetchFn();
     
     setDataCache(prev => ({
@@ -135,136 +113,101 @@ const ReportsPage = () => {
     }));
     
     return data;
-  }, [dataCache, startDate, endDate]);
+  }, [dataCache, startDate, endDate, timeRange]); // Add timeRange as dependency
 
-  const fetchReportData = async () => {
-    setLoading(true);
+  // Fix 2: Make fetchReportData depend on filters directly
+  // Update the fetchReportData function to prevent jittering
+  const fetchReportData = useCallback(async () => {
+    // Don't set loading to true immediately - this is what causes jitter
+    // Instead, keep the old data visible while loading new data in background
+    
     try {
+      console.log(`Fetching data from ${startDate} to ${endDate}`);
+      
       // Fetch all data types in parallel
-      const [attendanceData, growthData, ageData, rawData] = await Promise.all([
-        fetchWithCache('attendance', fetchAttendanceData),
-        fetchWithCache('growth', fetchGrowthData),
-        fetchWithCache('age', fetchAgeDistributionData),
-        fetchWithCache('raw', fetchRawAttendanceData),
+      const [attendanceData, growthData, ageData, rawData, registeredCount, totalStats] = await Promise.all([
+        fetchWithCache('attendance', () => fetchAttendanceData(startDate, endDate)),
+        fetchWithCache('growth', () => fetchGrowthData(startDate, endDate)),
+        fetchWithCache('age', () => fetchAgeDistributionData(startDate, endDate)),
+        fetchWithCache('raw', () => fetchRawAttendanceData(startDate, endDate)),
+        fetchWithCache('registered', () => fetchRegisteredChildrenCount(startDate, endDate)),
+        fetchWithCache('totalStats', () => fetchTotalStats()),
       ]);
       
-      // Set data for each report type
+      console.log('Attendance data count:', attendanceData?.length);
+      console.log('Growth data count:', growthData?.length);
+      console.log('Age data count:', ageData?.length);
+      console.log('Raw data count:', rawData?.length);
+      console.log('Registered children count:', registeredCount);
+      
+      // Now set data for each report type all at once
       setReportData({
-        attendance: attendanceData,
-        growth: growthData,
-        age: ageData,
-        raw: rawData
+        attendance: attendanceData || [],
+        growth: growthData || [],
+        age: ageData || [],
+        raw: rawData || [],
+        registeredCount: registeredCount,
+        totalStats: totalStats
       });
       
-      // Set chart data based on current report type
-      updateChartData(reportType, attendanceData, growthData, ageData);
+      // Also update chart data in the same render cycle
+      updateChartData(reportType, attendanceData || [], growthData || [], ageData || []);
       
       // Fetch weekly reports
       await fetchWeeklyReports();
+      
+      // Only set loading to false after everything is ready
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching report data:', error);
-    } finally {
       setLoading(false);
     }
-  };
+  }, [startDate, endDate, timeRange, reportType, fetchWithCache]);
 
-  const updateChartData = (type, attendanceData, growthData, ageData) => {
-    if (type === 'attendance' && attendanceData) {
-      const groupedData = groupDataByTimeRange(attendanceData, 'attendance_date', 'total_children');
-      
-      setChartData({
-        labels: groupedData.map(item => item.label),
-        datasets: [
-          {
-            label: 'Total Children',
-            data: groupedData.map(item => item.value),
-            borderColor: '#30cee4',  // nextgen-blue
-            backgroundColor: 'rgba(48, 206, 228, 0.5)', // nextgen-blue with opacity
-            tension: 0.3,
-            borderWidth: 2
-          },
-          {
-            label: 'First Timers',
-            data: groupDataByTimeRange(attendanceData, 'attendance_date', 'first_timers').map(item => item.value),
-            borderColor: '#fb7610', // nextgen-orange
-            backgroundColor: 'rgba(251, 118, 16, 0.5)', // nextgen-orange with opacity
-            tension: 0.3,
-            borderWidth: 2
-          }
-        ]
-      });
-    } else if (type === 'growth' && growthData) {
-      const serviceNames = [...new Set(growthData.map(item => item.service_name))];
-      
-      setChartData({
-        labels: [...new Set(growthData.map(item => item.month))],
-        datasets: serviceNames.map((service, index) => {
-          const colors = [
-            '#30cee4', // nextgen-blue
-            '#fb7610', // nextgen-orange
-            '#1ca7bc', // nextgen-blue-dark
-            '#e66300'  // nextgen-orange-dark
-          ];
-          
-          return {
-            label: service,
-            data: growthData
-              .filter(item => item.service_name === service)
-              .map(item => item.monthly_attendance),
-            borderColor: colors[index % colors.length],
-            backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.5)'),
-            tension: 0.3,
-            borderWidth: 2
-          };
-        })
-      });
-    } else if (type === 'age' && ageData) {
-      const ageCategories = [...new Set(ageData.map(item => item.age_category))];
-      const groupedData = ageCategories.map(category => {
-        const categoryItems = ageData.filter(item => item.age_category === category);
-        const total = categoryItems.reduce((sum, item) => sum + item.count, 0);
-        return { category, total };
-      });
-      
-      setChartData({
-        labels: groupedData.map(item => item.category),
-        datasets: [
-          {
-            label: 'Age Distribution',
-            data: groupedData.map(item => item.total),
-            backgroundColor: [
-              'rgba(48, 206, 228, 0.7)',  // nextgen-blue
-              'rgba(251, 118, 16, 0.7)',  // nextgen-orange
-              'rgba(28, 167, 188, 0.7)',  // nextgen-blue-dark
-              'rgba(230, 99, 0, 0.7)'     // nextgen-orange-dark
-            ],
-            borderColor: [
-              '#30cee4', 
-              '#fb7610', 
-              '#1ca7bc', 
-              '#e66300'
-            ],
-            borderWidth: 1
-          }
-        ]
-      });
+  // Fix 3: Update the useEffect to use the memoized fetchReportData
+  useEffect(() => {
+    console.log('Date range changed, fetching new data...');
+    
+    // Set a short loading state only on initial load
+    if (reportData.attendance.length === 0 && reportData.growth.length === 0) {
+      setLoading(true);
     }
-  };
+    
+    // Use a timeout to prevent rapid filter changes from causing jitter
+    const timer = setTimeout(() => {
+      fetchReportData();
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [startDate, endDate, timeRange]); // Remove fetchReportData from dependencies to prevent excess renders
 
-  // API fetch functions
-  const fetchAttendanceData = async () => {
+  // Add another effect for report type changes
+  useEffect(() => {
+    // Update chart data when report type changes without refetching all data
+    if (!loading && reportData.attendance.length > 0) {
+      updateChartData(reportType, reportData.attendance, reportData.growth, reportData.age);
+    }
+  }, [reportType]);
+
+  // Fix 4: Update API functions to accept date parameters directly
+  const fetchAttendanceData = async (start, end) => {
+    console.log(`Fetching attendance data from ${start} to ${end}`);
     const { data, error } = await supabase
       .from('daily_attendance_summary')
       .select('*')
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate)
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
       .order('attendance_date', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching attendance data:', error);
+      throw error;
+    }
     return data || [];
   };
 
-  const fetchRawAttendanceData = async () => {
+  const fetchRawAttendanceData = async (start, end) => {
+    console.log(`Fetching raw attendance data from ${start} to ${end}`);
     const { data, error } = await supabase
       .from('attendance')
       .select(`
@@ -279,37 +222,99 @@ const ReportsPage = () => {
         ),
         services (service_name, day_of_week)
       `)
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate);
+      .gte('attendance_date', start)
+      .lte('attendance_date', end);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching raw attendance data:', error);
+      throw error;
+    }
     return data || [];
   };
 
-  const fetchGrowthData = async () => {
+  const fetchGrowthData = async (start, end) => {
+    console.log(`Fetching growth data from ${start} to ${end}`);
+    // Create month strings for filtering
+    const startMonth = start.substring(0, 7); // YYYY-MM format
+    const endMonth = end.substring(0, 7); // YYYY-MM format
+
     const { data, error } = await supabase
       .from('service_growth_trend')
       .select('*')
+      .gte('month', startMonth)
+      .lte('month', endMonth)
       .order('month', { ascending: true });
 
-    if (error) throw error;
-    
-    // Filter data for the selected date range
-    return (data || []).filter(item => {
-      const monthDate = new Date(item.month + '-01');
-      return monthDate >= new Date(startDate) && monthDate <= new Date(endDate);
-    });
+    if (error) {
+      console.error('Error fetching growth data:', error);
+      throw error;
+    }
+    return data || [];
   };
 
-  const fetchAgeDistributionData = async () => {
+  const fetchAgeDistributionData = async (start, end) => {
+    console.log(`Fetching age data from ${start} to ${end}`);
     const { data, error } = await supabase
       .from('age_group_analysis')
       .select('*')
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate);
+      .gte('attendance_date', start)
+      .lte('attendance_date', end);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching age data:', error);
+      throw error;
+    }
     return data || [];
+  };
+
+  const fetchRegisteredChildrenCount = async (start, end) => {
+    console.log(`Fetching registered children from ${start} to ${end}`);
+    
+    try {
+      // Use the same approach as Dashboard.jsx - filter by registration_date
+      const { data, error } = await supabase
+        .from('children')
+        .select('child_id')
+        .gte('registration_date', start)
+        .lte('registration_date', end);
+      
+      if (error) throw error;
+      
+      console.log(`Children registered between ${start} and ${end}: ${data?.length || 0}`);
+      return data?.length || 0;
+    } catch (err) {
+      console.error('Error fetching registered children count:', err);
+      return 0;
+    }
+  };
+
+  // Add this function to fetch total counts regardless of date range
+  const fetchTotalStats = async () => {
+    console.log('Fetching total stats (regardless of date filters)');
+    
+    try {
+      // Get total children count (same as Dashboard)
+      const { count: totalChildren, error: childrenError } = await supabase
+        .from('children')
+        .select('*', { count: 'exact', head: true });
+        
+      if (childrenError) throw childrenError;
+      
+      // Get total attendance count
+      const { count: totalAttendance, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('*', { count: 'exact', head: true });
+        
+      if (attendanceError) throw attendanceError;
+      
+      return {
+        totalChildren: totalChildren || 0,
+        totalAttendance: totalAttendance || 0
+      };
+    } catch (err) {
+      console.error('Error fetching total stats:', err);
+      return { totalChildren: 0, totalAttendance: 0 };
+    }
   };
 
   const fetchWeeklyReports = async () => {
@@ -467,6 +472,144 @@ const ReportsPage = () => {
     }
   };
 
+  // Add this function to your ReportsPage component
+  const updateChartData = useCallback((type, attendanceData, growthData, ageData) => {
+    console.log('Updating chart data for:', type);
+    
+    if (type === 'attendance') {
+      const groupedData = groupDataByTimeRange(attendanceData, 'attendance_date', 'total_children');
+      
+      setChartData({
+        labels: groupedData.map(item => item.label),
+        datasets: [
+          {
+            label: 'Total Attendance',
+            data: groupedData.map(item => item.value),
+            backgroundColor: 'rgba(87, 28, 31, 0.7)',
+            borderColor: '#571C1F',
+            borderWidth: 1,
+            tension: 0.3
+          },
+          {
+            label: 'First Time Visitors',
+            data: groupDataByTimeRange(attendanceData, 'attendance_date', 'first_timers').map(item => item.value),
+            backgroundColor: 'rgba(33, 90, 117, 0.7)',
+            borderColor: '#215A75',
+            borderWidth: 1,
+            tension: 0.3
+          }
+        ]
+      });
+    } 
+    else if (type === 'growth') {
+      // For growth trend chart
+      const services = [...new Set(growthData.map(item => item.service_name))];
+      const months = [...new Set(growthData.map(item => item.month))].sort();
+      
+      const datasets = services.map((service, index) => {
+        const serviceData = months.map(month => {
+          const record = growthData.find(item => item.service_name === service && item.month === month);
+          return record ? record.growth_percent : 0;
+        });
+        
+        // Generate a color based on index
+        const hue = (index * 137) % 360; // Golden ratio approximation for good color distribution
+        
+        return {
+          label: service,
+          data: serviceData,
+          backgroundColor: `hsla(${hue}, 70%, 50%, 0.7)`,
+          borderColor: `hsl(${hue}, 70%, 45%)`,
+          borderWidth: 1,
+          tension: 0.3
+        };
+      });
+      
+      setChartData({
+        labels: months.map(month => {
+          const date = new Date(month + '-01');
+          return date.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+        }),
+        datasets
+      });
+    }
+    else if (type === 'age') {
+      // For age distribution chart
+      const ageGroups = {};
+      
+      ageData.forEach(item => {
+        if (!ageGroups[item.age_category]) {
+          ageGroups[item.age_category] = 0;
+        }
+        ageGroups[item.age_category] += item.attendance_count;
+      });
+      
+      // NextGen theme colors for age groups
+      const backgroundColors = [
+        'rgba(87, 28, 31, 0.7)',  // NextGen primary
+        'rgba(33, 90, 117, 0.7)',  // NextGen blue
+        'rgba(168, 48, 55, 0.7)',  // NextGen accent
+        'rgba(58, 129, 159, 0.7)',  // NextGen secondary blue
+        'rgba(237, 137, 62, 0.7)'  // NextGen orange
+      ];
+      
+      setChartData({
+        labels: Object.keys(ageGroups),
+        datasets: [
+          {
+            data: Object.values(ageGroups),
+            backgroundColor: backgroundColors.slice(0, Object.keys(ageGroups).length),
+            borderColor: backgroundColors.map(color => color.replace('0.7', '1')),
+            borderWidth: 1
+          }
+        ]
+      });
+    }
+  }, [groupDataByTimeRange]);
+
+  // Add this function as well
+  const handleDatePreset = (preset) => {
+    const today = new Date();
+    
+    switch(preset) {
+      case 'last7days': {
+        const start = new Date();
+        start.setDate(today.getDate() - 7);
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(today.toISOString().split('T')[0]);
+        break;
+      }
+      case 'last30days': {
+        const start = new Date();
+        start.setDate(today.getDate() - 30);
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(today.toISOString().split('T')[0]);
+        break;
+      }
+      case 'thisMonth': {
+        // First day of current month
+        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        // Last day of current month
+        const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]); // Fix: Set to last day of month
+        break;
+      }
+      case 'last3months': {
+        // Three months ago
+        const start = new Date();
+        start.setMonth(today.getMonth() - 3);
+        start.setDate(1); // First day of that month
+        setStartDate(start.toISOString().split('T')[0]);
+        // Current date as end date
+        setEndDate(today.toISOString().split('T')[0]); 
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
   return (
     <div className="page-container">
       <Card
@@ -488,102 +631,142 @@ const ReportsPage = () => {
           transition={{ duration: 0.3 }}
         >
           {/* Filters Section - Styled like AttendancePage */}
-          <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm space-y-4 mb-6">
-            <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
+          {/* Improved Filters Section */}
+        <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm mb-6">
+          {/* Header with title and action buttons */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-nextgen-blue-dark">
               Data Filters
             </h3>
-
-            {/* Filters Row */}
-            <div className="flex flex-wrap gap-4">
-              {/* Time Interval */}
-              <div className="w-48">
-                <label htmlFor="time-interval" className="block text-sm font-medium text-gray-700 mb-1">
-                  Time Interval
-                </label>
-                <Input
-                  type="select"
-                  id="time-interval"
-                  value={timeRange}
-                  onChange={(e) => setTimeRange(e.target.value)}
-                  options={[
-                    { value: 'daily', label: 'Daily' },
-                    { value: 'weekly', label: 'Weekly' },
-                    { value: 'monthly', label: 'Monthly' }
-                  ]}
-                  className="h-[42px]"
-                />
-              </div>
+            
+            {/* Action Buttons - Positioned in the header */}
+            <div>
+              {reportType !== 'dashboard' && reportType !== 'weekly' && (
+                <Button 
+                  variant="primary"
+                  onClick={exportData}
+                  disabled={loading}
+                >
+                  <svg className="h-4 w-4 mr-2 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>Export Data</span>
+                </Button>
+              )}
               
-              {/* Start Date */}
-              <div className="w-48">
-                <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
-                </label>
-                <Input
-                  type="date"
-                  id="start-date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="h-[42px]"
-                />
-              </div>
-              
-              {/* End Date */}
-              <div className="w-48">
-                <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date
-                </label>
-                <Input
-                  type="date"
-                  id="end-date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="h-[42px]"
-                />
-              </div>
-              
-              {/* Action Buttons */}
-              <div className="flex items-end ml-auto">
-                {reportType !== 'dashboard' && reportType !== 'weekly' && (
-                  <Button 
-                    variant="primary"
-                    onClick={exportData}
-                    disabled={loading}
-                    className="h-[42px]"
-                  >
-                    <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Export
-                  </Button>
-                )}
-                
-                {reportType === 'weekly' && (
-                  <Button 
-                    variant="primary"
-                    onClick={handleGenerateReport}
-                    disabled={loading}
-                    className="h-[42px]"
-                  >
-                    <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Generate Report
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Current date range indicator */}
-            <div className="mt-2 bg-nextgen-blue/5 px-3 py-2 rounded-md inline-flex items-center">
-              <svg className="h-4 w-4 mr-2 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-sm text-nextgen-blue-dark">
-                <span className="font-medium">Current Period:</span> {formatDate(startDate, { month: 'short', day: 'numeric' })} - {formatDate(endDate, { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
+              {reportType === 'weekly' && (
+                <Button 
+                  variant="primary"
+                  onClick={handleGenerateReport}
+                  disabled={loading}
+                >
+                  <svg className="h-4 w-4 mr-2 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Generate Report</span>
+                </Button>
+              )}
             </div>
           </div>
+
+          {/* First row - 4 column grid layout to utilize all space */}
+          <div className="grid grid-cols-4 gap-4 mb-1">
+            {/* Time Interval */}
+            <div>
+              <label htmlFor="time-interval" className="block text-sm font-medium text-gray-700 mb-1">
+                Time Interval
+              </label>
+              <Input
+                type="select"
+                id="time-interval"
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                options={[
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'monthly', label: 'Monthly' }
+                ]}
+              />
+            </div>
+            
+            {/* Start Date */}
+            <div>
+              <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date
+              </label>
+              <Input
+                type="date"
+                id="start-date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            
+            {/* End Date */}
+            <div>
+              <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-1">
+                End Date
+              </label>
+              <Input
+                type="date"
+                id="end-date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+            
+            {/* Quick Select - More compact layout */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Quick Select
+              </label>
+              <div className="flex flex-wrap gap-1 h-[38px]">
+                <Button 
+                  variant="outline" 
+                  size="xs"
+                  onClick={() => handleDatePreset('last7days')}
+                  className="text-xs px-2 py-1"
+                >
+                  7d
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="xs"
+                  onClick={() => handleDatePreset('last30days')}
+                  className="text-xs px-2 py-1"
+                >
+                  30d
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="xs"
+                  onClick={() => handleDatePreset('thisMonth')}
+                  className="text-xs px-2 py-1"
+                >
+                  This Month
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="xs"
+                  onClick={() => handleDatePreset('last3months')}
+                  className="text-xs px-2 py-1"
+                >
+                  3 Months
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Second row - Current period indicator */}
+          <div className="bg-nextgen-blue/5 px-3 py-2 rounded-md flex items-center">
+            <svg className="h-4 w-4 mr-2 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm text-nextgen-blue-dark">
+              <span className="font-medium">Current Period:</span> {formatDate(startDate, { month: 'short', day: 'numeric' })} - {formatDate(endDate, { month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
 
           {/* Modern Tab Navigation */}
           <div className="mb-6 overflow-hidden">
@@ -621,128 +804,130 @@ const ReportsPage = () => {
                 transition={{ duration: 0.3 }}
                 className="space-y-6"
               >
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                  >
-                    <Card className="hover:shadow-md transition-shadow duration-300">
-                      <div className="p-5">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 bg-nextgen-blue/10 rounded-md p-3">
-                            <svg className="h-6 w-6 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                            </svg>
-                          </div>
-                          <div className="ml-5">
-                            <p className="text-sm font-medium text-gray-500">Total Children</p>
-                            <p className="text-2xl font-semibold text-nextgen-blue-dark">
-                              {loading ? (
-                                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
-                              ) : (
-                                reportData.raw?.length > 0 ? 
-                                  new Set(reportData.raw.map(item => item.child_id)).size :
-                                  0
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Unique attendees</p>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                  
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.2 }}
-                  >
-                    <Card className="hover:shadow-md transition-shadow duration-300">
-                      <div className="p-5">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 bg-nextgen-blue-dark/10 rounded-md p-3">
-                            <svg className="h-6 w-6 text-nextgen-blue-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <div className="ml-5">
-                            <p className="text-sm font-medium text-gray-500">Total Attendance</p>
-                            <p className="text-2xl font-semibold text-nextgen-blue-dark">
-                              {loading ? (
-                                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
-                              ) : (
-                                reportData.attendance?.reduce((sum, item) => sum + item.total_children, 0) || 0
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">All check-ins</p>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                  
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.3 }}
-                  >
-                    <Card className="hover:shadow-md transition-shadow duration-300">
-                      <div className="p-5">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 bg-nextgen-orange/10 rounded-md p-3">
-                            <svg className="h-6 w-6 text-nextgen-orange" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>  
-                          </div>
-                          <div className="ml-5">
-                            <p className="text-sm font-medium text-gray-500">First-Timers</p>
-                            <p className="text-2xl font-semibold text-nextgen-orange-dark">
-                              {loading ? (
-                                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
-                              ) : (
-                                reportData.attendance?.reduce((sum, item) => sum + item.first_timers, 0) || 0
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">New children</p>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                  
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.4 }}
-                  >
-                    <Card className="hover:shadow-md transition-shadow duration-300">
-                      <div className="p-5">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 bg-nextgen-orange-dark/10 rounded-md p-3">
-                            <svg className="h-6 w-6 text-nextgen-orange-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <div className="ml-5">
-                            <p className="text-sm font-medium text-gray-500">Services</p>
-                            <p className="text-2xl font-semibold text-nextgen-orange-dark">
-                              {loading ? (
-                                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
-                              ) : (
-                                reportData.raw?.length > 0 ? 
-                                  new Set(reportData.raw.map(item => item.service_id)).size :
-                                  0
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Active services</p>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                </div>
+                {/* Summary Cards - Streamlined with just 4 essential cards */}
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  {/* Card 1: Total Children */}
+  <motion.div
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.3, delay: 0.1 }}
+  >
+    <Card className="hover:shadow-md transition-shadow duration-300">
+      <div className="p-5">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 bg-nextgen-blue/10 rounded-md p-3">
+            <svg className="h-6 w-6 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          </div>
+          <div className="ml-5">
+            <p className="text-sm font-medium text-gray-500">Total Children</p>
+            <p className="text-2xl font-semibold text-nextgen-blue-dark">
+              {loading ? (
+                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
+              ) : (
+                reportData.totalStats?.totalChildren || 0
+              )}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">All children</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  </motion.div>
+  
+  {/* Card 2: First-Timers (New Registrations) */}
+  <motion.div
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.3, delay: 0.2 }}
+  >
+    <Card className="hover:shadow-md transition-shadow duration-300">
+      <div className="p-5">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 bg-green-700/10 rounded-md p-3">
+            <svg className="h-6 w-6 text-green-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          </div>
+          <div className="ml-5">
+            <p className="text-sm font-medium text-gray-500">First-Timers</p>
+            <p className="text-2xl font-semibold text-green-700">
+              {loading ? (
+                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
+              ) : (
+                reportData.registeredCount || 0
+              )}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">New registrations</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  </motion.div>
+  
+  {/* Card 3: Total Attendance */}
+  <motion.div
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.3, delay: 0.3 }}
+  >
+    <Card className="hover:shadow-md transition-shadow duration-300">
+      <div className="p-5">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 bg-nextgen-blue-dark/10 rounded-md p-3">
+            <svg className="h-6 w-6 text-nextgen-blue-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="ml-5">
+            <p className="text-sm font-medium text-gray-500">Total Attendance</p>
+            <p className="text-2xl font-semibold text-nextgen-blue-dark">
+              {loading ? (
+                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
+              ) : (
+                reportData.attendance?.reduce((sum, item) => sum + item.total_children, 0) || 0
+              )}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">All check-ins</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  </motion.div>
+
+  {/* Card 4: Services */}
+  <motion.div
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.3, delay: 0.4 }}
+  >
+    <Card className="hover:shadow-md transition-shadow duration-300">
+      <div className="p-5">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 bg-nextgen-orange-dark/10 rounded-md p-3">
+            <svg className="h-6 w-6 text-nextgen-orange-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div className="ml-5">
+            <p className="text-sm font-medium text-gray-500">Services</p>
+            <p className="text-2xl font-semibold text-nextgen-orange-dark">
+              {loading ? (
+                <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
+              ) : (
+                reportData.raw?.length > 0 ? 
+                  new Set(reportData.raw.map(item => item.service_id)).size :
+                  0
+              )}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Active services</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  </motion.div>
+</div>
 
                 {/* Charts Row */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

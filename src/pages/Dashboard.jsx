@@ -92,7 +92,8 @@ const Dashboard = () => {
         
         // Fetch recent activities (latest 5 check-ins) with improved selection
         const fetchRecentActivity = async () => {
-          const { data, error } = await supabase
+          // First, fetch recent check-ins
+          const { data: checkInData, error: checkInError } = await supabase
             .from('attendance')
             .select(`
               *,
@@ -109,10 +110,55 @@ const Dashboard = () => {
             `)
             .order('attendance_date', { ascending: false })
             .order('check_in_time', { ascending: false })
-            .limit(6);
+            .limit(5);
             
-          if (error) throw error;
-          return data || [];
+          if (checkInError) throw checkInError;
+          
+          // Then, fetch recent registrations
+          const { data: registrationData, error: registrationError } = await supabase
+            .from('children')
+            .select(`
+              *,
+              age_categories (category_name)
+            `)
+            .order('registration_date', { ascending: false })
+            .limit(5);
+            
+          if (registrationError) throw registrationError;
+          
+          // Add a 'type' field to each record to identify if it's a check-in or registration
+          const checkIns = (checkInData || []).map(item => ({
+            ...item,
+            type: 'check-in',
+            date: item.attendance_date,
+            // Ensure we have a unique ID for each activity
+            activity_id: `checkin-${item.attendance_id}`
+          }));
+          
+          const registrations = (registrationData || []).map(item => ({
+            ...item,
+            type: 'registration',
+            date: item.registration_date,
+            // Ensure we have a unique ID for each activity
+            activity_id: `reg-${item.child_id}`
+          }));
+          
+          // Combine and sort both types by date
+          const combinedActivity = [...checkIns, ...registrations].sort((a, b) => {
+            // Sort by date first
+            const dateComparison = new Date(b.date) - new Date(a.date);
+            if (dateComparison !== 0) return dateComparison;
+            
+            // If same date, check-ins should come first
+            if (a.type !== b.type) {
+              return a.type === 'check-in' ? -1 : 1;
+            }
+            
+            // If both are the same type, use the original ordering
+            return 0;
+          }).slice(0, 6); // Limit to 6 most recent activities
+          
+          return combinedActivity;
         };
         
         // Use cached functions for all fetches
@@ -394,58 +440,114 @@ const Dashboard = () => {
             <div className="divide-y divide-gray-100">
               {recentActivity.map((activity) => (
                 <motion.div 
-                  key={activity.attendance_id} 
+                  key={activity.activity_id} 
                   className="py-4 px-3 flex items-center justify-between hover:bg-gray-50 rounded-md transition-colors"
                   whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
                 >
                   <div className="flex items-center">
-                    {activity.children?.photo_url ? (
-                      <img
-                        src={activity.children?.photo_url}
-                        alt={`${activity.children?.first_name} ${activity.children?.last_name}`}
-                        className="h-10 w-10 rounded-full object-cover"
-                        loading="lazy"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
-                        }}
-                      />
+                    {/* Show child photo or initials */}
+                    {activity.type === 'check-in' ? (
+                      activity.children?.photo_url ? (
+                        <img
+                          src={activity.children?.photo_url}
+                          alt={`${activity.children?.first_name} ${activity.children?.last_name}`}
+                          className="h-10 w-10 rounded-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+                          }}
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-sm">
+                          {activity.children?.first_name?.charAt(0) || '?'}
+                          {activity.children?.last_name?.charAt(0) || ''}
+                        </div>
+                      )
                     ) : (
-                      <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-sm">
-                        {activity.children?.first_name?.charAt(0) || '?'}
-                        {activity.children?.last_name?.charAt(0) || ''}
-                      </div>
+                      activity.photo_url ? (
+                        <img
+                          src={activity.photo_url}
+                          alt={`${activity.first_name} ${activity.last_name}`}
+                          className="h-10 w-10 rounded-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+                          }}
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-nextgen-orange/10 flex items-center justify-center text-nextgen-orange-dark font-medium text-sm">
+                          {activity.first_name?.charAt(0) || '?'}
+                          {activity.last_name?.charAt(0) || ''}
+                        </div>
+                      )
                     )}
+                    
                     <div className="ml-4">
                       <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                        {activity.children?.first_name} {activity.children?.last_name}
-                        <Badge variant="primary" size="xs">
-                          {activity.children?.age_categories?.category_name || 'No Age Group'}
+                        {/* Show child name */}
+                        {activity.type === 'check-in' 
+                          ? `${activity.children?.first_name} ${activity.children?.last_name}`
+                          : `${activity.first_name} ${activity.last_name}`
+                        }
+                        <Badge variant={activity.type === 'check-in' ? "primary" : "success"} size="xs">
+                          {activity.type === 'check-in' 
+                            ? activity.children?.age_categories?.category_name || 'No Age Group'
+                            : activity.age_categories?.category_name || 'No Age Group'
+                          }
                         </Badge>
                       </p>
                       <p className="text-xs text-gray-500 flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
-                        Checked in to {activity.services?.service_name} on {formatDate(activity.attendance_date)}
+                        {activity.type === 'check-in' ? (
+                          <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
+                            Checked in to {activity.services?.service_name} on {formatDate(activity.attendance_date)}
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-nextgen-orange mr-1"></span>
+                            New registration on {formatDate(activity.registration_date)}
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>
+                  
                   <div className="flex flex-col items-end text-right">
-                    <span className="text-sm font-medium text-nextgen-blue-dark">
-                      {formatTime(activity.check_in_time)}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      by {getStaffNameFromEmail(activity.checked_in_by)}
-                    </span>
+                    {activity.type === 'check-in' ? (
+                      <>
+                        <span className="text-sm font-medium text-nextgen-blue-dark">
+                          {formatTime(activity.check_in_time)}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          by {getStaffNameFromEmail(activity.checked_in_by)}
+                        </span>
+                      </>
+                    ) : (
+                      <Badge variant="success">
+                        New Child
+                      </Badge>
+                    )}
                   </div>
                 </motion.div>
               ))}
+              
               <div className="pt-4 flex justify-center">
                 <Button 
                   variant="ghost" 
                   onClick={() => navigate('/attendance?tab=records')}
                   size="sm"
+                  className="mr-2"
                 >
-                  View All Records
+                  View Check-ins
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => navigate('/children')}
+                  size="sm"
+                >
+                  View Children
                 </Button>
               </div>
             </div>
