@@ -20,6 +20,8 @@
     "firebase": "^11.5.0",
     "formik": "^2.4.6",
     "framer-motion": "^12.23.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.3",
     "lodash": "^4.17.21",
     "mysql2": "^3.14.0",
     "prop-types": "^15.8.1",

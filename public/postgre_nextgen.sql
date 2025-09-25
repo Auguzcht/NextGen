@@ -1279,3 +1279,94 @@ COMMENT ON POLICY "Staff can update children" ON children IS 'Authenticated user
 COMMENT ON POLICY "Staff can view all guardians" ON guardians IS 'Authenticated users can view all guardian records';
 COMMENT ON POLICY "Staff can insert guardians" ON guardians IS 'Authenticated users can create guardian records';
 COMMENT ON POLICY "Staff can update guardians" ON guardians IS 'Authenticated users can update guardian records';
+
+
+
+-- Ambiguity Fixes Added Sep25, 2025
+
+CREATE OR REPLACE FUNCTION generate_weekly_analytics()
+RETURNS VOID AS $$
+DECLARE
+    current_week_start DATE;
+    current_week_end DATE;
+BEGIN
+    -- Set the date range for current week (Sunday to Saturday)
+    current_week_start := CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER;
+    current_week_end := current_week_start + 6;
+    
+    -- Insert weekly report
+    INSERT INTO weekly_reports (
+        week_start_date, 
+        week_end_date, 
+        total_attendance, 
+        unique_children, 
+        first_timers, 
+        report_generated_by,
+        report_pdf_url
+    )
+    SELECT 
+        current_week_start,
+        current_week_end,
+        COUNT(a.attendance_id),
+        COUNT(DISTINCT a.child_id),   -- Fixed: Specify that this is a.child_id
+        SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
+        1, -- Default admin user
+        CONCAT('reports/weekly_', TO_CHAR(current_week_start, 'YYYYMMDD'), '.pdf')
+    FROM 
+        attendance a
+    JOIN 
+        children c ON a.child_id = c.child_id
+    WHERE 
+        a.attendance_date BETWEEN current_week_start AND current_week_end;
+    
+    -- Generate per-service analytics
+    INSERT INTO attendance_analytics (
+        report_date,
+        service_id,
+        total_attendance,
+        first_timers,
+        returning_count,
+        age_4_5_count,
+        age_6_7_count,
+        age_8_9_count,
+        age_10_12_count,
+        staff_count,
+        attendance_growth_percent
+    )
+    SELECT 
+        current_week_end,
+        a.service_id,
+        COUNT(DISTINCT a.child_id),
+        SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
+        COUNT(DISTINCT a.child_id) - SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
+        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 THEN 1 ELSE 0 END),
+        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 THEN 1 ELSE 0 END),
+        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 THEN 1 ELSE 0 END),
+        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 THEN 1 ELSE 0 END),
+        COUNT(DISTINCT sa.staff_id),
+        CASE 
+            WHEN (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                 WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                    current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days') = 0 THEN 0
+            ELSE
+                ((COUNT(DISTINCT a.child_id) - 
+                    (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                     WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                        current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days')
+                 ) * 100.0 / 
+                    (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                     WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                     current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days'))
+        END
+    FROM 
+        attendance a
+    JOIN 
+        children c ON a.child_id = c.child_id
+    LEFT JOIN 
+        staff_assignments sa ON a.service_id = sa.service_id AND a.attendance_date = sa.assignment_date
+    WHERE 
+        a.attendance_date BETWEEN current_week_start AND current_week_end
+    GROUP BY 
+        a.service_id;
+END;
+$$ LANGUAGE plpgsql;

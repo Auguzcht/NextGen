@@ -5,9 +5,13 @@ import ReportChart from '../components/reports/ReportChart.jsx';
 import AttendancePatternChart from '../components/reports/AttendancePatternChart.jsx';
 import ServiceComparisonChart from '../components/reports/ServiceComparisonChart.jsx';
 import WeeklyReportsList from '../components/reports/WeeklyReportsList.jsx';
-import { Card, Button, Input, Badge } from '../components/ui';
+import { Card, Button, Input, Badge, NextGenChart } from '../components/ui';
 import { formatDate, getMonthDateRange, getWeekDateRange } from '../utils/dateUtils.js';
 import Swal from 'sweetalert2';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../services/firebase.js';
 
 const ReportsPage = () => {
   const [loading, setLoading] = useState(true);
@@ -328,19 +332,53 @@ const ReportsPage = () => {
     setWeeklyReports(data || []);
   };
 
+  // Add a new state to track report refresh triggers
+  const [reportRefreshTrigger, setReportRefreshTrigger] = useState(0);
+
+  // Update your handleGenerateReport function to include PDF generation
   const handleGenerateReport = async () => {
     try {
       setLoading(true);
+      
+      // Generate the weekly analytics in the database
       const { data, error } = await supabase.rpc('generate_weekly_analytics');
       
       if (error) throw error;
       
+      // Get the most recently created report
+      const { data: reportData, error: reportError } = await supabase
+        .from('weekly_reports')
+        .select('report_id, week_start_date, week_end_date')
+        .order('report_id', { ascending: false })
+        .limit(1);
+        
+      if (reportError) throw reportError;
+      
+      if (reportData && reportData.length > 0) {
+        const report = reportData[0];
+        
+        // Get the start/end dates from the newly created report
+        const startDate = report.week_start_date;
+        const endDate = report.week_end_date;
+        
+        // Generate and upload PDF for the report
+        await generateReportPDF(
+          report.report_id, 
+          startDate, 
+          endDate
+        );
+      }
+      
+      // Refresh weekly reports
       await fetchWeeklyReports();
+      
+      // Increment report refresh trigger to update the WeeklyReportsList
+      setReportRefreshTrigger(prev => prev + 1);
       
       Swal.fire({
         icon: 'success',
         title: 'Success!',
-        text: 'Weekly report generated successfully',
+        text: 'Weekly report generated and PDF created successfully',
         confirmButtonColor: '#30cee4'
       });
     } catch (error) {
@@ -354,6 +392,207 @@ const ReportsPage = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Add this function to generate and upload the PDF report
+  const generateReportPDF = async (reportId, startDate, endDate) => {
+    try {
+      // Fetch all the data needed for the report
+      const [attendanceData, ageData, registeredCount, rawData] = await Promise.all([
+        fetchWithCache('attendance_pdf', () => fetchAttendanceData(startDate, endDate)),
+        fetchWithCache('age_pdf', () => fetchAgeDistributionData(startDate, endDate)),
+        fetchWithCache('registered_pdf', () => fetchRegisteredChildrenCount(startDate, endDate)),
+        fetchWithCache('raw_pdf', () => fetchRawAttendanceData(startDate, endDate)),
+      ]);
+      
+      // Create a temporary element to render the report content
+      const reportElement = document.createElement('div');
+      reportElement.style.padding = '20px';
+      reportElement.style.fontFamily = 'Arial, sans-serif';
+      reportElement.style.width = '800px';
+      reportElement.style.backgroundColor = 'white';
+      reportElement.style.color = 'black';
+      
+      // Generate service data summary
+      const serviceData = {};
+      if (rawData) {
+        rawData.forEach(item => {
+          const serviceName = item.services?.service_name || 'Unknown';
+          if (!serviceData[serviceName]) {
+            serviceData[serviceName] = { 
+              attendance: 0, 
+              firstTimers: 0,
+              age4_5: 0,
+              age6_7: 0,
+              age8_9: 0,
+              age10_12: 0
+            };
+          }
+          
+          serviceData[serviceName].attendance++;
+          
+          // Count first timers (registered during this report period)
+          if (item.children?.registration_date >= startDate && item.children?.registration_date <= endDate) {
+            serviceData[serviceName].firstTimers++;
+          }
+          
+          // Count by age category
+          const ageCategory = item.children?.age_categories?.category_name;
+          if (ageCategory?.includes('4-5')) serviceData[serviceName].age4_5++;
+          else if (ageCategory?.includes('6-7')) serviceData[serviceName].age6_7++;
+          else if (ageCategory?.includes('8-9')) serviceData[serviceName].age8_9++;
+          else if (ageCategory?.includes('10-12')) serviceData[serviceName].age10_12++;
+        });
+      }
+      
+      // Calculate unique children
+      const uniqueChildren = rawData ? new Set(rawData.map(item => item.child_id)).size : 0;
+      
+      // Calculate total attendance
+      const totalAttendance = rawData ? rawData.length : 0;
+      
+      // Generate HTML content for PDF
+      reportElement.innerHTML = `
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #30cee4; margin: 0;">NextGen Ministry Weekly Report</h1>
+          <h2 style="color: #1ca7bc; margin-top: 5px;">Week of ${formatDate(startDate)} to ${formatDate(endDate)}</h2>
+          <p style="font-style: italic; color: #666;">Generated on ${formatDate(new Date().toISOString().split('T')[0])}</p>
+        </div>
+        
+        <div style="margin-bottom: 30px; background-color: rgba(48, 206, 228, 0.1); padding: 15px; border-radius: 10px;">
+          <h3 style="color: #1ca7bc; margin-top: 0;">Summary</h3>
+          <div style="display: flex; justify-content: space-between;">
+            <div style="flex: 1; text-align: center; padding: 10px;">
+              <p style="font-size: 14px; color: #666; margin: 0;">Total Attendance</p>
+              <p style="font-size: 24px; font-weight: bold; color: #30cee4; margin: 5px 0;">${totalAttendance}</p>
+            </div>
+            <div style="flex: 1; text-align: center; padding: 10px;">
+              <p style="font-size: 14px; color: #666; margin: 0;">Unique Children</p>
+              <p style="font-size: 24px; font-weight: bold; color: #30cee4; margin: 5px 0;">${uniqueChildren}</p>
+            </div>
+            <div style="flex: 1; text-align: center; padding: 10px;">
+              <p style="font-size: 14px; color: #666; margin: 0;">First Timers</p>
+              <p style="font-size: 24px; font-weight: bold; color: #fb7610; margin: 5px 0;">${registeredCount || 0}</p>
+            </div>
+          </div>
+        </div>
+        
+        <h3 style="color: #1ca7bc;">Service Breakdown</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr style="background-color: #f2f2f2;">
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Service</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Attendance</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">First Timers</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 4-5</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 6-7</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 8-9</th>
+            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 10-12</th>
+          </tr>
+          ${Object.entries(serviceData).map(([service, data]) => `
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd;">${service}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.attendance}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.firstTimers}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age4_5}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age6_7}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age8_9}</td>
+              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age10_12}</td>
+            </tr>
+          `).join('')}
+          <tr style="background-color: rgba(48, 206, 228, 0.1); font-weight: bold;">
+            <td style="padding: 10px; border: 1px solid #ddd;">Totals</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${totalAttendance}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${registeredCount || 0}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age4_5, 0)}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age6_7, 0)}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age8_9, 0)}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age10_12, 0)}</td>
+          </tr>
+        </table>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed #ddd; font-size: 12px; color: #999; text-align: center;">
+          This is an automatically generated report from the NextGen Ministry System.
+          <br>For questions, please contact the ministry administrator.
+        </div>
+      `;
+      
+      // Append to body temporarily for rendering (hidden)
+      document.body.appendChild(reportElement);
+      reportElement.style.position = 'absolute';
+      reportElement.style.left = '-9999px';
+      
+      // Generate PDF using html2canvas and jsPDF
+      const canvas = await html2canvas(reportElement, { 
+        scale: 1.5, // Higher scale for better quality
+        logging: false,
+        useCORS: true,
+        backgroundColor: '#ffffff'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Create PDF (A4 size)
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+      
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
+      // If content is too tall for one page, add more pages
+      if (pdfHeight > pdf.internal.pageSize.getHeight()) {
+        let heightLeft = pdfHeight;
+        let position = 0;
+        
+        pdf.addPage();
+        heightLeft -= pdf.internal.pageSize.getHeight();
+        position -= pdf.internal.pageSize.getHeight();
+        
+        while (heightLeft >= 0) {
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+          heightLeft -= pdf.internal.pageSize.getHeight();
+          position -= pdf.internal.pageSize.getHeight();
+          
+          if (heightLeft > 0) {
+            pdf.addPage();
+          }
+        }
+      }
+      
+      // Generate filename from the week start date
+      const filename = `weekly_${startDate.replace(/-/g, '')}.pdf`;
+      
+      // Clean up the temporary element
+      document.body.removeChild(reportElement);
+      
+      // Upload to Firebase Storage
+      const pdfBlob = await pdf.output('blob');
+      const storageRef = ref(storage, `NextGen/weekly-reports-pdf/${filename}`);
+      
+      await uploadBytes(storageRef, pdfBlob);
+      const pdfUrl = await getDownloadURL(storageRef);
+      
+      console.log('PDF generated and uploaded:', pdfUrl);
+      
+      // Update the weekly_reports table with the PDF URL in Supabase format
+      await supabase
+        .from('weekly_reports')
+        .update({
+          report_pdf_url: `reports/weekly_${startDate.replace(/-/g, '')}.pdf`
+        })
+        .eq('report_id', reportId);
+      
+      return pdfUrl;
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      throw error;
     }
   };
 
@@ -607,6 +846,310 @@ const ReportsPage = () => {
       }
       default:
         break;
+    }
+  };
+
+  // Add these helper functions to your ReportsPage component, before the return statement
+
+  // Generate data for the attendance pattern chart
+  const generateAttendancePatternData = (attendanceData) => {
+    if (!attendanceData || attendanceData.length === 0) return { labels: [], datasets: [] };
+    
+    // Group attendance by child_id
+    const childAttendanceMap = {};
+    
+    attendanceData.forEach(record => {
+      if (!childAttendanceMap[record.child_id]) {
+        childAttendanceMap[record.child_id] = 0;
+      }
+      childAttendanceMap[record.child_id]++;
+    });
+    
+    // Categorize attendance frequencies
+    const patterns = {
+      'One-time': 0,
+      'Occasional (2-3)': 0,
+      'Regular (4-7)': 0,
+      'Frequent (8+)': 0
+    };
+    
+    Object.values(childAttendanceMap).forEach(count => {
+      if (count === 1) patterns['One-time']++;
+      else if (count >= 2 && count <= 3) patterns['Occasional (2-3)']++;
+      else if (count >= 4 && count <= 7) patterns['Regular (4-7)']++;
+      else patterns['Frequent (8+)']++;
+    });
+    
+    return {
+      labels: Object.keys(patterns),
+      datasets: [
+        {
+          data: Object.values(patterns),
+          backgroundColor: [
+            'rgba(48, 206, 228, 0.7)',  // NextGen blue - one-time
+            'rgba(251, 118, 16, 0.7)',  // NextGen orange - occasional
+            'rgba(92, 215, 233, 0.7)',  // NextGen blue light - regular
+            'rgba(230, 99, 0, 0.7)',    // NextGen orange dark - frequent
+          ],
+          borderColor: [
+            '#30cee4', // NextGen blue
+            '#fb7610', // NextGen orange
+            '#5cd7e9', // NextGen blue light
+            '#e66300', // NextGen orange dark
+          ],
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  // Generate data and stats for service comparison chart
+  const generateServiceStats = (serviceData) => {
+    if (!serviceData || serviceData.length === 0) {
+      return { topService: null, fastestGrowing: null };
+    }
+    
+    // Get unique services
+    const services = [...new Set(serviceData.map(item => item.service_name))];
+    
+    // Aggregate data by service
+    const serviceStats = services.map(service => {
+      const serviceItems = serviceData.filter(item => item.service_name === service);
+      const total = serviceItems.reduce((sum, item) => sum + item.monthly_attendance, 0);
+      const monthCount = serviceItems.length;
+      const growth = calculateServiceGrowth(serviceItems);
+      
+      return {
+        service,
+        total,
+        average: monthCount > 0 ? total / monthCount : 0,
+        growth
+      };
+    });
+    
+    // Find top performing service and fastest growing
+    if (serviceStats.length > 0) {
+      const topByAttendance = serviceStats.reduce((max, curr) => 
+        curr.average > max.average ? curr : max, serviceStats[0]);
+      
+      const topByGrowth = serviceStats.reduce((max, curr) => 
+        curr.growth > max.growth ? curr : max, serviceStats[0]);
+      
+      return {
+        topService: topByAttendance,
+        fastestGrowing: topByGrowth
+      };
+    }
+    
+    return { topService: null, fastestGrowing: null };
+  };
+
+  // Calculate growth rate for a service
+  const calculateServiceGrowth = (serviceItems) => {
+    if (serviceItems.length < 2) return 0;
+    
+    // Sort by month ascending
+    const sorted = [...serviceItems].sort((a, b) => {
+      return new Date(a.month + '-01') - new Date(b.month + '-01');
+    });
+    
+    // Use first and last month to calculate growth rate
+    const firstMonth = sorted[0];
+    const lastMonth = sorted[sorted.length - 1];
+    
+    if (firstMonth.monthly_attendance === 0) return 0;
+    
+    return Math.round(
+      ((lastMonth.monthly_attendance - firstMonth.monthly_attendance) / 
+        firstMonth.monthly_attendance) * 100
+    );
+  };
+
+  // Generate chart data for service comparison
+  const generateServiceComparisonData = (serviceData) => {
+    if (!serviceData || serviceData.length === 0) {
+      return { labels: [], datasets: [] };
+    }
+    
+    // Get unique services and their stats
+    const services = [...new Set(serviceData.map(item => item.service_name))];
+    const serviceStats = services.map(service => {
+      const serviceItems = serviceData.filter(item => item.service_name === service);
+      const monthCount = serviceItems.length;
+      const total = serviceItems.reduce((sum, item) => sum + item.monthly_attendance, 0);
+      const growth = calculateServiceGrowth(serviceItems);
+      
+      return {
+        service,
+        average: monthCount > 0 ? Math.round(total / monthCount) : 0,
+        growth
+      };
+    });
+    
+    return {
+      labels: serviceStats.map(item => item.service),
+      datasets: [
+        {
+          label: 'Average Attendance',
+          data: serviceStats.map(item => item.average),
+          backgroundColor: 'rgba(48, 206, 228, 0.7)', // NextGen blue
+          borderColor: '#30cee4',
+          borderWidth: 2,
+          order: 1
+        },
+        {
+          label: 'Growth Rate (%)',
+          data: serviceStats.map(item => item.growth),
+          backgroundColor: 'rgba(251, 118, 16, 0.7)', // NextGen orange
+          borderColor: '#fb7610',
+          borderWidth: 2,
+          type: 'line',
+          yAxisID: 'y1',
+          order: 0
+        }
+      ]
+    };
+  };
+
+  // Add this function before the return statement in your ReportsPage component
+
+  // Generate chart options based on report type
+  const getChartOptions = (type) => {
+    switch (type) {
+      case 'attendance':
+        return {
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: 'Number of Children',
+                font: {
+                  size: 12,
+                  weight: 'medium'
+                }
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Time Period',
+                font: {
+                  size: 12,
+                  weight: 'medium'
+                }
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.raw;
+                  return `${label}: ${value}`;
+                }
+              }
+            }
+          }
+        };
+      
+      case 'growth':
+        return {
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: 'Growth Percentage',
+                font: {
+                  size: 12,
+                  weight: 'medium'
+                }
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Month',
+                font: {
+                  size: 12,
+                  weight: 'medium'
+                }
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.raw;
+                  return `${label}: ${value}%`;
+                }
+              }
+            }
+          }
+        };
+      
+      case 'age':
+        return {
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                  const percentage = total > 0 ? Math.round((context.raw / total) * 100) : 0;
+                  return `${context.label}: ${context.raw} (${percentage}%)`;
+                }
+              }
+            },
+            legend: {
+              position: 'right',
+              labels: {
+                padding: 20,
+                usePointStyle: true,
+                generateLabels: function(chart) {
+                  const data = chart.data;
+                  if (data.labels.length && data.datasets.length) {
+                    const labels = data.labels.map((label, i) => {
+                      const meta = chart.getDatasetMeta(0);
+                      const style = meta.controller.getStyle(i);
+                      const total = data.datasets[0].data.reduce((sum, val) => sum + val, 0);
+                      const percentage = total > 0 ? Math.round((data.datasets[0].data[i] / total) * 100) : 0;
+
+                      return {
+                        text: `${label} (${percentage}%)`,
+                        fillStyle: style.backgroundColor,
+                        strokeStyle: style.borderColor,
+                        lineWidth: style.borderWidth,
+                        hidden: isNaN(data.datasets[0].data[i]) || meta.data[i].hidden,
+                        index: i
+                      };
+                    });
+
+                    return labels;
+                  }
+                  return [];
+                }
+              }
+            },
+            datalabels: {
+              display: true,
+              color: '#fff',
+              font: {
+                weight: 'bold',
+                size: 11
+              },
+              formatter: (value, context) => {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = Math.round((value / total) * 100);
+                return percentage > 5 ? `${percentage}%` : '';
+              }
+            }
+          }
+        };
+      
+      default:
+        return {};
     }
   };
 
@@ -937,7 +1480,65 @@ const ReportsPage = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.2 }}
                   >
-                    <AttendancePatternChart attendanceData={reportData.raw} />
+                    <Card className="h-full hover:shadow-md transition-shadow duration-300">
+                      <div className="p-5">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-medium text-nextgen-blue-dark">Attendance Patterns</h3>
+                          <p className="text-sm text-gray-500">How frequently children attend services</p>
+                        </div>
+                        
+                        {loading || !reportData.raw?.length ? (
+                          <div className="flex justify-center items-center h-64">
+                            {loading ? (
+                              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
+                            ) : (
+                              <p className="text-gray-500">No attendance data available</p>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            <NextGenChart
+                              type="doughnut"
+                              height="240px"
+                              data={generateAttendancePatternData(reportData.raw)}
+                              options={{
+                                cutout: '65%',
+                                plugins: {
+                                  tooltip: {
+                                    callbacks: {
+                                      label: function(context) {
+                                        const value = context.raw;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                        return `${context.label}: ${value} (${percentage}%)`;
+                                      }
+                                    }
+                                  },
+                                  legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                      padding: 20,
+                                      usePointStyle: true,
+                                    }
+                                  }
+                                }
+                              }}
+                              enableDownload
+                              downloadFilename="attendance-patterns"
+                            />
+                            
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                              <div className="text-xs text-gray-500">
+                                <p><span className="font-medium text-[#30cee4]">One-time:</span> Attended only once</p>
+                                <p><span className="font-medium text-[#fb7610]">Occasional:</span> Attended 2-3 times</p>
+                                <p><span className="font-medium text-[#5cd7e9]">Regular:</span> Attended 4-7 times</p>
+                                <p><span className="font-medium text-[#e66300]">Frequent:</span> Attended 8+ times</p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </Card>
                   </motion.div>
                   
                   {/* Service Comparison Chart */}
@@ -946,7 +1547,113 @@ const ReportsPage = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.3 }}
                   >
-                    <ServiceComparisonChart serviceData={reportData.growth} />
+                    <Card className="h-full hover:shadow-md transition-shadow duration-300">
+                      <div className="p-5">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-medium text-nextgen-blue-dark">Service Comparison</h3>
+                          <p className="text-sm text-gray-500">Attendance and growth by service</p>
+                        </div>
+                        
+                        {loading || !reportData.growth?.length ? (
+                          <div className="flex justify-center items-center h-64">
+                            {loading ? (
+                              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
+                            ) : (
+                              <p className="text-gray-500">No service data available</p>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {/* Service stats cards */}
+                            {generateServiceStats(reportData.growth).topService && generateServiceStats(reportData.growth).fastestGrowing && (
+                              <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="bg-nextgen-blue/5 p-3 rounded-md">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-medium text-nextgen-blue-dark">
+                                      Highest Attendance
+                                    </p>
+                                    <Badge variant="primary" size="sm">
+                                      {Math.round(generateServiceStats(reportData.growth).topService.average)} avg
+                                    </Badge>
+                                  </div>
+                                  <p className="text-base font-semibold mt-1 truncate">
+                                    {generateServiceStats(reportData.growth).topService.service}
+                                  </p>
+                                </div>
+                                
+                                <div className="bg-nextgen-orange/5 p-3 rounded-md">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-medium text-nextgen-orange-dark">
+                                      Fastest Growing
+                                    </p>
+                                    <Badge 
+                                      variant={generateServiceStats(reportData.growth).fastestGrowing.growth > 0 ? "success" : "danger"}
+                                      size="sm"
+                                    >
+                                      {generateServiceStats(reportData.growth).fastestGrowing.growth}%
+                                    </Badge>
+                                  </div>
+                                  <p className="text-base font-semibold mt-1 truncate">
+                                    {generateServiceStats(reportData.growth).fastestGrowing.service}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            <NextGenChart
+                              type="bar"
+                              height="240px"
+                              data={generateServiceComparisonData(reportData.growth)}
+                              options={{
+                                responsive: true,
+                                interaction: {
+                                  mode: 'index',
+                                  intersect: false,
+                                },
+                                scales: {
+                                  y: {
+                                    position: 'left',
+                                    beginAtZero: true,
+                                    title: {
+                                      display: true,
+                                      text: 'Average Attendance',
+                                      color: '#30cee4'
+                                    },
+                                    ticks: {
+                                      font: {
+                                        family: "system-ui, Avenir, Helvetica, Arial, sans-serif"
+                                      }
+                                    },
+                                    grid: {
+                                      color: 'rgba(0, 0, 0, 0.05)'
+                                    }
+                                  },
+                                  y1: {
+                                    position: 'right',
+                                    beginAtZero: true,
+                                    title: {
+                                      display: true,
+                                      text: 'Growth Rate (%)',
+                                      color: '#fb7610'
+                                    },
+                                    ticks: {
+                                      callback: function(value) {
+                                        return value + '%';
+                                      }
+                                    },
+                                    grid: {
+                                      drawOnChartArea: false
+                                    }
+                                  }
+                                }
+                              }}
+                              enableDownload
+                              downloadFilename="service-comparison"
+                            />
+                          </>
+                        )}
+                      </div>
+                    </Card>
                   </motion.div>
                 </div>
 
@@ -1070,7 +1777,14 @@ const ReportsPage = () => {
                     </div>
                   ) : (
                     <div className="bg-white rounded-lg h-96">
-                      <ReportChart type={reportType} data={chartData} />
+                      {/* Use NextGenChart directly instead of ReportChart */}
+                      <NextGenChart 
+                        type={reportType === 'age' ? 'pie' : 'line'}
+                        data={chartData}
+                        options={getChartOptions(reportType)}
+                        enableDownload
+                        downloadFilename={`${reportType}-report`}
+                      />
                     </div>
                   )}
                 </div>
@@ -1130,7 +1844,7 @@ const ReportsPage = () => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <WeeklyReportsList onGenerateReport={handleGenerateReport} />
+                <WeeklyReportsList onGenerateReport={handleGenerateReport} triggerRefresh={reportRefreshTrigger} />
               </motion.div>
             )}
           </AnimatePresence>
