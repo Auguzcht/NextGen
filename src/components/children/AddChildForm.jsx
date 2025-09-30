@@ -715,8 +715,48 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         clearFormCache();
       }
 
-      // Call onSuccess
-      onSuccess();
+      // Format the child data to return
+      const childAge = calculateAge(formData.birthdate);
+      const childResponse = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        middleName: formData.middleName?.trim() || '',
+        formalId: isEdit ? initialData.formal_id : '', // Remove reference to undefined childData
+        gender: formData.gender,
+        birthdate: formData.birthdate,
+        age: childAge,
+        ageCategory: isEdit ? 
+          ageCategories.find(cat => cat.category_id === parseInt(formData.ageCategory))?.category_name : 
+          ageCategories.find(cat => childAge >= cat.min_age && childAge <= cat.max_age)?.category_name,
+        guardianFirstName: formData.guardianFirstName.trim(),
+        guardianLastName: formData.guardianLastName.trim(),
+        guardianPhone: formData.guardianPhone?.trim() || '',
+        guardianEmail: formData.guardianEmail?.trim() || '',
+        photoUrl: imageUrl || '',
+        registrationDate: new Date().toISOString()
+      };
+
+      // If we're not in edit mode, we need to fetch the formal_id from the newly registered child
+      if (!isEdit) {
+        try {
+          // Get the most recently added child by this guardian
+          const { data: newChildData, error: fetchError } = await supabase
+            .from('children')
+            .select('child_id, formal_id')
+            .order('child_id', { ascending: false })
+            .limit(1);
+            
+          if (!fetchError && newChildData && newChildData.length > 0) {
+            // Update the response with the formal_id
+            childResponse.formalId = newChildData[0].formal_id;
+          }
+        } catch (fetchError) {
+          console.error('Error fetching child formal ID:', fetchError);
+        }
+      }
+
+      // Call onSuccess with the child data
+      onSuccess(childResponse);
 
       // Close form
       onClose();
@@ -743,6 +783,20 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     }
   };
 
+  // Helper function to calculate age
+  const calculateAge = (birthdate) => {
+    const today = new Date();
+    const birth = new Date(birthdate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
+
   // Form section animation variants
   const formSectionVariants = {
     hidden: { opacity: 0, y: 20 },
@@ -765,7 +819,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       >
         {/* Header Section */}
         <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-[#571C1F]">
+          <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Child Information' : 'Register New Child'}
           </h2>
           <button 
@@ -842,7 +896,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
+                <h3 className="text-lg font-medium text-nextgen-blue-dark  mb-4">
                   Child Photo
                 </h3>
                 
@@ -890,7 +944,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
+                <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
                   Child Information
                 </h3>
                 
@@ -989,7 +1043,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 transition={{ duration: 0.3, delay: 0.2 }}
               >
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-[#571C1F]">
+                  <h3 className="text-lg font-medium text-nextgen-blue-dark">
                     Guardian Information
                   </h3>
                   {selectedGuardian && (

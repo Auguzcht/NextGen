@@ -5,6 +5,8 @@ import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
 import { motion } from 'framer-motion';
 import Swal from 'sweetalert2';
 import ChildDetailView from '../components/children/ChildDetailView.jsx';
+import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
+import PrintableIDCard from '../components/children/PrintableIDCard';
 
 const ChildrenPage = () => {
   const [children, setChildren] = useState([]);
@@ -22,6 +24,9 @@ const ChildrenPage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(0);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showPrintableID, setShowPrintableID] = useState(false);
+  const [registeredChildData, setRegisteredChildData] = useState(null);
   const CACHE_DURATION = 60000; // 1 minute in milliseconds
 
   // Debounce search query
@@ -116,16 +121,12 @@ const ChildrenPage = () => {
     setCurrentPage(page);
   };
 
-  const handleAddChildSuccess = async () => {
+  const handleAddChildSuccess = async (childData) => {
     await fetchChildren(); // Wait for fetch to complete
     
-    // Show success message after list is refreshed
-    Swal.fire({
-      icon: 'success',
-      title: 'Success!',
-      text: 'Child registered successfully',
-      timer: 1500
-    });
+    // Set the registered child data and show success modal instead of Swal
+    setRegisteredChildData(childData);
+    setShowSuccessModal(true);
   };
 
   const calculateAge = (birthdate) => {
@@ -376,6 +377,12 @@ const ChildrenPage = () => {
     });
   };
 
+  // Add a function to handle printing ID card
+  const handlePrintIDCard = () => {
+    setShowSuccessModal(false);
+    setShowPrintableID(true);
+  };
+
   return (
     <div className="page-container">
       <Card
@@ -468,6 +475,24 @@ const ChildrenPage = () => {
             setIsViewModalOpen(false);
             setSelectedChild(null); // Add this line to clean up
           }}
+        />
+      )}
+
+      {/* Registration Success Modal */}
+      {showSuccessModal && registeredChildData && (
+        <RegistrationSuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => setShowSuccessModal(false)}
+          childData={registeredChildData}
+          onPrintID={handlePrintIDCard}
+        />
+      )}
+
+      {/* Printable ID Card Component */}
+      {showPrintableID && registeredChildData && (
+        <PrintableIDCard 
+          childData={registeredChildData}
+          onClose={() => setShowPrintableID(false)}
         />
       )}
     </div>
