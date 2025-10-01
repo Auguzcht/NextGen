@@ -167,7 +167,8 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
     const childId = Number(value);
     
     if (checked) {
-      // Add child to associated children
+      // Add child to associated children - still set isPrimary flag for database
+      // but we don't display it in the UI anymore
       setFormData(prev => {
         const newAssociatedChildren = [
           ...prev.associatedChildren, 
@@ -193,16 +194,6 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
         return { ...prev, associatedChildren: updatedChildren };
       });
     }
-  };
-
-  const handleSetPrimary = (childId) => {
-    setFormData(prev => ({
-      ...prev,
-      associatedChildren: prev.associatedChildren.map(child => ({
-        ...child,
-        isPrimary: child.childId === childId // Set selected child as primary, others as not primary
-      }))
-    }));
   };
 
   const validate = () => {
@@ -487,7 +478,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
       >
         {/* Header Section */}
         <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-[#571C1F]">
+          <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Guardian Information' : 'Add New Guardian'}
           </h2>
           <button 
@@ -545,7 +536,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm text-nextgen-blue-dark font-medium">
+                <p className="text-sm text-nextgen-blue-dark font-small">
                   {isEdit 
                     ? 'Update guardian information and associated children'
                     : 'Add a new guardian with contact information and child associations'
@@ -564,7 +555,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
+                <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
                   Guardian Information
                 </h3>
                 
@@ -637,12 +628,12 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                <h3 className="text-lg font-medium text-[#571C1F] mb-4">
+                <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
                   Associated Children
                 </h3>
                 
                 <p className="text-sm text-gray-600 mb-4">
-                  Select children that this guardian is responsible for. The primary guardian is the main contact for the child.
+                  Select children that this guardian is responsible for.
                 </p>
                 
                 {children.length === 0 ? (
@@ -665,9 +656,6 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                           </th>
                           <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Age / Group
-                          </th>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Primary
                           </th>
                         </tr>
                       </thead>
@@ -702,16 +690,6 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                                 {calculateAge(child.birthdate)} years<br />
                                 <span className="text-xs">{child.age_categories?.category_name || 'N/A'}</span>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                <input
-                                  type="radio"
-                                  name="primaryChild"
-                                  checked={isPrimary}
-                                  onChange={() => handleSetPrimary(child.child_id)}
-                                  disabled={!isSelected}
-                                  className="h-4 w-4 text-nextgen-blue border-gray-300 focus:ring-nextgen-blue"
-                                />
                               </td>
                             </tr>
                           );

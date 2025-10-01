@@ -257,15 +257,7 @@ const GuardiansPage = () => {
               <div key={cg.child_id} className="flex items-center">
                 <span>
                   {cg.children.first_name} {cg.children.last_name}
-                  {cg.is_primary && (
-                    <Badge
-                      variant="primary"
-                      size="xs"
-                      className="ml-2"
-                    >
-                      Primary
-                    </Badge>
-                  )}
+                  {/* Removed Primary Badge */}
                 </span>
               </div>
             ))}
@@ -530,11 +522,7 @@ const GuardiansPage = () => {
                             <p className="font-medium text-gray-900">
                               {cg.children.first_name} {cg.children.last_name}
                             </p>
-                            {cg.is_primary && (
-                              <Badge variant="primary" size="sm" className="ml-2">
-                                Primary
-                              </Badge>
-                            )}
+                            {/* Removed Primary Badge */}
                           </div>
                           <p className="text-sm text-gray-500">
                             ID: {cg.children.formal_id || 'N/A'} • 
