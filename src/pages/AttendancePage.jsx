@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { Card, Button, Table, Input, Badge } from '../components/ui';
 import { motion } from 'framer-motion';
+import QRScannerModal from '../components/common/QRScannerModal';
+import Swal from 'sweetalert2';
 
 const AttendancePage = () => {
   const [services, setServices] = useState([]);
@@ -16,6 +18,7 @@ const AttendancePage = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [error, setError] = useState(null);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
 
   // Fetch services on mount
   useEffect(() => {
@@ -454,6 +457,103 @@ const AttendancePage = () => {
     }
   ];
 
+  // Add this function to handle QR scan results
+  const handleQRScanSuccess = useCallback(async (scannedId) => {
+    if (!selectedService || !selectedDate) {
+      setError('Please select a service and date first');
+      return;
+    }
+    
+    try {
+      // Try to find a child with this formal ID
+      const { data: childData, error: childError } = await supabase
+        .from('children')
+        .select('child_id, first_name, last_name, formal_id')
+        .eq('formal_id', scannedId)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (childError) throw childError;
+      
+      if (!childData) {
+        setError(`No child found with ID: ${scannedId}`);
+        return;
+      }
+      
+      // Check if child is already checked in
+      const { data: existingCheckIn, error: checkInError } = await supabase
+        .from('attendance')
+        .select('attendance_id, check_out_time')
+        .eq('child_id', childData.child_id)
+        .eq('service_id', selectedService)
+        .eq('attendance_date', selectedDate)
+        .maybeSingle();
+      
+      if (checkInError) throw checkInError;
+      
+      if (existingCheckIn) {
+        // Child is already checked in
+        if (existingCheckIn.check_out_time) {
+          // Already checked out
+          setError(`${childData.first_name} ${childData.last_name} is already checked out`);
+        } else {
+          // Checked in but not out - perform check out
+          await handleCheckOut(existingCheckIn.attendance_id);
+          
+          // Show success message as an error with positive styling
+          setError(null);
+          // Use Swal (SweetAlert2) with NextGen styling
+          Swal.fire({
+            icon: 'success',
+            title: `${childData.first_name} checked OUT`,
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000,
+            timerProgressBar: true,
+            width: 'auto',
+            padding: '0.75em',
+            iconColor: '#e66300', // nextgen-orange-dark
+            customClass: {
+              popup: 'swal-nextgen-toast',
+              title: 'swal-nextgen-title'
+            }
+          });
+        }
+      } else {
+        // Not checked in yet - perform check in
+        await handleCheckIn(childData.child_id);
+        
+        // Show success message
+        setError(null);
+        // Use Swal with NextGen styling
+        Swal.fire({
+          icon: 'success',
+          title: `${childData.first_name} checked IN`,
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+          width: 'auto',
+          padding: '0.75em',
+          iconColor: '#1ca7bc', // nextgen-blue-dark
+          customClass: {
+            popup: 'swal-nextgen-toast',
+            title: 'swal-nextgen-title'
+          }
+        });
+      }
+    
+      // Refresh the checked-in list
+      fetchCheckedInChildren();
+      
+    } catch (error) {
+      console.error('Error processing QR scan:', error);
+      setError(`Failed to process scan: ${error.message}`);
+    }
+  }, [selectedService, selectedDate, handleCheckIn, handleCheckOut, fetchCheckedInChildren]);
+
   return (
     <div className="page-container">
       <Card
@@ -474,6 +574,7 @@ const AttendancePage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
+          {/* Error messages */}
           {error && (
             <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md">
               <div className="flex">
@@ -529,40 +630,56 @@ const AttendancePage = () => {
                   />
                 </div>
 
-                {/* Search Input */}
-                <div className="flex-1">
+                {/* Search Input - Modified with QR button */}
+                <div className="flex-1 flex flex-col">
                   <label htmlFor="search-input" className="block text-sm font-medium text-gray-700 mb-1">
                     Search Child
                   </label>
-                  <Input
-                    type="text"
-                    id="search-input"
-                    placeholder="Search by name or ID..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    disabled={!selectedService}
-                    className="h-[42px]"
-                    startIcon={
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Input
+                        type="text"
+                        id="search-input"
+                        placeholder="Search by name or ID..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        disabled={!selectedService}
+                        className="h-[42px]"
+                        startIcon={
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                          </svg>
+                        }
+                        endIcon={searching ? (
+                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : searchQuery ? (
+                          <button 
+                            onClick={() => setSearchQuery('')}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        ) : null}
+                        />
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      disabled={!selectedService}
+                      onClick={() => setShowScannerModal(true)}
+                      className="h-[42px] w-[42px] p-0 flex items-center justify-center"
+                      title="Scan QR Code"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                       </svg>
-                    }
-                    endIcon={searching ? (
-                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : searchQuery ? (
-                      <button 
-                        onClick={() => setSearchQuery('')}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    ) : null}
-                  />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -594,6 +711,13 @@ const AttendancePage = () => {
           </div>
         </motion.div>
       </Card>
+      
+      {/* QR Scanner Modal */}
+      <QRScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onScanSuccess={handleQRScanSuccess}
+      />
     </div>
   );
 };

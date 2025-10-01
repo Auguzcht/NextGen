@@ -294,4 +294,21 @@ button:focus-visible {
   .status-badge-info {
     @apply bg-nextgen-blue bg-opacity-10 text-nextgen-blue-dark;
   }
+
+  /* Add to src/index.css */
+  .swal-nextgen-toast {
+    background-color: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 0.5rem !important;
+    border-left: 4px solid currentColor !important;
+  }
+
+  .swal-nextgen-title {
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    color: #333 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
 }

@@ -66,6 +66,7 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
         isOpen={isOpen}
         onClose={onClose}
         title="Child Details"
+        variant='primary'
         size="xl"
       >
         <div className="grid grid-cols-3 gap-6 p-6">
