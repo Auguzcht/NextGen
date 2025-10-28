@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import EmailSettingsForm from '../components/email/EmailSettingsForm.jsx';
 import EmailTemplatesManager from '../components/email/EmailTemplatesManager.jsx';
 import EmailComposer from '../components/email/EmailComposer.jsx';
@@ -15,12 +16,23 @@ import { motion } from 'framer-motion';
 const SettingsPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { staffProfile, user } = useAuth();
   const [activeTab, setActiveTab] = useState('services');
   const [loading, setLoading] = useState(false);
   const [emailConfig, setEmailConfig] = useState(null);
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [services, setServices] = useState([]);
   const [ageCategories, setAgeCategories] = useState([]);
+  
+  // Get user profile
+  const profile = staffProfile || user;
+  
+  // Helper function to check if user has a specific role
+  const hasRole = (...roles) => {
+    if (!profile?.role) return false;
+    const userRole = profile.role.toLowerCase().trim();
+    return roles.some(role => role.toLowerCase().trim() === userRole);
+  };
 
   // Initialize the active tab based on URL parameters
   useEffect(() => {
@@ -271,21 +283,24 @@ const SettingsPage = () => {
               Age Groups & Materials
             </Button>
             
-            <Button
-              variant={activeTab === 'email' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => handleTabChange('email')}
-              className="px-4 rounded-b-none rounded-t-lg"
-              fullWidth
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              }
-              iconPosition="left"
-            >
-              Email Management
-            </Button>
+            {/* Email Management - Only for Administrators */}
+            {hasRole('Administrator') && (
+              <Button
+                variant={activeTab === 'email' ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => handleTabChange('email')}
+                className="px-4 rounded-b-none rounded-t-lg"
+                fullWidth
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                }
+                iconPosition="left"
+              >
+                Email Management
+              </Button>
+            )}
           </div>
         </div>
 

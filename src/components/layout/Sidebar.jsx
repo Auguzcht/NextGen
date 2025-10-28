@@ -43,14 +43,15 @@ const Sidebar = () => {
     return roles.some(role => role.toLowerCase().trim() === userRole);
   };
 
-  // Define navigation items - Settings without subpages, just like Reports
+  // Define navigation items with role-based access
   const navLinks = [
+    // Volunteer, Coordinator, Administrator can access these
     { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
     { name: 'Children', path: '/children', icon: 'child' },
     { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' },
     { name: 'Guardians', path: '/guardians', icon: 'users' },
     
-    // Staff management with subpages - back to original style
+    // Coordinator and Administrator can access Staff and Reports
     ...(hasRole('Administrator', 'Coordinator') ? [
       { 
         name: 'Staff', 
@@ -60,13 +61,12 @@ const Sidebar = () => {
           { name: 'Staff List', path: '/staff' },
           { name: 'Assignments', path: '/staff/assignments' }
         ]
-      }
+      },
+      { name: 'Reports', path: '/reports', icon: 'document-report' }
     ] : []),
     
-    { name: 'Reports', path: '/reports', icon: 'document-report' },
-    
-    // Settings - single page
-    ...(hasRole('Administrator') ? [
+    // Settings - Administrator has full access, Coordinator has limited access
+    ...(hasRole('Administrator', 'Coordinator') ? [
       { name: 'Settings', path: '/settings', icon: 'cog' }
     ] : [])
   ];

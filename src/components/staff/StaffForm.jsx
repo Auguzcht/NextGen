@@ -423,7 +423,6 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
   // Role options with descriptions
   const roleOptions = [
     { value: 'Volunteer', label: 'Volunteer', description: 'Basic access for volunteers' },
-    { value: 'Teacher', label: 'Teacher', description: 'Can manage classes and materials' },
     { value: 'Coordinator', label: 'Coordinator', description: 'Can manage staff and schedules' },
     { value: 'Administrator', label: 'Administrator', description: 'Full system access' }
   ];
