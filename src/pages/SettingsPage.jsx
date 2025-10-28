@@ -146,7 +146,7 @@ const SettingsPage = () => {
     switch (activeTab) {
       case 'email':
         return (
-          <div className="space-y-10">
+          <div className="space-y-10 max-w-full overflow-hidden">
             <EmailSettingsForm 
               emailConfig={emailConfig} 
               onUpdate={handleEmailConfigUpdate}
@@ -290,7 +290,7 @@ const SettingsPage = () => {
         </div>
 
         <motion.div 
-          className="px-1 py-6"
+          className="px-1 py-6 overflow-x-hidden"
           key={activeTab}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

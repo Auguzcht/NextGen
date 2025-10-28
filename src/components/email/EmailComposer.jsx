@@ -333,15 +333,43 @@ const EmailComposer = ({ templates }) => {
 
   const getMaterialIcon = (category) => {
     const icons = {
-      'Lesson': '📖',
-      'Activity': '🎮',
-      'Song': '🎵',
-      'Craft': '✂️',
-      'Video': '🎥',
-      'Story': '📚',
-      'Game': '🎯'
+      'Lesson': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+      'Activity': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      'Song': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+        </svg>
+      ),
+      'Craft': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+        </svg>
+      ),
+      'Video': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      ),
+      'Story': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+      'Game': (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+        </svg>
+      )
     };
-    return icons[category] || '📄';
+    return icons[category] || icons['Lesson'];
   };
 
   return (
@@ -622,7 +650,9 @@ const EmailComposer = ({ templates }) => {
                     className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3"
                   >
                     <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{getMaterialIcon(material.category)}</span>
+                      <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white">
+                        {getMaterialIcon(material.category)}
+                      </div>
                       <div>
                         <p className="text-sm font-medium text-gray-900">{material.title}</p>
                         <p className="text-xs text-gray-500">{material.category}</p>
@@ -667,7 +697,9 @@ const EmailComposer = ({ templates }) => {
                             className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
                           />
                           <div className="ml-3 flex items-center space-x-3 flex-1">
-                            <span className="text-xl">{getMaterialIcon(material.category)}</span>
+                            <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white">
+                              {getMaterialIcon(material.category)}
+                            </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900">{material.title}</p>
                               <div className="flex items-center space-x-2 mt-1">

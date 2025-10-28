@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button, Badge } from '../ui';
 import Input from '../ui/Input';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Swal from 'sweetalert2';
 import { sendTestEmail } from '../../services/emailService';
 
@@ -17,6 +17,19 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [openSections, setOpenSections] = useState({
+    provider: true,
+    sender: false,
+    advanced: false,
+    test: false
+  });
+
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   useEffect(() => {
     if (emailConfig) {
@@ -115,193 +128,284 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
           )}
         </div>
       </div>
-
-      {/* Info Banner */}
-      <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mx-6 mt-6 rounded-r-md backdrop-blur-sm shadow-sm">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-nextgen-blue-dark font-medium">
-              Email Configuration Purpose
-            </p>
-            <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
-              <li><strong>Weekly Reports:</strong> Automatically send attendance reports to guardians</li>
-              <li><strong>Manual Emails:</strong> Send custom messages to guardians via Email Composer</li>
-              <li><strong>Notifications:</strong> Event reminders, birthday messages, and announcements</li>
-            </ul>
-          </div>
-        </div>
-      </div>
       
-      <form className="px-6 py-6 space-y-6" onSubmit={handleSubmit}>
-        {/* API Configuration Section */}
-        <motion.div 
-          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Provider Settings</h4>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              type="select"
-              id="provider"
-              name="provider"
-              label="Email Provider"
-              value={formData.provider}
-              onChange={handleInputChange}
-              options={[
-                { value: 'Resend', label: 'Resend' },
-                { value: 'SendGrid', label: 'SendGrid' },
-                { value: 'Mailgun', label: 'Mailgun' },
-                { value: 'AWS SES', label: 'AWS SES' },
-                { value: 'SMTP', label: 'Custom SMTP' }
-              ]}
-              helperText="Choose your email service provider"
-              required
-              animate
-            />
-            
-            <Input
-              type="password"
-              id="api_key"
-              name="api_key"
-              label="API Key"
-              value={formData.api_key}
-              onChange={handleInputChange}
-              placeholder="Enter your API key"
-              helperText="Your provider's API authentication key"
-              required
-              animate
-            />
-          </div>
-        </motion.div>
-
-        {/* Sender Information Section */}
-        <motion.div 
-          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Sender Information</h4>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              type="email"
-              id="from_email"
-              name="from_email"
-              label="From Email Address"
-              value={formData.from_email}
-              onChange={handleInputChange}
-              placeholder="noreply@yourchurch.org"
-              helperText="Must be verified with your email provider"
-              required
-              animate
-            />
-            
-            <Input
-              type="text"
-              id="from_name"
-              name="from_name"
-              label="From Name"
-              value={formData.from_name}
-              onChange={handleInputChange}
-              placeholder="NextGen Ministry"
-              helperText="Display name for outgoing emails"
-              required
-              animate
-            />
-          </div>
-        </motion.div>
-
-        {/* Advanced Settings Section */}
-        <motion.div 
-          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Advanced Settings</h4>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              type="number"
-              id="batch_size"
-              name="batch_size"
-              label="Batch Size"
-              min="1"
-              max="1000"
-              value={formData.batch_size}
-              onChange={handleInputChange}
-              helperText="Maximum emails to send in a single batch (1-1000)"
-              required
-              animate
-            />
-            
-            <div className="flex items-center h-full pt-5">
-              <div className="flex items-center">
-                <input
-                  id="is_active"
-                  name="is_active"
-                  type="checkbox"
-                  checked={formData.is_active}
-                  onChange={handleInputChange}
-                  className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
-                />
-                <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900 font-medium">
-                  Enable Email Service
-                </label>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Test Email Section */}
-        <motion.div 
-          className="bg-gradient-to-r from-purple-50 to-purple-50/50 rounded-lg border border-purple-200 p-6 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
-        >
-          <h4 className="text-md font-medium text-purple-900 mb-3 flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Test Email Configuration
-          </h4>
-          <p className="text-sm text-purple-700 mb-4">
-            Send a test email to verify your configuration is working correctly
-          </p>
-          
-          <div className="flex items-end space-x-3">
-            <div className="flex-1">
-              <Input
-                type="email"
-                id="test_email"
-                label="Test Email Address"
-                placeholder="your@email.com"
-                value={testEmail}
-                onChange={(e) => setTestEmail(e.target.value)}
-                className="mb-0"
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleTestEmail}
-              disabled={isSendingTest || !formData.api_key || !formData.from_email}
-              className="border-purple-300 text-purple-700 hover:bg-purple-50"
+      <form className="px-6 py-6 space-y-4" onSubmit={handleSubmit}>
+        {/* API Configuration Section - Accordion */}
+        <div className="bg-white rounded-lg border border-[#571C1F]/10 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('provider')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <h4 className="text-md font-medium text-nextgen-blue-dark flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Provider Settings
+            </h4>
+            <svg
+              className={`h-5 w-5 text-gray-500 transition-transform ${openSections.provider ? 'transform rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              {isSendingTest ? 'Sending...' : 'Send Test'}
-            </Button>
-          </div>
-        </motion.div>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          <AnimatePresence>
+            {openSections.provider && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-6 pt-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
+                      type="select"
+                      id="provider"
+                      name="provider"
+                      label="Email Provider"
+                      value={formData.provider}
+                      onChange={handleInputChange}
+                      options={[
+                        { value: 'Resend', label: 'Resend' },
+                        { value: 'SendGrid', label: 'SendGrid' },
+                        { value: 'Mailgun', label: 'Mailgun' },
+                        { value: 'AWS SES', label: 'AWS SES' },
+                        { value: 'SMTP', label: 'Custom SMTP' }
+                      ]}
+                      helperText="Choose your email service provider"
+                      required
+                      animate
+                    />
+                    
+                    <Input
+                      type="password"
+                      id="api_key"
+                      name="api_key"
+                      label="API Key"
+                      value={formData.api_key}
+                      onChange={handleInputChange}
+                      placeholder="Enter your API key"
+                      helperText="Your provider's API authentication key"
+                      required
+                      animate
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Sender Information Section - Accordion */}
+        <div className="bg-white rounded-lg border border-[#571C1F]/10 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('sender')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <h4 className="text-md font-medium text-nextgen-blue-dark flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              Sender Information
+            </h4>
+            <svg
+              className={`h-5 w-5 text-gray-500 transition-transform ${openSections.sender ? 'transform rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          <AnimatePresence>
+            {openSections.sender && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-6 pt-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
+                      type="email"
+                      id="from_email"
+                      name="from_email"
+                      label="From Email Address"
+                      value={formData.from_email}
+                      onChange={handleInputChange}
+                      placeholder="noreply@yourchurch.org"
+                      helperText="Must be verified with your email provider"
+                      required
+                      animate
+                    />
+                    
+                    <Input
+                      type="text"
+                      id="from_name"
+                      name="from_name"
+                      label="From Name"
+                      value={formData.from_name}
+                      onChange={handleInputChange}
+                      placeholder="NextGen Ministry"
+                      helperText="Display name for outgoing emails"
+                      required
+                      animate
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Advanced Settings Section - Accordion */}
+        <div className="bg-white rounded-lg border border-[#571C1F]/10 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('advanced')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <h4 className="text-md font-medium text-nextgen-blue-dark flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Advanced Settings
+            </h4>
+            <svg
+              className={`h-5 w-5 text-gray-500 transition-transform ${openSections.advanced ? 'transform rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          <AnimatePresence>
+            {openSections.advanced && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-6 pt-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
+                      type="number"
+                      id="batch_size"
+                      name="batch_size"
+                      label="Batch Size"
+                      min="1"
+                      max="1000"
+                      value={formData.batch_size}
+                      onChange={handleInputChange}
+                      helperText="Maximum emails to send in a single batch (1-1000)"
+                      required
+                      animate
+                    />
+                    
+                    <div className="flex items-start pt-6">
+                      <div className="flex items-center h-5">
+                        <input
+                          id="is_active"
+                          name="is_active"
+                          type="checkbox"
+                          checked={formData.is_active}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
+                        />
+                      </div>
+                      <div className="ml-3">
+                        <label htmlFor="is_active" className="text-sm font-medium text-gray-900">
+                          Enable Email Service
+                        </label>
+                        <p className="text-xs text-gray-500">Activate email sending functionality</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Test Email Section - Accordion */}
+        <div className="bg-gradient-to-r from-purple-50 to-purple-50/50 rounded-lg border border-purple-200 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('test')}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-purple-100/50 transition-colors"
+          >
+            <h4 className="text-md font-medium text-purple-900 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Test Email Configuration
+            </h4>
+            <svg
+              className={`h-5 w-5 text-purple-700 transition-transform ${openSections.test ? 'transform rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          
+          <AnimatePresence>
+            {openSections.test && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-6 pt-4">
+                  <p className="text-sm text-purple-700 mb-4">
+                    Send a test email to verify your configuration is working correctly
+                  </p>
+                  
+                  <div className="flex items-end space-x-3">
+                    <div className="w-1/2">
+                      <Input
+                        type="email"
+                        id="test_email"
+                        label="Test Email Address"
+                        placeholder="your@email.com"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                        className="mb-0"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleTestEmail}
+                      disabled={isSendingTest || !formData.api_key || !formData.from_email}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      {isSendingTest ? 'Sending...' : 'Send Test'}
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-3 pt-5 border-t border-gray-200">

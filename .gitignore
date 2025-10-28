@@ -28,5 +28,8 @@ dist-ssr
 
 # db schema copy
 db_nextgen.sql
+postgre_nextgen.sql
 
 *.md
+
+/public/migrations

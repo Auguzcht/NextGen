@@ -33,46 +33,6 @@ const EmailTemplatesList = ({ templates, onRefresh, onView, onEdit }) => {
     }
   };
 
-  const handleDelete = async (template) => {
-    const result = await Swal.fire({
-      title: 'Delete Template?',
-      text: `Are you sure you want to delete "${template.template_name}"? This action cannot be undone.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Yes, delete it',
-      cancelButtonText: 'Cancel'
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      const { error } = await supabase
-        .from('email_templates')
-        .delete()
-        .eq('template_id', template.template_id);
-
-      if (error) throw error;
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Deleted!',
-        text: 'Template has been deleted successfully.',
-        timer: 1500
-      });
-
-      onRefresh();
-    } catch (error) {
-      console.error('Error deleting template:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to delete template'
-      });
-    }
-  };
-
   const getTemplateTypeColor = (type) => {
     const colors = {
       'notification': 'primary',
@@ -246,18 +206,6 @@ const EmailTemplatesList = ({ templates, onRefresh, onView, onEdit }) => {
                       isLoading={updatingId === template.template_id}
                     >
                       {template.is_active ? 'Deactivate' : 'Activate'}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="xs"
-                      onClick={() => handleDelete(template)}
-                      icon={
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      }
-                    >
-                      Delete
                     </Button>
                   </div>
                 </td>
