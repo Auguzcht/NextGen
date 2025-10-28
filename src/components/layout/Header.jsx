@@ -43,56 +43,80 @@ const pageTitles = {
 };
 
 const Header = () => {
-  const { user, logout } = useAuth(); // Change signOut to logout
-  const { toggleSidebar, sidebarOpen } = useNavigation(); // Use from NavigationContext
+  const { user, logout } = useAuth();
+  const { toggleSidebar, sidebarOpen } = useNavigation();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [profileImageUrl, setProfileImageUrl] = useState(null);
+  const [imageLoading, setImageLoading] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
   
-  // Get profile image from Firebase Storage
+  // Enhanced profile image fetch from Firebase Storage
   useEffect(() => {
     const fetchProfileImage = async () => {
-      if (!user?.uid) return;
+      if (!user?.staff_id && !user?.uid) {
+        setImageLoading(false);
+        return;
+      }
 
+      setImageLoading(true);
+      
       try {
-        // First try to get from staff profile_image_url if exists
+        // Priority 1: Check if user object already has profile_image_url from database
         if (user.profile_image_url) {
+          console.log('Using profile_image_url from user object:', user.profile_image_url);
           setProfileImageUrl(user.profile_image_url);
+          setImageLoading(false);
           return;
         }
 
-        // If no direct URL, try to get from Firebase Storage using path
-        const storagePath = user.profile_image_path || `NextGen/staff-photos/${user.uid}`;
-        const storageRef = ref(storage, storagePath);
+        // Priority 2: Try to get from Firebase Storage using staff_id or uid
+        const staffId = user.staff_id || user.uid;
         
-        try {
-          const url = await getDownloadURL(storageRef);
-          setProfileImageUrl(url);
-          
-          // Optionally update the staff record with the URL for faster future access
-          // This would need to be implemented in your database update function
-          if (url && !user.profile_image_url) {
-            // Update staff record with new URL
-            // This is just a placeholder - implement your actual update logic
-            console.log('Would update staff record with URL:', url);
-          }
-        } catch (error) {
-          if (error.code === 'storage/object-not-found') {
-            console.log('No profile image found in storage');
-          } else {
-            console.error('Error fetching profile image:', error);
+        // Try multiple possible paths
+        const possiblePaths = [
+          user.profile_image_path, // Use provided path if exists
+          `NextGen/staff-photos/${staffId}`,
+          `NextGen/staff-photos/${staffId}.jpg`,
+          `NextGen/staff-photos/${staffId}.png`,
+          `NextGen/staff-photos/${staffId}.jpeg`
+        ].filter(Boolean); // Remove null/undefined values
+
+        console.log('Trying to fetch from Firebase Storage paths:', possiblePaths);
+
+        for (const storagePath of possiblePaths) {
+          try {
+            const storageRef = ref(storage, storagePath);
+            const url = await getDownloadURL(storageRef);
+            
+            if (url) {
+              console.log('Found profile image at:', storagePath);
+              setProfileImageUrl(url);
+              setImageLoading(false);
+              return;
+            }
+          } catch (error) {
+            // Continue to next path
+            console.log('Not found at:', storagePath);
+            continue;
           }
         }
+
+        // If no image found in any path
+        console.log('No profile image found for user');
+        setProfileImageUrl(null);
       } catch (error) {
-        console.error('Error in profile image fetch:', error);
+        console.error('Error fetching profile image:', error);
+        setProfileImageUrl(null);
+      } finally {
+        setImageLoading(false);
       }
     };
 
     fetchProfileImage();
-  }, [user]);
+  }, [user?.staff_id, user?.uid, user?.profile_image_url, user?.profile_image_path]);
 
   // Get current page title and description
   const currentPath = location.pathname;
@@ -184,30 +208,44 @@ const Header = () => {
     }
   };
 
-  // Avatar rendering function - checks if user has profile image
+  // Enhanced avatar rendering function with loading state
   const renderAvatar = () => {
-    if (profileImageUrl) {
+    if (imageLoading) {
       return (
-        <img 
-          src={profileImageUrl} 
-          alt={`${user?.first_name || ''} ${user?.last_name || ''}`}
-          className="h-full w-full object-cover rounded-full"
-          onError={(e) => {
-            e.target.onerror = null; // Prevent infinite loop
-            setProfileImageUrl(null); // Fall back to initials
-          }}
-        />
-      );
-    } else {
-      return (
-        <div className={`h-full w-full rounded-full flex items-center justify-center text-white ${userGradient}`}>
-          <span className="font-medium text-sm">
-            {user?.first_name?.charAt(0) || user?.email?.charAt(0)}
+        <div className={`h-full w-full rounded-full flex items-center justify-center ${userGradient} animate-pulse`}>
+          <span className="font-medium text-sm text-white/50">
+            {user?.first_name?.charAt(0) || user?.email?.charAt(0) || '?'}
             {user?.last_name?.charAt(0) || ''}
           </span>
         </div>
       );
     }
+
+    if (profileImageUrl) {
+      return (
+        <img 
+          src={profileImageUrl} 
+          alt={`${user?.first_name || ''} ${user?.last_name || ''}`}
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            console.error('Failed to load profile image:', profileImageUrl);
+            e.target.onerror = null; // Prevent infinite loop
+            setProfileImageUrl(null); // Fall back to gradient
+            setImageLoading(false);
+          }}
+        />
+      );
+    }
+
+    // Fallback to gradient with initials
+    return (
+      <div className={`h-full w-full rounded-full flex items-center justify-center text-white ${userGradient}`}>
+        <span className="font-medium text-sm">
+          {user?.first_name?.charAt(0) || user?.email?.charAt(0) || '?'}
+          {user?.last_name?.charAt(0) || ''}
+        </span>
+      </div>
+    );
   };
 
   return (

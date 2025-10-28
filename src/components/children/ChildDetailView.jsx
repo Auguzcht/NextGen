@@ -69,9 +69,19 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
         variant='primary'
         size="xl"
       >
-        <div className="grid grid-cols-3 gap-6 p-6">
+        <motion.div 
+          className="grid grid-cols-3 gap-6 p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           {/* Left Column - Photo with auto QR transition */}
-          <div className="col-span-1">
+          <motion.div 
+            className="col-span-1"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
             <div className="border-gray-200 p-4 shadow-sm rounded-lg hover:shadow-md transition-shadow duration-300">
               {/* Container with consistent height */}
               <div className="relative aspect-square overflow-hidden rounded-lg">
@@ -105,7 +115,6 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                         <>
                           <div className="flex items-center justify-center w-full h-full">
                             <div className="bg-white p-3 rounded-lg shadow-sm border border-nextgen-blue/10 flex items-center justify-center">
-                              {/* Reduced size further for better fit */}
                               <QRCode 
                                 value={child.formal_id} 
                                 size={80}
@@ -113,7 +122,7 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                                 fgColor="#30cee4"
                                 showLogo={true}
                                 logoSize={20}
-                                className="mx-auto" // Ensure centering
+                                className="mx-auto"
                               />
                             </div>
                           </div>
@@ -160,7 +169,6 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                 <h3 className="text-lg font-bold text-nextgen-blue-dark mb-3">
                   {child.first_name} {child.middle_name} {child.last_name}
                 </h3>
-                {/* Fixed button with flex layout to ensure icon and text stay on same line */}
                 <Button 
                   variant="primary" 
                   size="sm" 
@@ -178,15 +186,16 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                 </Button>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Right Column - Details */}
           <div className="col-span-2 space-y-6">
             {/* Basic Information Box */}
             <motion.div 
               className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm"
-              whileHover={{ boxShadow: '0 4px 12px rgba(48, 206, 228, 0.1)' }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.15 }}
             >
               <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Basic Information</h4>
               <div className="grid grid-cols-2 gap-4">
@@ -239,8 +248,9 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
             {child.child_guardian && (
               <motion.div 
                 className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm"
-                whileHover={{ boxShadow: '0 4px 12px rgba(48, 206, 228, 0.1)' }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
               >
                 <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Guardian Information</h4>
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -279,7 +289,7 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
               </motion.div>
             )}
           </div>
-        </div>
+        </motion.div>
       </Modal>
 
       {/* Printable ID Card Modal */}

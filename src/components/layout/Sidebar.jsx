@@ -9,41 +9,64 @@ const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const Sidebar = () => {
   const { sidebarOpen } = useNavigation();
-  const { staffProfile } = useAuth();
+  const { staffProfile, user } = useAuth(); // Get both staffProfile and user
   const location = useLocation();
   const [logoError, setLogoError] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState(null);
   const [activeSubpage, setActiveSubpage] = useState(null);
+  
+  // Use staffProfile if available, otherwise fall back to user
+  const profile = staffProfile || user;
   
   // Reset logo error if sidebar is closed/opened
   useEffect(() => {
     setLogoError(false);
   }, [sidebarOpen]);
 
-  // Define navigation items with subpages where appropriate
+  // Debug - can be removed after fixing
+  useEffect(() => {
+    console.log('🔍 Staff Profile Debug:', {
+      staffProfile,
+      user,
+      profile,
+      role: profile?.role,
+      roleType: typeof profile?.role,
+      isAdministrator: profile?.role?.toLowerCase() === 'administrator',
+      isCoordinator: profile?.role?.toLowerCase() === 'coordinator'
+    });
+  }, [staffProfile, user, profile]);
+
+  // Helper function to check if user has a specific role (case-insensitive)
+  const hasRole = (...roles) => {
+    if (!profile?.role) return false;
+    const userRole = profile.role.toLowerCase().trim();
+    return roles.some(role => role.toLowerCase().trim() === userRole);
+  };
+
+  // Define navigation items - Settings without subpages, just like Reports
   const navLinks = [
     { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
     { name: 'Children', path: '/children', icon: 'child' },
     { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' },
     { name: 'Guardians', path: '/guardians', icon: 'users' },
     
-    // Only show staff management for coordinators and administrators
-    ...(staffProfile?.role === 'Administrator' || staffProfile?.role === 'Coordinator' ? [
+    // Staff management with subpages - back to original style
+    ...(hasRole('Administrator', 'Coordinator') ? [
       { 
         name: 'Staff', 
         path: '/staff', 
         icon: 'staff',
         subpages: [
-          { name: 'Staff List', path: '/staff?tab=list' },
-          { name: 'Assignments', path: '/staff?tab=assignments' }
+          { name: 'Staff List', path: '/staff' },
+          { name: 'Assignments', path: '/staff/assignments' }
         ]
       }
     ] : []),
     
     { name: 'Reports', path: '/reports', icon: 'document-report' },
     
-    // Settings without subpages
-    ...(staffProfile?.role === 'Administrator' ? [
+    // Settings - single page
+    ...(hasRole('Administrator') ? [
       { name: 'Settings', path: '/settings', icon: 'cog' }
     ] : [])
   ];
@@ -86,7 +109,7 @@ const Sidebar = () => {
       
       setActiveSubpage(activeSubpagePath);
     }
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, navLinks]);
 
   // Toggle subpage visibility
   const toggleSubpages = (itemName) => {
@@ -519,7 +542,7 @@ function renderIcon(icon) {
           d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
         />
       );
-    case 'staff': // New staff icon different from users
+    case 'staff': // Staff icon different from users
       return (
         <path
           strokeLinecap="round"

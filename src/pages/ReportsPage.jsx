@@ -395,27 +395,87 @@ const ReportsPage = () => {
     }
   };
 
-  // Add this function to generate and upload the PDF report
+  // Update this function to generate and upload the PDF report
   const generateReportPDF = async (reportId, startDate, endDate) => {
     try {
       // Fetch all the data needed for the report
-      const [attendanceData, ageData, registeredCount, rawData] = await Promise.all([
+      const [attendanceData, ageData, registeredCount, rawData, growthData] = await Promise.all([
         fetchWithCache('attendance_pdf', () => fetchAttendanceData(startDate, endDate)),
         fetchWithCache('age_pdf', () => fetchAgeDistributionData(startDate, endDate)),
         fetchWithCache('registered_pdf', () => fetchRegisteredChildrenCount(startDate, endDate)),
         fetchWithCache('raw_pdf', () => fetchRawAttendanceData(startDate, endDate)),
+        fetchWithCache('growth_pdf', () => fetchGrowthData(startDate, endDate)),
       ]);
       
-      // Create a temporary element to render the report content
-      const reportElement = document.createElement('div');
-      reportElement.style.padding = '20px';
-      reportElement.style.fontFamily = 'Arial, sans-serif';
-      reportElement.style.width = '800px';
-      reportElement.style.backgroundColor = 'white';
-      reportElement.style.color = 'black';
+      // Initialize jsPDF with better quality settings
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: false // Don't compress for better quality
+      });
+      
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      let yPosition = margin;
+      
+      // Helper function to add a new page if needed
+      const checkPageBreak = (requiredSpace) => {
+        if (yPosition + requiredSpace > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+          return true;
+        }
+        return false;
+      };
+      
+      // Helper function to add text with proper formatting
+      const addText = (text, fontSize, style = 'normal', color = [0, 0, 0]) => {
+        pdf.setFontSize(fontSize);
+        pdf.setFont('helvetica', style);
+        pdf.setTextColor(...color);
+        pdf.text(text, margin, yPosition);
+        yPosition += fontSize * 0.5;
+      };
+      
+      // ===== PAGE 1: COVER & SUMMARY =====
+      
+      // Header with NextGen branding
+      pdf.setFillColor(48, 206, 228); // NextGen blue
+      pdf.rect(0, 0, pageWidth, 40, 'F');
+      
+      pdf.setFontSize(32);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('NextGen Ministry', pageWidth / 2, 20, { align: 'center' });
+      
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('Weekly Report', pageWidth / 2, 30, { align: 'center' });
+      
+      yPosition = 60;
+      
+      // Report period
+      pdf.setFontSize(14);
+      pdf.setTextColor(28, 167, 188); // NextGen blue dark
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`Week of ${formatDate(startDate, { month: 'long', day: 'numeric' })} - ${formatDate(endDate, { month: 'long', day: 'numeric', year: 'numeric' })}`, pageWidth / 2, yPosition, { align: 'center' });
+      
+      yPosition += 10;
+      pdf.setFontSize(10);
+      pdf.setTextColor(128, 128, 128);
+      pdf.setFont('helvetica', 'italic');
+      pdf.text(`Generated on ${formatDate(new Date().toISOString().split('T')[0], { month: 'long', day: 'numeric', year: 'numeric' })}`, pageWidth / 2, yPosition, { align: 'center' });
+      
+      yPosition += 20;
       
       // Generate service data summary
       const serviceData = {};
+      let totalAttendance = 0;
+      let uniqueChildren = new Set();
+      
       if (rawData) {
         rawData.forEach(item => {
           const serviceName = item.services?.service_name || 'Unknown';
@@ -431,8 +491,10 @@ const ReportsPage = () => {
           }
           
           serviceData[serviceName].attendance++;
+          totalAttendance++;
+          uniqueChildren.add(item.child_id);
           
-          // Count first timers (registered during this report period)
+          // Count first timers
           if (item.children?.registration_date >= startDate && item.children?.registration_date <= endDate) {
             serviceData[serviceName].firstTimers++;
           }
@@ -446,134 +508,462 @@ const ReportsPage = () => {
         });
       }
       
-      // Calculate unique children
-      const uniqueChildren = rawData ? new Set(rawData.map(item => item.child_id)).size : 0;
+      // Executive Summary Box
+      pdf.setFillColor(240, 248, 255); // Light blue background
+      pdf.roundedRect(margin, yPosition, contentWidth, 45, 3, 3, 'F');
       
-      // Calculate total attendance
-      const totalAttendance = rawData ? rawData.length : 0;
+      yPosition += 8;
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(28, 167, 188);
+      pdf.text('Executive Summary', margin + 5, yPosition);
       
-      // Generate HTML content for PDF
-      reportElement.innerHTML = `
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #30cee4; margin: 0;">NextGen Ministry Weekly Report</h1>
-          <h2 style="color: #1ca7bc; margin-top: 5px;">Week of ${formatDate(startDate)} to ${formatDate(endDate)}</h2>
-          <p style="font-style: italic; color: #666;">Generated on ${formatDate(new Date().toISOString().split('T')[0])}</p>
-        </div>
+      yPosition += 10;
+      
+      // Summary stats in a grid
+      const statBoxWidth = contentWidth / 3;
+      const statStartY = yPosition;
+      
+      // Total Attendance
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Total Attendance', margin + 5, statStartY);
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(48, 206, 228);
+      pdf.text(totalAttendance.toString(), margin + 5, statStartY + 8);
+      
+      // Unique Children
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Unique Children', margin + statBoxWidth + 5, statStartY);
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(48, 206, 228);
+      pdf.text(uniqueChildren.size.toString(), margin + statBoxWidth + 5, statStartY + 8);
+      
+      // First Timers
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('First Timers', margin + (statBoxWidth * 2) + 5, statStartY);
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(251, 118, 16); // NextGen orange
+      pdf.text((registeredCount || 0).toString(), margin + (statBoxWidth * 2) + 5, statStartY + 8);
+      
+      yPosition += 50;
+      
+      // Service Breakdown Table
+      checkPageBreak(60);
+      
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(28, 167, 188);
+      pdf.text('Service Breakdown', margin, yPosition);
+      yPosition += 8;
+      
+      // Table header
+      pdf.setFillColor(48, 206, 228);
+      pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+      
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      
+      const colWidths = [45, 25, 25, 20, 20, 20, 20];
+      let xPos = margin + 2;
+      
+      pdf.text('Service', xPos, yPosition + 6);
+      xPos += colWidths[0];
+      pdf.text('Attendance', xPos, yPosition + 6);
+      xPos += colWidths[1];
+      pdf.text('First Timers', xPos, yPosition + 6);
+      xPos += colWidths[2];
+      pdf.text('4-5 yrs', xPos, yPosition + 6);
+      xPos += colWidths[3];
+      pdf.text('6-7 yrs', xPos, yPosition + 6);
+      xPos += colWidths[4];
+      pdf.text('8-9 yrs', xPos, yPosition + 6);
+      xPos += colWidths[5];
+      pdf.text('10-12 yrs', xPos, yPosition + 6);
+      
+      yPosition += 10;
+      
+      // Table rows
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      let rowIndex = 0;
+      
+      Object.entries(serviceData).forEach(([service, data]) => {
+        checkPageBreak(8);
         
-        <div style="margin-bottom: 30px; background-color: rgba(48, 206, 228, 0.1); padding: 15px; border-radius: 10px;">
-          <h3 style="color: #1ca7bc; margin-top: 0;">Summary</h3>
-          <div style="display: flex; justify-content: space-between;">
-            <div style="flex: 1; text-align: center; padding: 10px;">
-              <p style="font-size: 14px; color: #666; margin: 0;">Total Attendance</p>
-              <p style="font-size: 24px; font-weight: bold; color: #30cee4; margin: 5px 0;">${totalAttendance}</p>
-            </div>
-            <div style="flex: 1; text-align: center; padding: 10px;">
-              <p style="font-size: 14px; color: #666; margin: 0;">Unique Children</p>
-              <p style="font-size: 24px; font-weight: bold; color: #30cee4; margin: 5px 0;">${uniqueChildren}</p>
-            </div>
-            <div style="flex: 1; text-align: center; padding: 10px;">
-              <p style="font-size: 14px; color: #666; margin: 0;">First Timers</p>
-              <p style="font-size: 24px; font-weight: bold; color: #fb7610; margin: 5px 0;">${registeredCount || 0}</p>
-            </div>
-          </div>
-        </div>
-        
-        <h3 style="color: #1ca7bc;">Service Breakdown</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr style="background-color: #f2f2f2;">
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Service</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Attendance</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">First Timers</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 4-5</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 6-7</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 8-9</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Age 10-12</th>
-          </tr>
-          ${Object.entries(serviceData).map(([service, data]) => `
-            <tr>
-              <td style="padding: 10px; border: 1px solid #ddd;">${service}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.attendance}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.firstTimers}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age4_5}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age6_7}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age8_9}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${data.age10_12}</td>
-            </tr>
-          `).join('')}
-          <tr style="background-color: rgba(48, 206, 228, 0.1); font-weight: bold;">
-            <td style="padding: 10px; border: 1px solid #ddd;">Totals</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${totalAttendance}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${registeredCount || 0}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age4_5, 0)}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age6_7, 0)}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age8_9, 0)}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${Object.values(serviceData).reduce((sum, data) => sum + data.age10_12, 0)}</td>
-          </tr>
-        </table>
-        
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed #ddd; font-size: 12px; color: #999; text-align: center;">
-          This is an automatically generated report from the NextGen Ministry System.
-          <br>For questions, please contact the ministry administrator.
-        </div>
-      `;
-      
-      // Append to body temporarily for rendering (hidden)
-      document.body.appendChild(reportElement);
-      reportElement.style.position = 'absolute';
-      reportElement.style.left = '-9999px';
-      
-      // Generate PDF using html2canvas and jsPDF
-      const canvas = await html2canvas(reportElement, { 
-        scale: 1.5, // Higher scale for better quality
-        logging: false,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Create PDF (A4 size)
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
-      
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      
-      // If content is too tall for one page, add more pages
-      if (pdfHeight > pdf.internal.pageSize.getHeight()) {
-        let heightLeft = pdfHeight;
-        let position = 0;
-        
-        pdf.addPage();
-        heightLeft -= pdf.internal.pageSize.getHeight();
-        position -= pdf.internal.pageSize.getHeight();
-        
-        while (heightLeft >= 0) {
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-          heightLeft -= pdf.internal.pageSize.getHeight();
-          position -= pdf.internal.pageSize.getHeight();
-          
-          if (heightLeft > 0) {
-            pdf.addPage();
-          }
+        // Alternate row colors
+        if (rowIndex % 2 === 0) {
+          pdf.setFillColor(250, 250, 250);
+          pdf.rect(margin, yPosition - 1, contentWidth, 7, 'F');
         }
+        
+        xPos = margin + 2;
+        pdf.text(service, xPos, yPosition + 4);
+        xPos += colWidths[0];
+        pdf.text(data.attendance.toString(), xPos, yPosition + 4);
+        xPos += colWidths[1];
+        pdf.text(data.firstTimers.toString(), xPos, yPosition + 4);
+        xPos += colWidths[2];
+        pdf.text(data.age4_5.toString(), xPos, yPosition + 4);
+        xPos += colWidths[3];
+        pdf.text(data.age6_7.toString(), xPos, yPosition + 4);
+        xPos += colWidths[4];
+        pdf.text(data.age8_9.toString(), xPos, yPosition + 4);
+        xPos += colWidths[5];
+        pdf.text(data.age10_12.toString(), xPos, yPosition + 4);
+        
+        yPosition += 7;
+        rowIndex++;
+      });
+      
+      // Totals row
+      pdf.setFillColor(48, 206, 228);
+      pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      
+      xPos = margin + 2;
+      pdf.text('Totals', xPos, yPosition + 6);
+      xPos += colWidths[0];
+      pdf.text(totalAttendance.toString(), xPos, yPosition + 6);
+      xPos += colWidths[1];
+      pdf.text((registeredCount || 0).toString(), xPos, yPosition + 6);
+      xPos += colWidths[2];
+      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age4_5, 0).toString(), xPos, yPosition + 6);
+      xPos += colWidths[3];
+      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age6_7, 0).toString(), xPos, yPosition + 6);
+      xPos += colWidths[4];
+      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age8_9, 0).toString(), xPos, yPosition + 6);
+      xPos += colWidths[5];
+      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age10_12, 0).toString(), xPos, yPosition + 6);
+      
+      // ===== PAGE 2: ATTENDANCE PATTERNS CHART =====
+      pdf.addPage();
+      yPosition = margin;
+      
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(28, 167, 188);
+      pdf.text('Attendance Patterns', margin, yPosition);
+      yPosition += 8;
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Distribution of children by attendance frequency', margin, yPosition);
+      yPosition += 10;
+      
+      // Generate attendance pattern chart
+      const attendancePatternData = generateAttendancePatternData(rawData);
+      
+      if (attendancePatternData.labels && attendancePatternData.labels.length > 0) {
+        // Create a temporary canvas for the chart
+        const chartCanvas = document.createElement('canvas');
+        chartCanvas.width = 800;
+        chartCanvas.height = 400;
+        document.body.appendChild(chartCanvas);
+        chartCanvas.style.position = 'absolute';
+        chartCanvas.style.left = '-9999px';
+        
+        // Import Chart.js dynamically
+        const { Chart } = await import('chart.js/auto');
+        
+        const attendanceChart = new Chart(chartCanvas, {
+          type: 'doughnut',
+          data: attendancePatternData,
+          options: {
+            responsive: false,
+            animation: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  padding: 20,
+                  font: { size: 14 }
+                }
+              }
+            }
+          }
+        });
+        
+        // Wait for chart to render
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const chartImage = chartCanvas.toDataURL('image/png');
+        pdf.addImage(chartImage, 'PNG', margin, yPosition, contentWidth, 100);
+        
+        // Clean up
+        attendanceChart.destroy();
+        document.body.removeChild(chartCanvas);
+        
+        yPosition += 110;
+      }
+      
+      // Attendance pattern legend
+      const patterns = [
+        { label: 'One-time', description: 'Attended only once', color: [48, 206, 228] },
+        { label: 'Occasional (2-3)', description: 'Attended 2-3 times', color: [251, 118, 16] },
+        { label: 'Regular (4-7)', description: 'Attended 4-7 times', color: [92, 215, 233] },
+        { label: 'Frequent (8+)', description: 'Attended 8 or more times', color: [230, 99, 0] }
+      ];
+      
+      checkPageBreak(40);
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Pattern Definitions:', margin, yPosition);
+      yPosition += 8;
+      
+      patterns.forEach(pattern => {
+        pdf.setFillColor(...pattern.color);
+        pdf.circle(margin + 2, yPosition - 1, 2, 'F');
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(pattern.label + ':', margin + 8, yPosition);
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text(pattern.description, margin + 40, yPosition);
+        
+        yPosition += 6;
+      });
+      
+      // ===== PAGE 3: AGE DISTRIBUTION =====
+      pdf.addPage();
+      yPosition = margin;
+      
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(28, 167, 188);
+      pdf.text('Age Distribution', margin, yPosition);
+      yPosition += 8;
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('Breakdown of attendance by age group', margin, yPosition);
+      yPosition += 10;
+      
+      // Age distribution data
+      if (ageData && ageData.length > 0) {
+        const ageGroups = {};
+        ageData.forEach(item => {
+          if (!ageGroups[item.age_category]) {
+            ageGroups[item.age_category] = 0;
+          }
+          ageGroups[item.age_category] += item.attendance_count;
+        });
+        
+        const chartCanvas = document.createElement('canvas');
+        chartCanvas.width = 600;
+        chartCanvas.height = 400;
+        document.body.appendChild(chartCanvas);
+        chartCanvas.style.position = 'absolute';
+        chartCanvas.style.left = '-9999px';
+        
+        const { Chart } = await import('chart.js/auto');
+        
+        const ageChart = new Chart(chartCanvas, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(ageGroups),
+            datasets: [{
+              data: Object.values(ageGroups),
+              backgroundColor: [
+                'rgba(48, 206, 228, 0.8)',
+                'rgba(251, 118, 16, 0.8)',
+                'rgba(92, 215, 233, 0.8)',
+                'rgba(230, 99, 0, 0.8)',
+                'rgba(28, 167, 188, 0.8)'
+              ]
+            }]
+          },
+          options: {
+            responsive: false,
+            animation: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  padding: 15,
+                  font: { size: 12 }
+                }
+              }
+            }
+          }
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const chartImage = chartCanvas.toDataURL('image/png');
+        pdf.addImage(chartImage, 'PNG', margin + 20, yPosition, contentWidth - 40, 100);
+        
+        ageChart.destroy();
+        document.body.removeChild(chartCanvas);
+        
+        yPosition += 110;
+        
+        // Age group statistics table
+        checkPageBreak(50);
+        
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('Age Group Statistics:', margin, yPosition);
+        yPosition += 8;
+        
+        const totalAge = Object.values(ageGroups).reduce((sum, val) => sum + val, 0);
+        
+        Object.entries(ageGroups).forEach(([category, count]) => {
+          const percentage = totalAge > 0 ? ((count / totalAge) * 100).toFixed(1) : 0;
+          
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(`${category}:`, margin + 5, yPosition);
+          
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(`${count} children (${percentage}%)`, margin + 50, yPosition);
+          
+          yPosition += 6;
+        });
+      }
+      
+      // ===== PAGE 4: GROWTH TRENDS =====
+      if (growthData && growthData.length > 0) {
+        pdf.addPage();
+        yPosition = margin;
+        
+        pdf.setFontSize(16);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(28, 167, 188);
+        pdf.text('Growth Trends', margin, yPosition);
+        yPosition += 8;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('Service attendance growth over time', margin, yPosition);
+        yPosition += 10;
+        
+        // Service comparison data
+        const serviceComparisonData = generateServiceComparisonData(growthData);
+        
+        if (serviceComparisonData.labels && serviceComparisonData.labels.length > 0) {
+          const chartCanvas = document.createElement('canvas');
+          chartCanvas.width = 800;
+          chartCanvas.height = 400;
+          document.body.appendChild(chartCanvas);
+          chartCanvas.style.position = 'absolute';
+          chartCanvas.style.left = '-9999px';
+          
+          const { Chart } = await import('chart.js/auto');
+          
+          const growthChart = new Chart(chartCanvas, {
+            type: 'bar',
+            data: serviceComparisonData,
+            options: {
+              responsive: false,
+              animation: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: {
+                    padding: 15,
+                    font: { size: 12 }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true
+                }
+              }
+            }
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const chartImage = chartCanvas.toDataURL('image/png');
+          pdf.addImage(chartImage, 'PNG', margin, yPosition, contentWidth, 100);
+          
+          growthChart.destroy();
+          document.body.removeChild(chartCanvas);
+          
+          yPosition += 110;
+        }
+        
+        // Service growth insights
+        checkPageBreak(40);
+        
+        const serviceStats = generateServiceStats(growthData);
+        
+        if (serviceStats.topService && serviceStats.fastestGrowing) {
+          pdf.setFontSize(12);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text('Key Insights:', margin, yPosition);
+          yPosition += 8;
+          
+          pdf.setFillColor(240, 248, 255);
+          pdf.roundedRect(margin, yPosition, contentWidth, 25, 3, 3, 'F');
+          
+          yPosition += 8;
+          
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(48, 206, 228);
+          pdf.text('Highest Average Attendance:', margin + 5, yPosition);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(`${serviceStats.topService.service} (${Math.round(serviceStats.topService.average)} avg)`, margin + 65, yPosition);
+          
+          yPosition += 8;
+          
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(251, 118, 16);
+          pdf.text('Fastest Growing Service:', margin + 5, yPosition);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(`${serviceStats.fastestGrowing.service} (${serviceStats.fastestGrowing.growth}% growth)`, margin + 65, yPosition);
+        }
+      }
+      
+      // ===== FOOTER ON ALL PAGES =====
+      const totalPages = pdf.internal.getNumberOfPages();
+      
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        
+        // Footer line
+        pdf.setDrawColor(200, 200, 200);
+        pdf.setLineWidth(0.5);
+        pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+        
+        // Footer text
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(150, 150, 150);
+        pdf.text('NextGen Ministry Weekly Report', margin, pageHeight - 10);
+        pdf.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
       }
       
       // Generate filename from the week start date
       const filename = `weekly_${startDate.replace(/-/g, '')}.pdf`;
       
-      // Clean up the temporary element
-      document.body.removeChild(reportElement);
-      
       // Upload to Firebase Storage
-      const pdfBlob = await pdf.output('blob');
+      const pdfBlob = pdf.output('blob');
       const storageRef = ref(storage, `NextGen/weekly-reports-pdf/${filename}`);
       
       await uploadBytes(storageRef, pdfBlob);
@@ -590,6 +980,7 @@ const ReportsPage = () => {
         .eq('report_id', reportId);
       
       return pdfUrl;
+      
     } catch (error) {
       console.error('Error generating PDF:', error);
       throw error;

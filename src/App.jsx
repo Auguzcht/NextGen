@@ -11,6 +11,7 @@ import GuardiansPage from './pages/GuardiansPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import StaffManagementPage from './pages/StaffManagementPage.jsx';
+import StaffAssignmentsPage from './pages/StaffAssignmentsPage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
@@ -182,6 +183,7 @@ function AppContent() {
           
           {/* Staff routes */}
           <Route path="/staff" element={<StaffManagementPage />} />
+          <Route path="/staff/assignments" element={<StaffAssignmentsPage />} />
           
           {/* Reports routes */}
           <Route path="/reports" element={<ReportsPage />} />

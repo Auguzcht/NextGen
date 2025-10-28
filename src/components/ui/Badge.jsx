@@ -7,6 +7,7 @@ const variants = {
   secondary: "bg-nextgen-orange/20 text-nextgen-orange-dark border border-nextgen-orange/20",
   success: "bg-green-100 text-green-800 border border-green-200",
   error: "bg-red-100 text-red-800 border border-red-200",
+  danger: "bg-red-100 text-red-800 border border-red-200", // Added danger as alias for error
   warning: "bg-yellow-100 text-yellow-800 border border-yellow-200",
   info: "bg-blue-100 text-blue-800 border border-blue-200",
   neutral: "bg-gray-100 text-gray-800 border border-gray-200",
@@ -136,7 +137,7 @@ const Badge = ({
 Badge.propTypes = {
   children: PropTypes.node.isRequired,
   variant: PropTypes.oneOf([
-    'primary', 'secondary', 'success', 'error', 
+    'primary', 'secondary', 'success', 'error', 'danger',
     'warning', 'info', 'neutral', 'purple', 'teal', 'pink'
   ]),
   size: PropTypes.oneOf(['xs', 'sm', 'md', 'lg']),

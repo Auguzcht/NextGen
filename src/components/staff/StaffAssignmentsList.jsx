@@ -1,130 +1,221 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
 import StaffAssignmentForm from './StaffAssignmentForm.jsx';
-import { Card, Table, Input, Button, Badge } from '../ui';
+import { Card, Table, Button, Badge } from '../ui';
+import { motion } from 'framer-motion';
+import Swal from 'sweetalert2';
 
 const StaffAssignmentsList = ({ onAddClick }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentDate, setCurrentDate] = useState(() => {
-    const today = new Date();
-    // Format as YYYY-MM-DD
-    return today.toISOString().split('T')[0];
-  });
-  const [selectedService, setSelectedService] = useState('');
-  const [services, setServices] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
-    fetchServices();
     fetchAssignments();
-  }, [currentDate, selectedService]);
-
-  const fetchServices = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('service_id, service_name, day_of_week')
-        .order('service_name');
-
-      if (error) throw error;
-      setServices(data || []);
-      
-      // Set first service as default if available
-      if (data?.length > 0 && !selectedService) {
-        setSelectedService(data[0].service_id);
-      }
-    } catch (error) {
-      console.error('Error fetching services:', error);
-    }
-  };
+  }, []);
 
   const fetchAssignments = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { data, error } = await supabase
         .from('staff_assignments')
         .select(`
           *,
-          staff(first_name, last_name, role),
-          services(service_name, day_of_week)
+          staff(staff_id, first_name, last_name, role, profile_image_url, profile_image_path),
+          services(service_name, day_of_week, start_time)
         `)
-        .eq('assignment_date', currentDate);
-      
-      if (selectedService) {
-        query = query.eq('service_id', selectedService);
-      }
-      
-      query = query.order('created_at', { ascending: false });
-      
-      const { data, error } = await query;
+        .gte('assignment_date', today)
+        .order('assignment_date', { ascending: true });
 
       if (error) throw error;
       setAssignments(data || []);
     } catch (error) {
       console.error('Error fetching assignments:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Failed to load assignments'
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDateChange = (e) => {
-    setCurrentDate(e.target.value);
-  };
+  const handleDeleteAssignment = async (assignmentId, staffName, serviceName, date) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      html: `Remove <strong>${staffName}</strong> from <strong>${serviceName}</strong> on <strong>${formatDate(date)}</strong>?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, remove',
+      cancelButtonText: 'Cancel'
+    });
 
-  const handleServiceChange = (e) => {
-    setSelectedService(e.target.value);
-  };
+    if (result.isConfirmed) {
+      setDeletingId(assignmentId);
+      try {
+        const { error } = await supabase
+          .from('staff_assignments')
+          .delete()
+          .eq('assignment_id', assignmentId);
 
-  const handleDeleteAssignment = async (assignmentId) => {
-    if (!confirm('Are you sure you want to delete this assignment?')) {
-      return;
+        if (error) throw error;
+        
+        Swal.fire({
+          icon: 'success',
+          title: 'Removed!',
+          text: 'Assignment has been removed.',
+          timer: 1500
+        });
+        
+        fetchAssignments();
+      } catch (error) {
+        console.error('Error deleting assignment:', error);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'Failed to remove assignment'
+        });
+      } finally {
+        setDeletingId(null);
+      }
     }
-    
-    try {
-      const { error } = await supabase
-        .from('staff_assignments')
-        .delete()
-        .eq('assignment_id', assignmentId);
+  };
 
-      if (error) throw error;
-      
-      // Refresh assignments
-      fetchAssignments();
-    } catch (error) {
-      console.error('Error deleting assignment:', error);
-      alert(`Error: ${error.message}`);
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+    return new Date(dateStr).toLocaleDateString('en-US', options);
+  };
+
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    try {
+      const [hours, minutes] = timeStr.split(':');
+      const date = new Date();
+      date.setHours(parseInt(hours, 10));
+      date.setMinutes(parseInt(minutes, 10));
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return timeStr;
+    }
+  };
+
+  // Add gradient generator for staff avatars
+  const getStaffGradient = (staffId) => {
+    const colors = [
+      'from-nextgen-blue to-nextgen-blue-dark',
+      'from-nextgen-orange to-nextgen-orange-dark',
+      'from-nextgen-blue-light to-nextgen-blue',
+      'from-nextgen-orange-light to-nextgen-orange',
+      'from-blue-500 to-indigo-600',
+      'from-orange-500 to-amber-500'
+    ];
+    
+    const index = (staffId || 0) % colors.length;
+    return `bg-gradient-to-br ${colors[index]}`;
+  };
+
+  // Get role badge variant based on assignment role
+  const getRoleBadgeVariant = (role) => {
+    const roleLower = role?.toLowerCase() || '';
+    switch (roleLower) {
+      case 'leader':
+        return 'purple';
+      case 'teacher':
+        return 'success';
+      case 'helper':
+        return 'info';
+      case 'check-in':
+        return 'warning';
+      default:
+        return 'secondary';
     }
   };
 
   // Define table columns
   const columns = [
     {
+      header: "Date",
+      cell: (row) => (
+        <div className="font-medium text-gray-900">
+          {formatDate(row.assignment_date)}
+        </div>
+      ),
+      width: "180px"
+    },
+    {
       header: "Staff Member",
-      accessor: (row) => `${row.staff.first_name} ${row.staff.last_name}`,
-      cellClassName: "font-medium text-gray-900"
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0">
+            {row.staff?.profile_image_url ? (
+              <img 
+                src={row.staff.profile_image_url}
+                alt={`${row.staff.first_name} ${row.staff.last_name}`}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.style.display = 'none';
+                  e.target.parentNode.innerHTML = `
+                    <div class="h-full w-full rounded-full ${getStaffGradient(row.staff_id)} flex items-center justify-center text-white text-sm font-medium">
+                      ${row.staff?.first_name?.charAt(0) || '?'}${row.staff?.last_name?.charAt(0) || ''}
+                    </div>
+                  `;
+                }}
+              />
+            ) : (
+              <div className={`h-full w-full rounded-full ${getStaffGradient(row.staff_id)} flex items-center justify-center text-white text-sm font-medium`}>
+                {row.staff?.first_name?.charAt(0) || '?'}
+                {row.staff?.last_name?.charAt(0) || ''}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="font-medium text-gray-900">
+              {row.staff?.first_name} {row.staff?.last_name}
+            </div>
+            <div className="text-xs text-gray-500 capitalize">{row.staff?.role}</div>
+          </div>
+        </div>
+      ),
+      width: "250px"
     },
     {
       header: "Service",
       cell: (row) => (
         <div>
-          <div className="font-medium">{row.services.service_name}</div>
-          <div className="text-sm text-gray-500">{row.services.day_of_week}</div>
+          <div className="font-medium text-gray-900">{row.services?.service_name}</div>
+          <div className="text-sm text-gray-500">
+            {row.services?.day_of_week}
+            {row.services?.start_time && ` • ${formatTime(row.services.start_time)}`}
+          </div>
         </div>
-      )
+      ),
+      width: "220px"
     },
     {
       header: "Role",
       cell: (row) => (
-        <Badge variant="primary" size="sm">
-          {row.role}
+        <Badge variant={getRoleBadgeVariant(row.role)} size="sm" className="capitalize">
+          {row.role || 'N/A'}
         </Badge>
-      )
+      ),
+      width: "120px"
     },
     {
       header: "Notes",
-      accessor: "notes",
-      cell: (row) => row.notes || 'N/A'
+      cell: (row) => (
+        <div className="text-sm text-gray-600 max-w-xs truncate" title={row.notes}>
+          {row.notes || '-'}
+        </div>
+      ),
+      width: "200px"
     },
     {
       header: "Actions",
@@ -132,83 +223,71 @@ const StaffAssignmentsList = ({ onAddClick }) => {
         <Button
           variant="danger"
           size="xs"
-          onClick={() => handleDeleteAssignment(row.assignment_id)}
+          onClick={() => handleDeleteAssignment(
+            row.assignment_id,
+            `${row.staff?.first_name} ${row.staff?.last_name}`,
+            row.services?.service_name,
+            row.assignment_date
+          )}
+          disabled={deletingId === row.assignment_id}
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          }
         >
           Remove
         </Button>
       ),
-      width: "100px"
+      width: "120px"
     }
   ];
 
   return (
     <Card variant="minimal" className="mb-6">
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="w-full sm:w-2/5">
-          <label htmlFor="date-select" className="block text-sm font-medium text-gray-700 mb-1">
-            Date
-          </label>
-          <Input
-            type="date"
-            id="date-select"
-            value={currentDate}
-            onChange={handleDateChange}
-            fullWidth
-            className="h-10"
-          />
+      {/* Header with title and Add button */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-lg font-medium text-nextgen-blue-dark">Upcoming Assignments</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {assignments.length} {assignments.length === 1 ? 'assignment' : 'assignments'} scheduled
+          </p>
         </div>
         
-        <div className="w-full sm:w-1/4">
-          <label htmlFor="service-select" className="block text-sm font-medium text-gray-700 mb-1">
-            Service
-          </label>
-          <select
-            id="service-select"
-            value={selectedService}
-            onChange={handleServiceChange}
-            className="block w-full h-11 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
-          >
-            <option value="">All Services</option>
-            {services.map((service) => (
-              <option key={service.service_id} value={service.service_id}>
-                {service.service_name} ({service.day_of_week})
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="w-full sm:w-1/5 sm:ml-auto sm:pl-2">
-          <label className="block text-sm font-medium text-transparent mb-1">
-            &nbsp;
-          </label>
-          <Button
-            variant="primary"
-            onClick={onAddClick || (() => setIsModalOpen(true))}
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-            }
-            className="h-11 w-full"
-          >
-            Add Assignment
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          onClick={onAddClick || (() => setIsModalOpen(true))}
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+          }
+        >
+          Add Assignment
+        </Button>
       </div>
 
-      <Table
-        data={assignments}
-        columns={columns}
-        isLoading={loading}
-        noDataMessage="No staff assignments for this date and service"
-        highlightOnHover={true}
-        variant="primary"
-      />
+      {/* Assignments Table */}
+      <div className="overflow-hidden border border-gray-200 rounded-lg shadow">
+        <Table
+          data={assignments}
+          columns={columns}
+          isLoading={loading}
+          noDataMessage="No upcoming assignments found"
+          highlightOnHover={true}
+          variant="primary"
+          stickyHeader={true}
+        />
+      </div>
 
+      {/* Assignment Form Modal */}
       <StaffAssignmentForm 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={fetchAssignments}
+        onSuccess={() => {
+          setIsModalOpen(false);
+          fetchAssignments();
+        }}
       />
     </Card>
   );

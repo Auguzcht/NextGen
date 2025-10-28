@@ -1,102 +1,49 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import supabase from '../../services/supabase.js';
-import { Badge, Button, Modal } from '../ui';
+import { Badge, Modal } from '../ui';
 import { motion } from 'framer-motion';
 
-const StaffDetailView = ({ staffId, isOpen, onClose }) => {
-  const [loading, setLoading] = useState(true);
-  const [staff, setStaff] = useState(null);
-  const [assignments, setAssignments] = useState([]);
-  const [stats, setStats] = useState({
-    totalAssignments: 0,
-    upcomingAssignments: 0,
-    servicesWorked: 0
-  });
+const StaffDetailView = ({ staff: initialStaff, staffId, isOpen, onClose }) => {
+  const [loading, setLoading] = useState(false);
+  const [staff, setStaff] = useState(initialStaff || null);
 
   useEffect(() => {
-    if (isOpen && staffId) {
-      fetchStaffDetails();
-      fetchAssignments();
-      fetchStats();
+    if (isOpen && initialStaff) {
+      setStaff(initialStaff);
     }
-  }, [isOpen, staffId]);
+  }, [isOpen, initialStaff]);
 
-  const fetchStaffDetails = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('staff_id', staffId)
-        .single();
+  // Generate consistent gradient for staff avatar
+  const staffGradient = useMemo(() => {
+    if (!staff?.staff_id) return 'bg-gradient-to-br from-nextgen-blue to-nextgen-blue-dark';
+    
+    const colors = [
+      'from-nextgen-blue to-nextgen-blue-dark',
+      'from-nextgen-orange to-nextgen-orange-dark',
+      'from-nextgen-blue-light to-nextgen-blue',
+      'from-nextgen-orange-light to-nextgen-orange',
+      'from-blue-500 to-indigo-600',
+      'from-orange-500 to-amber-500'
+    ];
+    
+    const index = staff.staff_id % colors.length;
+    return `bg-gradient-to-br ${colors[index]}`;
+  }, [staff?.staff_id]);
 
-      if (error) throw error;
-      setStaff(data);
-    } catch (error) {
-      console.error('Error fetching staff details:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAssignments = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('staff_assignments')
-        .select(`
-          *,
-          services(service_name, day_of_week, start_time)
-        `)
-        .eq('staff_id', staffId)
-        .order('assignment_date', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-      setAssignments(data || []);
-    } catch (error) {
-      console.error('Error fetching assignments:', error);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      // Get total assignments
-      const { count: totalCount, error: totalError } = await supabase
-        .from('staff_assignments')
-        .select('assignment_id', { count: 'exact', head: true })
-        .eq('staff_id', staffId);
-
-      if (totalError) throw totalError;
-
-      // Get upcoming assignments
-      const today = new Date().toISOString().split('T')[0];
-      const { count: upcomingCount, error: upcomingError } = await supabase
-        .from('staff_assignments')
-        .select('assignment_id', { count: 'exact', head: true })
-        .eq('staff_id', staffId)
-        .gte('assignment_date', today);
-
-      if (upcomingError) throw upcomingError;
-
-      // Get unique services worked
-      const { data: servicesData, error: servicesError } = await supabase
-        .from('staff_assignments')
-        .select('service_id')
-        .eq('staff_id', staffId);
-
-      if (servicesError) throw servicesError;
-
-      // Count unique service IDs
-      const uniqueServices = new Set();
-      servicesData?.forEach(item => uniqueServices.add(item.service_id));
-
-      setStats({
-        totalAssignments: totalCount || 0,
-        upcomingAssignments: upcomingCount || 0,
-        servicesWorked: uniqueServices.size
-      });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
+  // Get role badge variant based on assignment role
+  const getRoleBadgeVariant = (role) => {
+    const roleLower = role?.toLowerCase() || '';
+    switch (roleLower) {
+      case 'leader':
+        return 'purple';
+      case 'teacher':
+        return 'success';
+      case 'helper':
+        return 'info';
+      case 'check-in':
+        return 'warning';
+      default:
+        return 'secondary';
     }
   };
 
@@ -119,6 +66,14 @@ const StaffDetailView = ({ staffId, isOpen, onClose }) => {
     }
   };
 
+  const stats = staff?.stats || {
+    totalAssignments: 0,
+    upcomingAssignments: 0,
+    servicesWorked: 0
+  };
+
+  const recentAssignment = staff?.recentAssignment;
+
   return (
     <Modal
       isOpen={isOpen}
@@ -128,17 +83,48 @@ const StaffDetailView = ({ staffId, isOpen, onClose }) => {
       variant="primary"
     >
       {loading ? (
-        <div className="flex justify-center items-center p-6">
+        <div className="flex justify-center items-center p-12">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
         </div>
       ) : staff ? (
-        <div className="overflow-auto max-h-[70vh]">
+        <motion.div 
+          className="overflow-auto max-h-[70vh]"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <div className="px-4 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            {/* Personal Information - Left Column */}
+            <motion.div 
+              className="bg-white p-4 rounded-lg shadow-sm border border-gray-100"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            >
               <div className="flex items-start mb-4">
-                <div className="h-12 w-12 rounded-full bg-nextgen-blue/10 flex items-center justify-center text-nextgen-blue-dark font-medium text-lg mr-3">
-                  {staff.first_name?.charAt(0) || '?'}
-                  {staff.last_name?.charAt(0) || ''}
+                {/* Staff Avatar with photo or gradient fallback */}
+                <div className="h-12 w-12 rounded-full overflow-hidden mr-3 flex-shrink-0">
+                  {staff.profile_image_url ? (
+                    <img 
+                      src={staff.profile_image_url}
+                      alt={`${staff.first_name} ${staff.last_name}`}
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.style.display = 'none';
+                        e.target.parentNode.innerHTML = `
+                          <div class="h-full w-full rounded-full ${staffGradient} flex items-center justify-center text-white font-medium text-lg">
+                            ${staff.first_name?.charAt(0) || '?'}${staff.last_name?.charAt(0) || ''}
+                          </div>
+                        `;
+                      }}
+                    />
+                  ) : (
+                    <div className={`h-full w-full rounded-full ${staffGradient} flex items-center justify-center text-white font-medium text-lg`}>
+                      {staff.first_name?.charAt(0) || '?'}
+                      {staff.last_name?.charAt(0) || ''}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <h4 className="text-lg font-medium text-nextgen-blue-dark">Personal Information</h4>
@@ -161,79 +147,129 @@ const StaffDetailView = ({ staffId, isOpen, onClose }) => {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Status</p>
-                  <Badge 
-                    variant={staff.is_active ? "success" : "danger"} 
-                    size="sm"
-                    className="mt-1"
-                  >
-                    {staff.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                  {staff.user_id && (
-                    <Badge variant="primary" size="sm" className="ml-2 mt-1">
-                      Has Login
+                  <div className="mt-1">
+                    <Badge 
+                      variant={staff.is_active ? "success" : "danger"} 
+                      size="sm"
+                    >
+                      {staff.is_active ? 'Active' : 'Inactive'}
                     </Badge>
-                  )}
+                    {staff.user_id && (
+                      <Badge variant="primary" size="sm" className="ml-2">
+                        Has Login
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Member Since</p>
                   <p className="mt-1 text-sm text-gray-900">{formatDate(staff.created_date)}</p>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            <div className="space-y-6">
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            {/* Statistics and Assignments - Right Column */}
+            <div className="space-y-6 flex flex-col">
+              {/* Statistics Section */}
+              <motion.div 
+                className="bg-white p-4 rounded-lg shadow-sm border border-gray-100"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.15 }}
+              >
                 <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Statistics</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-nextgen-blue/5 p-4 rounded-lg">
-                    <p className="text-sm font-medium text-nextgen-blue-dark">Total Assignments</p>
-                    <p className="mt-1 text-2xl font-semibold text-nextgen-blue">{stats.totalAssignments}</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-nextgen-blue/5 p-3 rounded-lg text-center">
+                    <p className="text-xs font-medium text-nextgen-blue-dark mb-1 leading-tight">Total<br/>Assignments</p>
+                    {staff.stats ? (
+                      <p className="mt-1 text-2xl font-semibold text-nextgen-blue">{stats.totalAssignments}</p>
+                    ) : (
+                      <div className="mt-1 h-8 w-12 mx-auto bg-gray-200 animate-pulse rounded"></div>
+                    )}
                   </div>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <p className="text-sm font-medium text-green-700">Upcoming</p>
-                    <p className="mt-1 text-2xl font-semibold text-green-600">{stats.upcomingAssignments}</p>
+                  <div className="bg-green-50 p-3 rounded-lg text-center">
+                    <p className="text-xs font-medium text-green-700 mb-1 leading-tight">Upcoming<br/>Assignments</p>
+                    {staff.stats ? (
+                      <p className="mt-1 text-2xl font-semibold text-green-600">{stats.upcomingAssignments}</p>
+                    ) : (
+                      <div className="mt-1 h-8 w-12 mx-auto bg-gray-200 animate-pulse rounded"></div>
+                    )}
                   </div>
-                  <div className="bg-nextgen-orange/5 p-4 rounded-lg">
-                    <p className="text-sm font-medium text-nextgen-orange-dark">Services</p>
-                    <p className="mt-1 text-2xl font-semibold text-nextgen-orange">{stats.servicesWorked}</p>
+                  <div className="bg-nextgen-orange/5 p-3 rounded-lg text-center">
+                    <p className="text-xs font-medium text-nextgen-orange-dark mb-1 leading-tight">Services<br/>Worked</p>
+                    {staff.stats ? (
+                      <p className="mt-1 text-2xl font-semibold text-nextgen-orange">{stats.servicesWorked}</p>
+                    ) : (
+                      <div className="mt-1 h-8 w-12 mx-auto bg-gray-200 animate-pulse rounded"></div>
+                    )}
                   </div>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Recent Assignments</h4>
-                {assignments.length === 0 ? (
-                  <p className="text-sm text-gray-500 p-4 bg-gray-50 rounded-md text-center">No recent assignments</p>
+              {/* Most Recent Assignment Section */}
+              <motion.div 
+                className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Most Recent Assignment</h4>
+                {!staff.stats ? (
+                  <div className="space-y-3">
+                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
+                  </div>
+                ) : !recentAssignment ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="text-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-200 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                      </svg>
+                      <p className="text-sm text-gray-500 font-medium">No assignments yet</p>
+                      <p className="text-xs text-gray-400 mt-1">This staff member hasn't been assigned</p>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="overflow-hidden rounded-md border border-gray-200">
-                    <ul className="divide-y divide-gray-200">
-                      {assignments.map((assignment) => (
-                        <motion.li 
-                          key={assignment.assignment_id} 
-                          className="px-4 py-3"
-                          whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{formatDate(assignment.assignment_date)}</p>
-                              <p className="text-sm text-gray-500">
-                                {assignment.services.service_name} ({assignment.services.day_of_week})
-                                {assignment.services.start_time && ` at ${formatTime(assignment.services.start_time)}`}
-                              </p>
-                            </div>
-                            <Badge variant="primary" size="sm" className="capitalize">
-                              {assignment.role}
-                            </Badge>
-                          </div>
-                        </motion.li>
-                      ))}
-                    </ul>
+                  <div className="bg-gradient-to-br from-nextgen-blue/5 to-nextgen-blue/10 rounded-lg p-4 border border-nextgen-blue/20">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-nextgen-blue/20">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {new Date(recentAssignment.assignment_date).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <Badge variant={getRoleBadgeVariant(recentAssignment.role)} size="xs" className="capitalize">
+                          {recentAssignment.role}
+                        </Badge>
+                      </div>
+
+                      <div>
+                        <p className="font-semibold text-gray-900 text-sm mb-1">
+                          {recentAssignment.services.service_name}
+                        </p>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-gray-600">
+                            {recentAssignment.services.day_of_week}
+                            {recentAssignment.services.start_time && ` • ${formatTime(recentAssignment.services.start_time)}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {recentAssignment.notes && (
+                        <div className="bg-white/60 rounded-md p-2 border border-nextgen-blue/10">
+                          <p className="text-xs text-gray-700 italic">{recentAssignment.notes}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-              </div>
+              </motion.div>
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : (
         <div className="flex justify-center items-center p-6">
           <div className="text-center">

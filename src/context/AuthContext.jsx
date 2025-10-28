@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
       
       const { data, error } = await supabase
         .from('staff')
-        .select('*')
+        .select('staff_id, user_id, first_name, last_name, email, role, is_active, access_level, profile_image_url, profile_image_path, phone_number')
         .eq('user_id', authUser.id)
         .single();
       
@@ -37,11 +37,14 @@ export const AuthProvider = ({ children }) => {
         // Create fallback user object with ministry-specific roles
         const fallbackUser = { 
           id: authUser.id,
+          uid: authUser.id, // Add uid for Header component
           email: authUser.email,
           role: authUser.user_metadata?.role || 'Staff',
           first_name: authUser.user_metadata?.first_name || 'Unknown',
           last_name: authUser.user_metadata?.last_name || 'User',
-          status: 'Active'
+          status: 'Active',
+          profile_image_url: null,
+          profile_image_path: null
         };
         
         setUser(fallbackUser);
@@ -69,14 +72,20 @@ export const AuthProvider = ({ children }) => {
         // Map staff record to user object with ministry-specific fields
         setUser({
           id: authUser.id,
+          uid: authUser.id, // Add uid for Header component
           email: authUser.email,
           first_name: data.first_name || authUser.user_metadata?.first_name,
           last_name: data.last_name || authUser.user_metadata?.last_name,
           role: data.role || authUser.user_metadata?.role || 'Staff',
           status: data.status || 'Active',
           access_level: data.access_level || 1,
-          staff_id: data.staff_id
+          staff_id: data.staff_id,
+          profile_image_url: data.profile_image_url,
+          profile_image_path: data.profile_image_path,
+          phone_number: data.phone_number
         });
+        
+        console.log('Staff profile loaded with image:', data.profile_image_url);
       }
 
       setConnectionStatus('connected');
@@ -93,12 +102,15 @@ export const AuthProvider = ({ children }) => {
       // Fallback to basic user data from auth
       setUser({
         id: authUser.id,
+        uid: authUser.id, // Add uid for Header component
         email: authUser.email,
         role: authUser.user_metadata?.role || 'Staff',
         first_name: authUser.user_metadata?.first_name || 'Unknown',
         last_name: authUser.user_metadata?.last_name || 'User',
         status: 'Active',
-        access_level: 1
+        access_level: 1,
+        profile_image_url: null,
+        profile_image_path: null
       });
     }
   };
@@ -325,6 +337,7 @@ export const AuthProvider = ({ children }) => {
   // Context value
   const value = {
     user,
+    staffProfile: user, // Add this line - staffProfile is an alias for user
     session,
     loading,
     login,

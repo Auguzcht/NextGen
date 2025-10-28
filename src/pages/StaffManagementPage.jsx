@@ -1,78 +1,62 @@
-import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import supabase, { supabaseAdmin } from '../services/supabase.js';
-import StaffList from '../components/staff/StaffList.jsx';
 import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
-import StaffAssignmentForm from '../components/staff/StaffAssignmentForm.jsx';
-import StaffAssignmentsList from '../components/staff/StaffAssignmentsList.jsx';
-import { Card, Button, Input } from '../components/ui';
+import { Card, Button, Badge, Table, Input } from '../components/ui';
 import { motion } from 'framer-motion';
-import { useAuth } from '../context/AuthContext.jsx';
+import Swal from 'sweetalert2';
 
 const StaffManagementPage = () => {
-  const { user } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('list');
   const [staffMembers, setStaffMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
-  const [isUserCredentialsModalOpen, setIsUserCredentialsModalOpen] = useState(false);
-  const [viewingStaffId, setViewingStaffId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [editingStaff, setEditingStaff] = useState(null);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isUserCredentialsModalOpen, setIsUserCredentialsModalOpen] = useState(false);
   const [selectedStaffForCredentials, setSelectedStaffForCredentials] = useState(null);
   const [credentialsStatus, setCredentialsStatus] = useState({ loading: false, error: null, success: null });
 
-  // Initialize the active tab based on URL parameters
+  // Debounce search query
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab && ['list', 'assignments'].includes(tab)) {
-      setActiveTab(tab);
+    if (searchQuery === '') {
+      setDebouncedSearchQuery('');
+      return;
     }
-  }, [location]);
-
-  // Update URL when tab changes
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    navigate(`/staff?tab=${tab}`, { replace: true });
-  };
-
-  useEffect(() => {
-    if (activeTab === 'list') {
-      fetchStaffMembers();
-    }
-  }, [activeTab]);
+    
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setIsSearching(false);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
-    // Debounce search when on list tab
-    if (activeTab === 'list') {
-      const timer = setTimeout(() => {
-        fetchStaffMembers();
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [searchQuery, activeTab]);
+    fetchStaffMembers();
+  }, [debouncedSearchQuery]);
 
   const fetchStaffMembers = async () => {
     setLoading(true);
     try {
       let query = supabase
         .from('staff')
-        .select('*')
+        .select('staff_id, user_id, first_name, last_name, email, phone_number, role, is_active, access_level, created_date, profile_image_url, profile_image_path') // Added profile_image fields
         .order('last_name');
       
-      if (searchQuery) {
-        query = query.or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,role.ilike.%${searchQuery}%`);
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%,role.ilike.%${debouncedSearchQuery}%`);
       }
       
       const { data, error } = await query;
 
       if (error) throw error;
+      
+      console.log('Fetched staff with images:', data); // Debug log
       setStaffMembers(data || []);
     } catch (error) {
       console.error('Error fetching staff members:', error);
@@ -81,22 +65,134 @@ const StaffManagementPage = () => {
     }
   };
 
-  const handleViewStaff = (staffId) => {
-    setViewingStaffId(staffId);
+  const fetchStaffStats = async (staffId) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Fetch all data in parallel
+      const [totalResult, upcomingResult, servicesResult, assignmentsResult] = await Promise.all([
+        // Total assignments
+        supabase
+          .from('staff_assignments')
+          .select('assignment_id', { count: 'exact', head: true })
+          .eq('staff_id', staffId),
+        
+        // Upcoming assignments
+        supabase
+          .from('staff_assignments')
+          .select('assignment_id', { count: 'exact', head: true })
+          .eq('staff_id', staffId)
+          .gte('assignment_date', today),
+        
+        // Unique services
+        supabase
+          .from('staff_assignments')
+          .select('service_id')
+          .eq('staff_id', staffId),
+        
+        // Most recent assignment
+        supabase
+          .from('staff_assignments')
+          .select(`
+            *,
+            services(service_name, day_of_week, start_time)
+          `)
+          .eq('staff_id', staffId)
+          .order('assignment_date', { ascending: false })
+          .limit(1)
+      ]);
+
+      if (totalResult.error) throw totalResult.error;
+      if (upcomingResult.error) throw upcomingResult.error;
+      if (servicesResult.error) throw servicesResult.error;
+      if (assignmentsResult.error) throw assignmentsResult.error;
+
+      // Count unique services
+      const uniqueServices = new Set();
+      servicesResult.data?.forEach(item => uniqueServices.add(item.service_id));
+
+      return {
+        totalAssignments: totalResult.count || 0,
+        upcomingAssignments: upcomingResult.count || 0,
+        servicesWorked: uniqueServices.size,
+        recentAssignment: assignmentsResult.data?.[0] || null
+      };
+    } catch (error) {
+      console.error('Error fetching staff stats:', error);
+      return {
+        totalAssignments: 0,
+        upcomingAssignments: 0,
+        servicesWorked: 0,
+        recentAssignment: null
+      };
+    }
+  };
+
+  const handleViewStaff = async (staff) => {
+    // Show modal immediately with staff data (including profile image)
+    setSelectedStaff({
+      ...staff,
+      stats: null,
+      recentAssignment: null
+    });
+    setIsViewModalOpen(true);
+
+    // Fetch stats in background
+    const stats = await fetchStaffStats(staff.staff_id);
+    
+    // Update staff data with stats (preserve profile image URLs)
+    setSelectedStaff({
+      ...staff,
+      stats: {
+        totalAssignments: stats.totalAssignments,
+        upcomingAssignments: stats.upcomingAssignments,
+        servicesWorked: stats.servicesWorked
+      },
+      recentAssignment: stats.recentAssignment
+    });
   };
 
   const handleEditStaff = (staff) => {
-    setEditingStaff(staff);
-    setIsAddModalOpen(true);
+    setSelectedStaff(staff);
+    setIsEditModalOpen(true);
   };
 
-  const handleCloseDetailView = () => {
-    setViewingStaffId(null);
-  };
+  const handleDeleteStaff = async (staff) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "This will deactivate the staff member. This can be undone later.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, deactivate',
+      cancelButtonText: 'Cancel'
+    });
 
-  const handleCloseForm = () => {
-    setIsAddModalOpen(false);
-    setEditingStaff(null);
+    if (result.isConfirmed) {
+      try {
+        const { error } = await supabase
+          .from('staff')
+          .update({ is_active: false })
+          .eq('staff_id', staff.staff_id);
+
+        if (error) throw error;
+
+        Swal.fire(
+          'Deactivated!',
+          'The staff member has been deactivated.',
+          'success'
+        );
+        fetchStaffMembers();
+      } catch (error) {
+        Swal.fire(
+          'Error!',
+          'Failed to deactivate staff member.',
+          'error'
+        );
+        console.error('Error deactivating staff:', error);
+      }
+    }
   };
 
   const handleCreateUserCredentials = (staff) => {
@@ -110,7 +206,6 @@ const StaffManagementPage = () => {
     setCredentialsStatus({ loading: true, error: null, success: null });
     
     try {
-      // Use supabaseAdmin instead of supabase for auth.admin functions
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: selectedStaffForCredentials.email,
         password: password,
@@ -124,7 +219,6 @@ const StaffManagementPage = () => {
 
       if (authError) throw authError;
 
-      // Update staff record with user_id
       const { error: updateError } = await supabase
         .from('staff')
         .update({ user_id: authData.user.id })
@@ -138,10 +232,8 @@ const StaffManagementPage = () => {
         success: `Login credentials created successfully for ${selectedStaffForCredentials.first_name} ${selectedStaffForCredentials.last_name}` 
       });
       
-      // Refresh staff list
       fetchStaffMembers();
       
-      // Close modal after 3 seconds
       setTimeout(() => {
         setIsUserCredentialsModalOpen(false);
         setSelectedStaffForCredentials(null);
@@ -158,132 +250,177 @@ const StaffManagementPage = () => {
     }
   };
 
-  // Get icon based on active tab
-  const getTabIcon = () => {
-    switch (activeTab) {
-      case 'list':
-        return (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        );
-      case 'assignments':
-        return (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        );
-      default:
-        return null;
-    }
+  const handleEditSuccess = async () => {
+    await fetchStaffMembers();
+    setIsEditModalOpen(false);
+    setSelectedStaff(null);
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'Updated!',
+      text: 'Staff information has been updated.',
+      timer: 1500
+    });
   };
 
-  // Render the active tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'list':
-        return (
-          <div className="space-y-6">
-            {/* Improved search and add staff layout */}
-            <div className="flex flex-col md:flex-row gap-4 md:items-end mb-0">
-              <div className="flex-grow w-full">
-                <label htmlFor="staff-search" className="block text-sm font-medium text-gray-700 mb-1">
-                  Search Staff
-                </label>
-                <Input
-                  id="staff-search"
-                  type="text"
-                  placeholder="Search by name, email, or role..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  startIcon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                    </svg>
-                  }
-                  fullWidth
-                  className="h-10"
-                />
-              </div>
-              
-              <div className="w-full md:w-auto flex-shrink-0 md:self-end md:pb-[16px]">
-                <Button
-                  variant="primary"
-                  onClick={() => setIsAddModalOpen(true)}
-                  icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                    </svg>
-                  }
-                  className="h-10 w-full md:w-auto"
-                >
-                  Add Staff
-                </Button>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
-              </div>
-            ) : (
-              <StaffList 
-                staffMembers={staffMembers} 
-                onRefresh={fetchStaffMembers}
-                onView={handleViewStaff}
-                onEdit={handleEditStaff}
-                onCreateCredentials={handleCreateUserCredentials}
+  // Define table columns
+  const columns = useMemo(() => [
+    {
+      header: "Name",
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+            {row.profile_image_url ? (
+              <img 
+                src={row.profile_image_url}
+                alt={`${row.first_name} ${row.last_name}`}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.style.display = 'none';
+                  const gradient = getStaffGradient(row.staff_id);
+                  e.target.parentNode.innerHTML = `
+                    <div class="h-full w-full rounded-full ${gradient} flex items-center justify-center text-white font-medium">
+                      ${row.first_name?.charAt(0) || ''}${row.last_name?.charAt(0) || ''}
+                    </div>
+                  `;
+                }}
               />
-            )}
-
-            {/* Quick access to staff schedule overview */}
-            <div className="bg-white shadow rounded-lg p-6 mt-6">
-              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">Staff Schedule Overview</h3>
-              <p className="mb-4 text-gray-600">View and manage upcoming staff assignments</p>
-              
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="text-gray-600">Total Active Staff: </span>
-                  <span className="font-medium">{staffMembers.filter(s => s.is_active).length}</span>
-                </div>
-                
-                <Button
-                  variant="primary"
-                  onClick={() => handleTabChange('assignments')}
-                  icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  }
-                >
-                  View Assignments
-                </Button>
+            ) : (
+              <div className={`h-full w-full rounded-full ${getStaffGradient(row.staff_id)} flex items-center justify-center text-white font-medium`}>
+                {row.first_name?.charAt(0) || '?'}
+                {row.last_name?.charAt(0) || ''}
               </div>
-            </div>
+            )}
           </div>
-        );
-        
-      case 'assignments':
-        return (
-          <div className="space-y-6">
-            {/* Modified StaffAssignmentsList component will handle the add button inside */}
-            <StaffAssignmentsList 
-              onAddClick={() => setIsAssignmentModalOpen(true)}
+          <div className="font-medium text-gray-900">
+            {row.first_name} {row.last_name}
+          </div>
+        </div>
+      ),
+      width: "250px"
+    },
+    {
+      header: "Contact",
+      cell: (row) => (
+        <div>
+          {row.email && (
+            <div className="text-nextgen-blue text-sm">{row.email}</div>
+          )}
+          {row.phone && (
+            <div className="text-gray-600 text-sm">{row.phone}</div>
+          )}
+        </div>
+      ),
+      width: "200px"
+    },
+    {
+      header: "Role",
+      cell: (row) => (
+        <Badge variant="primary" size="sm">
+          {row.role}
+        </Badge>
+      ),
+      width: "120px"
+    },
+    {
+      header: "Access",
+      cell: (row) => row.access_level || 'N/A',
+      width: "100px"
+    },
+    {
+      header: "Status",
+      cell: (row) => (
+        <div className="flex flex-col gap-1">
+          <Badge 
+            variant={row.is_active ? "success" : "danger"}
+            size="sm"
+          >
+            {row.is_active ? 'Active' : 'Inactive'}
+          </Badge>
+          {row.user_id && (
+            <Badge variant="secondary" size="sm">
+              Has Login
+            </Badge>
+          )}
+        </div>
+      ),
+      width: "120px"
+    },
+    {
+      header: "Actions",
+      cellClassName: "text-end",
+      cell: (row) => (
+        <div className="flex justify-start gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditStaff(row);
+            }}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            }
+          />
+          {!row.user_id && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCreateUserCredentials(row);
+              }}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              }
+              title="Create login credentials"
             />
-          </div>
-        );
-        
-      default:
-        return <div>Select a tab to view staff management options</div>;
+          )}
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteStaff(row);
+            }}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            }
+          />
+        </div>
+      ),
+      width: "120px"
     }
+  ], []);
+
+  // Add gradient generator function before the columns definition
+  const getStaffGradient = (staffId) => {
+    const colors = [
+      'from-nextgen-blue to-nextgen-blue-dark',
+      'from-nextgen-orange to-nextgen-orange-dark',
+      'from-nextgen-blue-light to-nextgen-blue',
+      'from-nextgen-orange-light to-nextgen-orange',
+      'from-blue-500 to-indigo-600',
+      'from-orange-500 to-amber-500'
+    ];
+    
+    const index = (staffId || 0) % colors.length;
+    return `bg-gradient-to-br ${colors[index]}`;
   };
 
   return (
     <div className="page-container">
       <Card
+        variant="default"
         title="Staff Management"
         titleColor="text-nextgen-blue-dark"
-        variant="default"
         className="mb-6"
         animate
         icon={
@@ -292,86 +429,89 @@ const StaffManagementPage = () => {
           </svg>
         }
       >
-        <div className="border-b border-gray-200 -mt-2">
-          <div className="flex space-x-2 md:space-x-6">
-            <Button
-              variant={activeTab === 'list' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => handleTabChange('list')}
-              className="px-4 rounded-b-none rounded-t-lg"
-              fullWidth
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <div className="relative w-full md:w-1/2">
+            <Input
+              type="text"
+              placeholder="Search by name, email, or role..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              startIcon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
                 </svg>
               }
-              iconPosition="left"
-            >
-              Staff List
-            </Button>
-            
-            <Button
-              variant={activeTab === 'assignments' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => handleTabChange('assignments')}
-              className="px-4 rounded-b-none rounded-t-lg"
-              fullWidth
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              endIcon={isSearching ? (
+                <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-              }
-              iconPosition="left"
-            >
-              Assignments
-            </Button>
-          </div>
-        </div>
-        
-        <motion.div 
-          className="px-1 py-6"
-          key={activeTab}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="flex items-center mb-6">
-            {getTabIcon()}
-            <h2 className="text-xl font-semibold text-nextgen-blue-dark ml-2">
-              {activeTab === 'list' ? 'Staff List' : 'Staff Assignments'}
-            </h2>
+              ) : null}
+              fullWidth
+            />
           </div>
           
-          {renderTabContent()}
-        </motion.div>
+          <Button
+            variant="primary"
+            onClick={() => setIsAddModalOpen(true)}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+            }
+          >
+            Add Staff
+          </Button>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+          <Table
+            data={staffMembers}
+            columns={columns}
+            isLoading={loading}
+            noDataMessage="No staff members found"
+            highlightOnHover={true}
+            variant="primary"
+            stickyHeader={true}
+            onRowClick={(row) => handleViewStaff(row)}
+          />
+        </div>
       </Card>
 
-      {/* Add/Edit Staff Modal */}
+      {/* Add Staff Modal */}
       {isAddModalOpen && (
         <StaffForm
-          initialData={editingStaff}
-          onClose={handleCloseForm}
-          onSuccess={fetchStaffMembers}
-        />
-      )}
-
-      {/* Staff Assignment Modal */}
-      {isAssignmentModalOpen && (
-        <StaffAssignmentForm
-          isOpen={isAssignmentModalOpen}
-          onClose={() => setIsAssignmentModalOpen(false)}
+          onClose={() => setIsAddModalOpen(false)}
           onSuccess={() => {
-            setIsAssignmentModalOpen(false);
+            setIsAddModalOpen(false);
+            fetchStaffMembers();
           }}
         />
       )}
 
-      {/* Staff Detail View */}
-      {viewingStaffId && (
+      {/* Edit Staff Modal */}
+      {isEditModalOpen && selectedStaff && (
+        <StaffForm
+          isEdit={true}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          onSuccess={handleEditSuccess}
+          initialData={selectedStaff}
+        />
+      )}
+
+      {/* View Details Modal */}
+      {isViewModalOpen && selectedStaff && (
         <StaffDetailView
-          staffId={viewingStaffId}
-          isOpen={Boolean(viewingStaffId)}
-          onClose={handleCloseDetailView}
+          staff={selectedStaff}
+          staffId={selectedStaff.staff_id}
+          isOpen={isViewModalOpen}
+          onClose={() => {
+            setIsViewModalOpen(false);
+            setSelectedStaff(null);
+          }}
         />
       )}
 
