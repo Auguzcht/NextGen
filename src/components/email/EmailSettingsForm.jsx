@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Button, Badge } from '../ui';
+import Input from '../ui/Input';
+import { motion } from 'framer-motion';
+import Swal from 'sweetalert2';
+import { sendTestEmail } from '../../services/emailService';
 
 const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
   const [formData, setFormData] = useState({
@@ -12,7 +17,6 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
-  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
     if (emailConfig) {
@@ -27,19 +31,23 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
     try {
       const success = await onUpdate(formData);
       if (success) {
-        setTestResult({ success: true, message: 'Email settings saved successfully' });
+        Swal.fire({
+          icon: 'success',
+          title: 'Saved!',
+          text: 'Email settings saved successfully',
+          timer: 1500
+        });
       } else {
         throw new Error('Error saving settings');
       }
     } catch (error) {
-      setTestResult({ success: false, message: error.message });
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to save email settings'
+      });
     } finally {
       setIsSaving(false);
-      
-      // Auto-clear success message after 5 seconds
-      if (testResult?.success) {
-        setTimeout(() => setTestResult(null), 5000);
-      }
     }
   };
 
@@ -55,124 +63,186 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
     e.preventDefault();
     
     if (!testEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      setTestResult({ success: false, message: 'Please enter a valid email address' });
+      Swal.fire({
+        icon: 'error',
+        title: 'Invalid Email',
+        text: 'Please enter a valid email address'
+      });
       return;
     }
     
     setIsSendingTest(true);
-    setTestResult(null);
     
     try {
-      // Here we would call an endpoint to send a test email
-      // For now, let's just simulate it
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setTestResult({ success: true, message: `Test email sent to ${testEmail}` });
+      // Send test email using the current form configuration
+      const result = await sendTestEmail(testEmail, formData);
+      
+      if (result.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Test Email Sent!',
+          text: `Test email sent successfully to ${testEmail}`,
+          timer: 2000
+        });
+      } else {
+        throw new Error(result.error || 'Failed to send test email');
+      }
     } catch (error) {
-      setTestResult({ success: false, message: error.message });
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.response?.data?.error || error.message || 'Failed to send test email'
+      });
     } finally {
       setIsSendingTest(false);
     }
   };
 
   return (
-    <div className="bg-white overflow-hidden shadow rounded-md">
-      <div className="px-4 py-5 sm:px-6">
-        <h3 className="text-lg leading-6 font-medium text-gray-900">Email API Configuration</h3>
-        <p className="mt-1 text-sm text-gray-500">
-          Configure the email service for sending notifications to guardians and staff.
-        </p>
+    <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="px-6 py-5 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email API Configuration</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Configure your email service provider for sending notifications and reports
+            </p>
+          </div>
+          {emailConfig?.is_active && (
+            <Badge variant="success" size="sm">
+              Active
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Info Banner */}
+      <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mx-6 mt-6 rounded-r-md backdrop-blur-sm shadow-sm">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <p className="text-sm text-nextgen-blue-dark font-medium">
+              Email Configuration Purpose
+            </p>
+            <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-1">
+              <li><strong>Weekly Reports:</strong> Automatically send attendance reports to guardians</li>
+              <li><strong>Manual Emails:</strong> Send custom messages to guardians via Email Composer</li>
+              <li><strong>Notifications:</strong> Event reminders, birthday messages, and announcements</li>
+            </ul>
+          </div>
+        </div>
       </div>
       
-      {testResult && (
-        <div className={`mx-6 mb-4 p-4 rounded-md ${testResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-          {testResult.message}
-        </div>
-      )}
-      
-      <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-4">
-            <div>
-              <label htmlFor="provider" className="block text-sm font-medium text-gray-700">
-                Email Provider
-              </label>
-              <select
-                id="provider"
-                name="provider"
-                value={formData.provider}
-                onChange={handleInputChange}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                required
-              >
-                <option value="Resend">Resend</option>
-                <option value="SendGrid">SendGrid</option>
-                <option value="Mailgun">Mailgun</option>
-                <option value="SMTP">SMTP</option>
-              </select>
-            </div>
+      <form className="px-6 py-6 space-y-6" onSubmit={handleSubmit}>
+        {/* API Configuration Section */}
+        <motion.div 
+          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Provider Settings</h4>
+          
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              type="select"
+              id="provider"
+              name="provider"
+              label="Email Provider"
+              value={formData.provider}
+              onChange={handleInputChange}
+              options={[
+                { value: 'Resend', label: 'Resend' },
+                { value: 'SendGrid', label: 'SendGrid' },
+                { value: 'Mailgun', label: 'Mailgun' },
+                { value: 'AWS SES', label: 'AWS SES' },
+                { value: 'SMTP', label: 'Custom SMTP' }
+              ]}
+              helperText="Choose your email service provider"
+              required
+              animate
+            />
             
-            <div>
-              <label htmlFor="api_key" className="block text-sm font-medium text-gray-700">
-                API Key
-              </label>
-              <input
-                type="password"
-                id="api_key"
-                name="api_key"
-                value={formData.api_key}
-                onChange={handleInputChange}
-                className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                required
-              />
-            </div>
+            <Input
+              type="password"
+              id="api_key"
+              name="api_key"
+              label="API Key"
+              value={formData.api_key}
+              onChange={handleInputChange}
+              placeholder="Enter your API key"
+              helperText="Your provider's API authentication key"
+              required
+              animate
+            />
+          </div>
+        </motion.div>
+
+        {/* Sender Information Section */}
+        <motion.div 
+          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
+          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Sender Information</h4>
+          
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              type="email"
+              id="from_email"
+              name="from_email"
+              label="From Email Address"
+              value={formData.from_email}
+              onChange={handleInputChange}
+              placeholder="noreply@yourchurch.org"
+              helperText="Must be verified with your email provider"
+              required
+              animate
+            />
             
-            <div>
-              <label htmlFor="from_email" className="block text-sm font-medium text-gray-700">
-                From Email
-              </label>
-              <input
-                type="email"
-                id="from_email"
-                name="from_email"
-                value={formData.from_email}
-                onChange={handleInputChange}
-                className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                required
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="from_name" className="block text-sm font-medium text-gray-700">
-                From Name
-              </label>
-              <input
-                type="text"
-                id="from_name"
-                name="from_name"
-                value={formData.from_name}
-                onChange={handleInputChange}
-                className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                required
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="batch_size" className="block text-sm font-medium text-gray-700">
-                Batch Size
-              </label>
-              <input
-                type="number"
-                id="batch_size"
-                name="batch_size"
-                min="1"
-                max="1000"
-                value={formData.batch_size}
-                onChange={handleInputChange}
-                className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                required
-              />
-              <p className="mt-1 text-xs text-gray-500">Max number of emails to send in a single batch</p>
-            </div>
+            <Input
+              type="text"
+              id="from_name"
+              name="from_name"
+              label="From Name"
+              value={formData.from_name}
+              onChange={handleInputChange}
+              placeholder="NextGen Ministry"
+              helperText="Display name for outgoing emails"
+              required
+              animate
+            />
+          </div>
+        </motion.div>
+
+        {/* Advanced Settings Section */}
+        <motion.div 
+          className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <h4 className="text-md font-medium text-nextgen-blue-dark mb-4">Advanced Settings</h4>
+          
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              type="number"
+              id="batch_size"
+              name="batch_size"
+              label="Batch Size"
+              min="1"
+              max="1000"
+              value={formData.batch_size}
+              onChange={handleInputChange}
+              helperText="Maximum emails to send in a single batch (1-1000)"
+              required
+              animate
+            />
             
             <div className="flex items-center h-full pt-5">
               <div className="flex items-center">
@@ -182,46 +252,79 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
                   type="checkbox"
                   checked={formData.is_active}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
                 />
-                <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
-                  Active
+                <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900 font-medium">
+                  Enable Email Service
                 </label>
               </div>
             </div>
           </div>
+        </motion.div>
+
+        {/* Test Email Section */}
+        <motion.div 
+          className="bg-gradient-to-r from-purple-50 to-purple-50/50 rounded-lg border border-purple-200 p-6 shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
+          <h4 className="text-md font-medium text-purple-900 mb-3 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Test Email Configuration
+          </h4>
+          <p className="text-sm text-purple-700 mb-4">
+            Send a test email to verify your configuration is working correctly
+          </p>
           
-          <div className="flex justify-between pt-5 border-t border-gray-200">
-            <div>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <input
+          <div className="flex items-end space-x-3">
+            <div className="flex-1">
+              <Input
                 type="email"
-                placeholder="Enter email address"
+                id="test_email"
+                label="Test Email Address"
+                placeholder="your@email.com"
                 value={testEmail}
                 onChange={(e) => setTestEmail(e.target.value)}
-                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                className="mb-0"
               />
-              <button
-                type="button"
-                onClick={handleTestEmail}
-                disabled={isSendingTest || !formData.api_key || !formData.from_email}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {isSendingTest ? 'Sending...' : 'Send Test'}
-              </button>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleTestEmail}
+              disabled={isSendingTest || !formData.api_key || !formData.from_email}
+              className="border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              {isSendingTest ? 'Sending...' : 'Send Test'}
+            </Button>
           </div>
-        </form>
-      </div>
+        </motion.div>
+
+        {/* Form Actions */}
+        <div className="flex justify-end space-x-3 pt-5 border-t border-gray-200">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (emailConfig) {
+                setFormData(emailConfig);
+              }
+            }}
+          >
+            Reset
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 };

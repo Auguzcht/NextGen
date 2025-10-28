@@ -1,87 +1,34 @@
 import { useState } from 'react';
 import supabase from '../../services/supabase.js';
+import AgeGroupForm from './AgeGroupForm.jsx';
+import { Button, Badge } from '../ui';
+import { motion } from 'framer-motion';
+import Swal from 'sweetalert2';
 
 const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
-  const [isAdding, setIsAdding] = useState(false);
-  const [savingId, setSavingId] = useState(null);
-  const [newCategory, setNewCategory] = useState({
-    category_name: '',
-    min_age: 0,
-    max_age: 1,
-    color_code: '#3B82F6',
-    description: ''
-  });
+  const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const handleAddCategory = async (e) => {
-    e.preventDefault();
-    
-    if (!newCategory.category_name || newCategory.min_age === undefined || newCategory.max_age === undefined) {
-      alert('Category name, minimum and maximum ages are required');
-      return;
-    }
-    
-    if (newCategory.min_age > newCategory.max_age) {
-      alert('Minimum age cannot be greater than maximum age');
-      return;
-    }
-    
-    setSavingId('new');
-    try {
-      const { error } = await supabase
-        .from('age_categories')
-        .insert([newCategory]);
-        
-      if (error) throw error;
-      
-      setNewCategory({
-        category_name: '',
-        min_age: 0,
-        max_age: 1,
-        color_code: '#3B82F6',
-        description: ''
-      });
-      setIsAdding(false);
-      onUpdate();
-    } catch (error) {
-      console.error('Error adding age category:', error);
-      alert(`Error adding age category: ${error.message}`);
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const handleUpdateCategory = async (category) => {
-    if (category.min_age > category.max_age) {
-      alert('Minimum age cannot be greater than maximum age');
-      return;
-    }
-    
-    setSavingId(category.category_id);
-    try {
-      const { error } = await supabase
-        .from('age_categories')
-        .update(category)
-        .eq('category_id', category.category_id);
-        
-      if (error) throw error;
-      
-      setEditingCategory(null);
-      onUpdate();
-    } catch (error) {
-      console.error('Error updating age category:', error);
-      alert(`Error updating age category: ${error.message}`);
-    } finally {
-      setSavingId(null);
-    }
+  const handleEdit = (category) => {
+    setEditingCategory(category);
   };
 
   const handleDeleteCategory = async (categoryId) => {
-    if (!confirm('Are you sure you want to delete this age category? This may affect children records.')) {
-      return;
-    }
+    const result = await Swal.fire({
+      title: 'Delete Age Category?',
+      text: 'This may affect children records. Are you sure you want to delete this category?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it',
+      cancelButtonText: 'Cancel'
+    });
+
+    if (!result.isConfirmed) return;
     
-    setSavingId(categoryId);
+    setDeletingId(categoryId);
     try {
       const { error } = await supabase
         .from('age_categories')
@@ -90,134 +37,51 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
         
       if (error) throw error;
       
+      Swal.fire({
+        icon: 'success',
+        title: 'Deleted!',
+        text: 'Age category has been deleted.',
+        timer: 1500
+      });
+      
       onUpdate();
     } catch (error) {
       console.error('Error deleting age category:', error);
-      alert(`Error deleting age category: ${error.message}`);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to delete age category'
+      });
     } finally {
-      setSavingId(null);
-    }
-  };
-
-  const toggleEdit = (category) => {
-    if (editingCategory && editingCategory.category_id === category.category_id) {
-      setEditingCategory(null); // Cancel editing
-    } else {
-      setEditingCategory({ ...category });
+      setDeletingId(null);
     }
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <p className="text-gray-600">
-          Configure age groups for children classification.
-        </p>
-        <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
+        <div>
+          <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Age Categories</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Configure age groups for children classification
+          </p>
+        </div>
+        <Button
+          onClick={() => setShowForm(true)}
+          variant="primary"
+          size="sm"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          }
         >
-          {isAdding ? 'Cancel' : 'Add Age Group'}
-        </button>
+          Add Age Category
+        </Button>
       </div>
       
-      {isAdding && (
-        <div className="bg-gray-50 p-6 rounded-lg mb-6 animate-in fade-in duration-300">
-          <h3 className="text-lg font-medium mb-4">Add New Age Group</h3>
-          <form onSubmit={handleAddCategory} className="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-4">
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Category Name*
-              </label>
-              <input
-                type="text"
-                value={newCategory.category_name}
-                onChange={(e) => setNewCategory({...newCategory, category_name: e.target.value})}
-                placeholder="e.g., Toddlers, Elementary, etc."
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Minimum Age (Years)*
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="18"
-                value={newCategory.min_age}
-                onChange={(e) => setNewCategory({...newCategory, min_age: parseInt(e.target.value)})}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Maximum Age (Years)*
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="18"
-                value={newCategory.max_age}
-                onChange={(e) => setNewCategory({...newCategory, max_age: parseInt(e.target.value)})}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Color Code
-              </label>
-              <input
-                type="color"
-                value={newCategory.color_code}
-                onChange={(e) => setNewCategory({...newCategory, color_code: e.target.value})}
-                className="h-10 w-full rounded-md border border-gray-300 cursor-pointer"
-              />
-            </div>
-            
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                value={newCategory.description || ''}
-                onChange={(e) => setNewCategory({...newCategory, description: e.target.value})}
-                rows={3}
-                placeholder="Brief description of this age group"
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              ></textarea>
-            </div>
-            
-            <div className="sm:col-span-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={savingId === 'new'}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {savingId === 'new' ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </span>
-                ) : (
-                  'Save Age Group'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      
-      <div className="overflow-x-auto">
+      {/* Custom Table - Matching StaffList Design */}
+      <div className="overflow-hidden border border-gray-200 rounded-lg shadow">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -228,9 +92,6 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
                 Age Range
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Color
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Description
               </th>
               <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -239,157 +100,99 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {ageCategories.length === 0 ? (
+            {loading ? (
               <tr>
-                <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
-                  No age groups configured yet
+                <td colSpan="4" className="px-6 py-12 text-center">
+                  <div className="flex justify-center items-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
+                    <span className="ml-3 text-sm text-gray-500">Loading age categories...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : ageCategories.length === 0 ? (
+              <tr>
+                <td colSpan="4" className="px-6 py-12 text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  <p className="text-sm text-gray-500 font-medium">No age categories found</p>
+                  <p className="text-xs text-gray-400 mt-1">Create age categories to organize children</p>
                 </td>
               </tr>
             ) : (
               ageCategories.map((category) => (
-                <tr key={category.category_id} className={editingCategory?.category_id === category.category_id ? 'bg-indigo-50' : ''}>
-                  {editingCategory?.category_id === category.category_id ? (
-                    <td colSpan="5" className="px-6 py-4">
-                      <form onSubmit={(e) => { e.preventDefault(); handleUpdateCategory(editingCategory); }} className="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-4">
-                        <div className="sm:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Category Name*
-                          </label>
-                          <input
-                            type="text"
-                            value={editingCategory.category_name}
-                            onChange={(e) => setEditingCategory({...editingCategory, category_name: e.target.value})}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            required
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Minimum Age (Years)*
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max="18"
-                            value={editingCategory.min_age}
-                            onChange={(e) => setEditingCategory({...editingCategory, min_age: parseInt(e.target.value)})}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            required
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Maximum Age (Years)*
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="18"
-                            value={editingCategory.max_age}
-                            onChange={(e) => setEditingCategory({...editingCategory, max_age: parseInt(e.target.value)})}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            required
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Color Code
-                          </label>
-                          <input
-                            type="color"
-                            value={editingCategory.color_code || '#3B82F6'}
-                            onChange={(e) => setEditingCategory({...editingCategory, color_code: e.target.value})}
-                            className="h-10 w-full rounded-md border border-gray-300 cursor-pointer"
-                          />
-                        </div>
-                        
-                        <div className="sm:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <textarea
-                            value={editingCategory.description || ''}
-                            onChange={(e) => setEditingCategory({...editingCategory, description: e.target.value})}
-                            rows={3}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          ></textarea>
-                        </div>
-                        
-                        <div className="sm:col-span-2 flex justify-end space-x-3">
-                          <button
-                            type="button"
-                            onClick={() => setEditingCategory(null)}
-                            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="submit"
-                            disabled={savingId === category.category_id}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                          >
-                            {savingId === category.category_id ? (
-                              <span className="flex items-center">
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Saving...
-                              </span>
-                            ) : (
-                              'Save Changes'
-                            )}
-                          </button>
-                        </div>
-                      </form>
-                    </td>
-                  ) : (
-                    <>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {category.category_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {category.min_age} - {category.max_age} years
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <div 
-                            className="h-4 w-4 rounded-full mr-2" 
-                            style={{ backgroundColor: category.color_code || '#3B82F6' }}
-                          ></div>
-                          {category.color_code || 'Not set'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {category.description || 'No description'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => toggleEdit(category)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-3"
-                          disabled={savingId === category.category_id}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCategory(category.category_id)}
-                          className="text-red-600 hover:text-red-900"
-                          disabled={savingId === category.category_id}
-                        >
-                          {savingId === category.category_id ? 'Deleting...' : 'Delete'}
-                        </button>
-                      </td>
-                    </>
-                  )}
-                </tr>
+                <motion.tr 
+                  key={category.category_id}
+                  whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
+                  className="group"
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm font-medium text-gray-900">{category.category_name}</span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <Badge variant="info" size="sm">
+                      {category.min_age} - {category.max_age} years
+                    </Badge>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    <div className="max-w-xs truncate">
+                      {category.description || <span className="text-gray-400 italic">No description</span>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div className="flex justify-end items-center space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => handleEdit(category)}
+                        className="text-nextgen-blue"
+                        icon={
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        }
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="xs"
+                        onClick={() => handleDeleteCategory(category.category_id)}
+                        disabled={deletingId === category.category_id}
+                        isLoading={deletingId === category.category_id}
+                        icon={
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        }
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </motion.tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Add/Edit Form Modal */}
+      {(showForm || editingCategory) && (
+        <AgeGroupForm
+          isEdit={!!editingCategory}
+          initialData={editingCategory}
+          onClose={() => {
+            setShowForm(false);
+            setEditingCategory(null);
+          }}
+          onSuccess={() => {
+            setShowForm(false);
+            setEditingCategory(null);
+            onUpdate();
+          }}
+        />
+      )}
     </div>
   );
 };

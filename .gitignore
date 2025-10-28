@@ -26,4 +26,7 @@ dist-ssr
 # dotenv environment variables file
 .env
 
+# db schema copy
 db_nextgen.sql
+
+*.md

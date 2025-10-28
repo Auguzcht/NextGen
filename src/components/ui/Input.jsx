@@ -18,8 +18,9 @@ const Input = ({
   success = false,
   required = false,
   type = "text",
-  options = [],  // Add options prop for select
-  selectProps = {}, // Add selectProps
+  options = [],
+  selectProps = {},
+  rows = 3, // Add rows prop for textarea
   onChange,
   onFocus,
   onBlur,
@@ -30,7 +31,6 @@ const Input = ({
   
   const inputId = id || `nextgen-input-${Math.random().toString(36).substring(2, 9)}`;
   
-  // Handle focus and blur events
   const handleFocus = (e) => {
     setIsFocused(true);
     onFocus && onFocus(e);
@@ -41,13 +41,11 @@ const Input = ({
     onBlur && onBlur(e);
   };
   
-  // Handle change to detect if input has value
   const handleChange = (e) => {
     setHasValue(!!e.target.value);
     onChange && onChange(e);
   };
   
-  // Input variants
   const variants = {
     default: "border-gray-300",
     outline: "bg-transparent border-2 border-nextgen-blue/30 hover:border-nextgen-blue/50",
@@ -55,21 +53,18 @@ const Input = ({
     flush: "border-0 border-b-2 rounded-none px-0 border-gray-300"
   };
   
-  // Input sizes
   const sizes = {
     sm: "py-1 px-2 text-sm",
     md: "py-2 px-3 text-base",
     lg: "py-2.5 px-4 text-lg"
   };
   
-  // Status classes
   const statusClasses = error 
     ? "border-red-300 focus:ring-red-500 focus:border-red-500" 
     : success 
       ? "border-green-500 focus:ring-green-500 focus:border-green-500"
       : "focus:ring-nextgen-blue focus:border-nextgen-blue";
   
-  // Container animation
   const containerAnimation = animate ? {
     initial: { opacity: 0, y: 10 },
     animate: { 
@@ -82,8 +77,20 @@ const Input = ({
     }
   } : {};
   
-  // Determine container component
   const Container = animate ? motion.div : 'div';
+  
+  // Base input classes
+  const baseClasses = `
+    block border rounded-md shadow-sm transition-colors duration-200
+    placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
+    disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
+    text-gray-900 bg-white
+    ${variants[variant] || variants.default}
+    ${statusClasses}
+    ${fullWidth ? 'w-full' : 'w-auto'}
+    ${hasValue ? 'bg-white' : ''}
+    ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+  `;
   
   return (
     <Container 
@@ -117,24 +124,30 @@ const Input = ({
           </div>
         )}
         
-        {type === 'select' ? (
+        {type === 'textarea' ? (
+          <textarea
+            id={inputId}
+            rows={rows}
+            disabled={disabled}
+            className={`
+              ${baseClasses}
+              ${sizes[size] || sizes.md}
+              resize-none
+            `}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...props}
+          />
+        ) : type === 'select' ? (
           <select
             id={inputId}
             disabled={disabled}
             className={`
-              block border rounded-md shadow-sm transition-colors duration-200
-              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
-              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
-              text-gray-900 bg-white
+              ${baseClasses}
               ${startIcon ? 'pl-10' : ''}
               ${endIcon ? 'pr-10' : ''}
-              ${variants[variant] || variants.default}
               ${sizes[size] || sizes.md}
-              ${statusClasses}
-              ${fullWidth ? 'w-full' : 'w-auto'}
-              ${hasValue ? 'bg-white' : ''}
-              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
-              ${className}
             `}
             onChange={handleChange}
             onFocus={handleFocus}
@@ -154,16 +167,8 @@ const Input = ({
             type="date"
             disabled={disabled}
             className={`
-              block border rounded-md shadow-sm transition-colors duration-200
-              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
-              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
-              text-gray-900 bg-white h-[42px] px-3
-              ${variants[variant] || variants.default}
-              ${statusClasses}
-              ${fullWidth ? 'w-full' : 'w-auto'}
-              ${hasValue ? 'bg-white' : ''}
-              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
-              ${className}
+              ${baseClasses}
+              h-[42px] px-3
             `}
             onChange={handleChange}
             onFocus={handleFocus}
@@ -176,19 +181,10 @@ const Input = ({
             type={type}
             disabled={disabled}
             className={`
-              block border rounded-md shadow-sm transition-colors duration-200
-              placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20
-              disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed
-              text-gray-900 bg-white
+              ${baseClasses}
               ${startIcon ? 'pl-10' : ''}
               ${endIcon ? 'pr-10' : ''}
-              ${variants[variant] || variants.default}
               ${sizes[size] || sizes.md}
-              ${statusClasses}
-              ${fullWidth ? 'w-full' : 'w-auto'}
-              ${hasValue ? 'bg-white' : ''}
-              ${isFocused ? 'ring-2 ring-opacity-20' : ''}
-              ${className}
             `}
             onChange={handleChange}
             onFocus={handleFocus}
@@ -205,7 +201,6 @@ const Input = ({
           </div>
         )}
         
-        {/* Animated focus effect for filled variant */}
         {variant === 'filled' && isFocused && (
           <motion.div 
             className="absolute bottom-0 left-0 right-0 h-0.5 bg-nextgen-blue"
@@ -217,7 +212,6 @@ const Input = ({
         )}
       </div>
       
-      {/* Error or helper text */}
       {error ? (
         <p className="mt-1 text-sm text-red-600 flex items-center">
           {typeof error === 'string' ? error : 'Invalid input'}
@@ -226,7 +220,6 @@ const Input = ({
         <p className="mt-1 text-sm text-gray-500">{helperText}</p>
       )}
       
-      {/* Success message */}
       {success && !error && (
         <p className="mt-1 text-sm text-green-600 flex items-center">
           <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -262,6 +255,7 @@ Input.propTypes = {
     })
   ),
   selectProps: PropTypes.object,
+  rows: PropTypes.number,
   onChange: PropTypes.func,
   onFocus: PropTypes.func,
   onBlur: PropTypes.func

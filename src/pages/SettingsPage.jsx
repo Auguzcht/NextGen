@@ -3,8 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import EmailSettingsForm from '../components/email/EmailSettingsForm.jsx';
 import EmailTemplatesManager from '../components/email/EmailTemplatesManager.jsx';
-import ServiceSettingsForm from '../components/settings/ServiceSettingsForm.jsx';
+import EmailComposer from '../components/email/EmailComposer.jsx';
+import EmailLogsViewer from '../components/email/EmailLogsViewer.jsx';
+import ServiceSettingsManager from '../components/settings/ServiceSettingsForm.jsx';
+import ServiceNotesManager from '../components/settings/ServiceNotesManager.jsx';
 import AgeGroupSettings from '../components/settings/AgeGroupSettings.jsx';
+import MaterialsManager from '../components/settings/MaterialsManager.jsx';
 import { Card, Button, Spinner } from '../components/ui';
 import { motion } from 'framer-motion';
 
@@ -22,7 +26,7 @@ const SettingsPage = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
-    if (tab && ['services', 'age-groups', 'email'].includes(tab)) {
+    if (tab && ['services', 'age-groups-materials', 'email'].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -39,7 +43,7 @@ const SettingsPage = () => {
       fetchEmailTemplates();
     } else if (activeTab === 'services') {
       fetchServices();
-    } else if (activeTab === 'age-groups') {
+    } else if (activeTab === 'age-groups-materials') {
       fetchAgeCategories();
     }
   }, [activeTab]);
@@ -116,7 +120,6 @@ const SettingsPage = () => {
   const handleEmailConfigUpdate = async (updatedConfig) => {
     try {
       if (emailConfig) {
-        // Update existing config
         const { error } = await supabase
           .from('email_api_config')
           .update(updatedConfig)
@@ -124,7 +127,6 @@ const SettingsPage = () => {
           
         if (error) throw error;
       } else {
-        // Create new config
         const { error } = await supabase
           .from('email_api_config')
           .insert([updatedConfig]);
@@ -155,25 +157,39 @@ const SettingsPage = () => {
               onUpdate={fetchEmailTemplates}
               loading={loading}
             />
+            <EmailComposer 
+              templates={emailTemplates}
+            />
+            <EmailLogsViewer />
           </div>
         );
         
       case 'services':
         return (
-          <ServiceSettingsForm 
-            services={services} 
-            onUpdate={fetchServices}
-            loading={loading}
-          />
+          <div className="space-y-10">
+            <ServiceSettingsManager 
+              services={services} 
+              onUpdate={fetchServices}
+              loading={loading}
+            />
+            <ServiceNotesManager 
+              services={services}
+            />
+          </div>
         );
         
-      case 'age-groups':
+      case 'age-groups-materials':
         return (
-          <AgeGroupSettings 
-            ageCategories={ageCategories} 
-            onUpdate={fetchAgeCategories}
-            loading={loading}
-          />
+          <div className="space-y-10">
+            <AgeGroupSettings 
+              ageCategories={ageCategories} 
+              onUpdate={fetchAgeCategories}
+              loading={loading}
+            />
+            <MaterialsManager 
+              ageCategories={ageCategories}
+            />
+          </div>
         );
         
       default:
@@ -181,7 +197,6 @@ const SettingsPage = () => {
     }
   };
   
-  // Get icon based on active tab
   const getTabIcon = () => {
     switch (activeTab) {
       case 'services':
@@ -190,10 +205,10 @@ const SettingsPage = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         );
-      case 'age-groups':
+      case 'age-groups-materials':
         return (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
           </svg>
         );
       case 'email':
@@ -241,19 +256,19 @@ const SettingsPage = () => {
             </Button>
             
             <Button
-              variant={activeTab === 'age-groups' ? 'primary' : 'ghost'}
+              variant={activeTab === 'age-groups-materials' ? 'primary' : 'ghost'}
               size="sm"
-              onClick={() => handleTabChange('age-groups')}
+              onClick={() => handleTabChange('age-groups-materials')}
               className="px-4 rounded-b-none rounded-t-lg"
               fullWidth
               icon={
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
               }
               iconPosition="left"
             >
-              Age Groups
+              Age Groups & Materials
             </Button>
             
             <Button
@@ -269,11 +284,11 @@ const SettingsPage = () => {
               }
               iconPosition="left"
             >
-              Email Settings
+              Email Management
             </Button>
           </div>
         </div>
-        
+
         <motion.div 
           className="px-1 py-6"
           key={activeTab}
@@ -285,7 +300,7 @@ const SettingsPage = () => {
             {getTabIcon()}
             <h2 className="text-xl font-semibold text-nextgen-blue-dark ml-2">
               {activeTab === 'services' ? 'Service Settings' : 
-               activeTab === 'age-groups' ? 'Age Group Settings' : 'Email Settings'}
+               activeTab === 'age-groups-materials' ? 'Age Groups & Materials' : 'Email Management'}
             </h2>
           </div>
           

@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => ({
   ],
   
   server: {
-    port: 3000,
+    port: 3002,
     open: true,
     cors: true,
     watch: {
@@ -26,6 +26,21 @@ export default defineConfig(({ mode }) => ({
     fs: {
       strict: false,
       allow: ['..']
+    },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (path) => path,
+        configure: (proxy, options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('Proxy error:', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Proxying:', req.method, req.url, '→', proxyReq.path);
+          });
+        }
+      }
     }
   },
   

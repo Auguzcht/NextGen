@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node dev-server.cjs",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -14,9 +16,12 @@
     "@tailwindcss/cli": "^4.0.17",
     "axios": "^1.8.4",
     "chart.js": "^4.4.8",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dependencies": "^0.0.1",
     "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "firebase": "^11.5.0",
     "formik": "^2.4.6",
     "framer-motion": "^12.23.3",
