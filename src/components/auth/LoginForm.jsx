@@ -290,6 +290,9 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
                   Volunteer: volunteer@nextgen.com / VolunteerPassword123!
                 </motion.p>
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
+                  Coordinator: coordinator@nextgen.com / CoordinatorPassword123!
+                </motion.p>
               </motion.div>
             </motion.form>
           </motion.div>
