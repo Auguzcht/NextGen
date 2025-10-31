@@ -253,13 +253,20 @@ const ChildrenPage = () => {
             size="xs"
             onClick={(e) => {
               e.stopPropagation();
-              handleDeleteChild(row);
+              handleToggleActive(row);
             }}
             icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              row.is_active ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )
             }
+            title={row.is_active ? 'Deactivate' : 'Reactivate'}
           />
         </div>
       ),
@@ -325,15 +332,19 @@ const ChildrenPage = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleDeleteChild = async (child) => {
+  const handleToggleActive = async (child) => {
+    const isActivating = !child.is_active;
+    
     const result = await Swal.fire({
       title: 'Are you sure?',
-      text: "This will deactivate the child's record. This can be undone later.",
+      text: isActivating
+        ? "This will reactivate the child's record and they will appear in active lists."
+        : "This will deactivate the child's record. They will not appear in active lists but can be reactivated later.",
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, deactivate',
+      confirmButtonColor: isActivating ? '#10b981' : '#f59e0b',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: isActivating ? 'Yes, reactivate' : 'Yes, deactivate',
       cancelButtonText: 'Cancel'
     });
 
@@ -341,21 +352,21 @@ const ChildrenPage = () => {
       try {
         const { error } = await supabase
           .from('children')
-          .update({ is_active: false })
+          .update({ is_active: isActivating })
           .eq('child_id', child.child_id);
 
         if (error) throw error;
 
         Swal.fire(
-          'Deactivated!',
-          'The child has been deactivated.',
+          isActivating ? 'Reactivated!' : 'Deactivated!',
+          `The child has been ${isActivating ? 'reactivated' : 'deactivated'}.`,
           'success'
         );
         fetchChildren();
       } catch (error) {
         Swal.fire(
           'Error!',
-          'Failed to deactivate child.',
+          `Failed to ${isActivating ? 'reactivate' : 'deactivate'} child.`,
           'error'
         );
         console.error('Error deactivating child:', error);

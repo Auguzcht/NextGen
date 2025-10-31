@@ -90,16 +90,16 @@ const StaffManagementPage = () => {
           .select('service_id')
           .eq('staff_id', staffId),
         
-        // Most recent assignment
+        // Most recent assignments (get multiple to group)
         supabase
           .from('staff_assignments')
           .select(`
             *,
-            services(service_name, day_of_week, start_time)
+            services(service_id, service_name, day_of_week, start_time)
           `)
           .eq('staff_id', staffId)
           .order('assignment_date', { ascending: false })
-          .limit(1)
+          .limit(10)
       ]);
 
       if (totalResult.error) throw totalResult.error;
@@ -111,11 +111,29 @@ const StaffManagementPage = () => {
       const uniqueServices = new Set();
       servicesResult.data?.forEach(item => uniqueServices.add(item.service_id));
 
+      // Group recent assignments by date + role + notes
+      const grouped = {};
+      assignmentsResult.data?.forEach(assignment => {
+        const key = `${assignment.assignment_date}-${assignment.role}-${assignment.notes || ''}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            ...assignment,
+            services: [assignment.services],
+            assignment_ids: [assignment.assignment_id]
+          };
+        } else {
+          grouped[key].services.push(assignment.services);
+          grouped[key].assignment_ids.push(assignment.assignment_id);
+        }
+      });
+
+      const groupedAssignments = Object.values(grouped);
+
       return {
         totalAssignments: totalResult.count || 0,
         upcomingAssignments: upcomingResult.count || 0,
         servicesWorked: uniqueServices.size,
-        recentAssignment: assignmentsResult.data?.[0] || null
+        recentAssignment: groupedAssignments[0] || null
       };
     } catch (error) {
       console.error('Error fetching staff stats:', error);
@@ -157,15 +175,19 @@ const StaffManagementPage = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleDeleteStaff = async (staff) => {
+  const handleToggleActive = async (staff) => {
+    const isActivating = !staff.is_active;
+    
     const result = await Swal.fire({
       title: 'Are you sure?',
-      text: "This will deactivate the staff member. This can be undone later.",
+      text: isActivating 
+        ? "This will reactivate the staff member and allow them to log in."
+        : "This will deactivate the staff member and prevent them from logging in.",
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, deactivate',
+      confirmButtonColor: isActivating ? '#10b981' : '#f59e0b',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: isActivating ? 'Yes, reactivate' : 'Yes, deactivate',
       cancelButtonText: 'Cancel'
     });
 
@@ -173,32 +195,28 @@ const StaffManagementPage = () => {
       try {
         const { error } = await supabase
           .from('staff')
-          .update({ is_active: false })
+          .update({ is_active: isActivating })
           .eq('staff_id', staff.staff_id);
 
         if (error) throw error;
 
         Swal.fire(
-          'Deactivated!',
-          'The staff member has been deactivated.',
+          isActivating ? 'Reactivated!' : 'Deactivated!',
+          `The staff member has been ${isActivating ? 'reactivated' : 'deactivated'}.`,
           'success'
         );
         fetchStaffMembers();
       } catch (error) {
         Swal.fire(
           'Error!',
-          'Failed to deactivate staff member.',
+          `Failed to ${isActivating ? 'reactivate' : 'deactivate'} staff member.`,
           'error'
         );
-        console.error('Error deactivating staff:', error);
+        console.error('Error toggling staff status:', error);
       }
     }
   };
 
-  const handleCreateUserCredentials = (staff) => {
-    setSelectedStaffForCredentials(staff);
-    setIsUserCredentialsModalOpen(true);
-  };
 
   const handleCreateUser = async (password) => {
     if (!selectedStaffForCredentials) return;
@@ -365,35 +383,28 @@ const StaffManagementPage = () => {
               </svg>
             }
           />
-          {!row.user_id && (
+          {row.email !== 'admin@example.com' && (
             <Button
               variant="ghost"
               size="xs"
               onClick={(e) => {
                 e.stopPropagation();
-                handleCreateUserCredentials(row);
+                handleToggleActive(row);
               }}
               icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
+                row.is_active ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )
               }
-              title="Create login credentials"
+              title={row.is_active ? 'Deactivate' : 'Reactivate'}
             />
           )}
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDeleteStaff(row);
-            }}
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            }
-          />
         </div>
       ),
       width: "120px"

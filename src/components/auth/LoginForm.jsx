@@ -3,14 +3,16 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { Button, Input, Alert, Spinner } from '../ui';
+import Swal from 'sweetalert2';
 
 const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -89,9 +91,88 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
         setLoading(false);
       }
     } catch (error) {
-      console.error('Login error:', error);
       setError('An unexpected error occurred. Please try again.');
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const { value: emailInput } = await Swal.fire({
+      title: 'Forgot Password',
+      html: `
+        <p class="text-gray-600 mb-4">Enter your email address and we'll send you instructions to reset your password.</p>
+        <input id="swal-input-email" class="swal2-input" placeholder="Email address" type="email" value="${email}">
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Send Reset Link',
+      confirmButtonColor: '#30CEE4',
+      cancelButtonColor: '#6b7280',
+      preConfirm: () => {
+        const emailValue = document.getElementById('swal-input-email').value;
+        if (!emailValue) {
+          Swal.showValidationMessage('Please enter your email address');
+          return false;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+          Swal.showValidationMessage('Please enter a valid email address');
+          return false;
+        }
+        return emailValue;
+      }
+    });
+
+    if (emailInput) {
+      try {
+        Swal.fire({
+          title: 'Sending...',
+          text: 'Please wait while we send the reset link',
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // Send email via Web3Forms using FormData
+        const accessKey = import.meta.env.VITE_WEB3FORMS_KEY;
+        
+        // Check if access key is configured
+        if (!accessKey) {
+          throw new Error('Web3Forms access key is not configured. Please contact the administrator.');
+        }
+
+        const formData = new FormData();
+        formData.append('access_key', accessKey);
+        formData.append('name', 'Password Reset Request');
+        formData.append('email', emailInput);
+        formData.append('subject', 'NextGen Ministry - Password Reset Request');
+        formData.append('message', `Password reset requested for email: ${emailInput}\n\nTimestamp: ${new Date().toLocaleString()}\n\nPlease assist this user with resetting their password.`);
+
+        const response = await fetch('https://api.web3forms.com/submit', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Request Sent!',
+            html: `<p>A password reset request has been sent to the administrator.</p><p class="text-sm text-gray-600 mt-2">You will receive an email at <strong>${emailInput}</strong> with further instructions.</p>`,
+            confirmButtonColor: '#30CEE4'
+          });
+        } else {
+          throw new Error(result.message || 'Failed to send request');
+        }
+      } catch (error) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'Failed to send password reset request. Please try again or contact the administrator.',
+          confirmButtonColor: '#30CEE4'
+        });
+      }
     }
   };
 
@@ -175,6 +256,8 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
             <motion.form 
               className="space-y-4" 
               onSubmit={handleLogin}
+              method="post"
+              action="#"
               variants={formVariants}
               initial="hidden"
               animate="visible"
@@ -243,14 +326,16 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   </label>
                 </motion.div>
     
-                <motion.a
-                  href="#"
+                <motion.button
+                  type="button"
+                  onClick={handleForgotPassword}
                   className="text-nextgen-blue hover:text-nextgen-blue-dark transition-colors"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
+                  disabled={loading}
                 >
                   Forgot password?
-                </motion.a>
+                </motion.button>
               </motion.div>
     
               <motion.div variants={itemVariants} className="pt-2">
@@ -276,22 +361,13 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                 </Button>
               </motion.div>
               
-              {/* Demo credentials section - remove for production */}
+              {/* Help text */}
               <motion.div 
                 variants={itemVariants}
-                className="text-center text-sm text-nextgen-blue-dark/70 mt-5 pt-3 border-t border-gray-100"
+                className="text-center text-sm text-gray-500 mt-6 pt-4 border-t border-gray-100"
               >
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
-                  Demo credentials:
-                </motion.p>
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  Admin: admin@example.com / AdminPassword123!
-                </motion.p>
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  Volunteer: volunteer@nextgen.com / VolunteerPassword123!
-                </motion.p>
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  Coordinator: coordinator@nextgen.com / CoordinatorPassword123!
+                  Need help? Contact your administrator
                 </motion.p>
               </motion.div>
             </motion.form>

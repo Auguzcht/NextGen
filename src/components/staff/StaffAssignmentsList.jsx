@@ -25,13 +25,30 @@ const StaffAssignmentsList = ({ onAddClick }) => {
         .select(`
           *,
           staff(staff_id, first_name, last_name, role, profile_image_url, profile_image_path),
-          services(service_name, day_of_week, start_time)
+          services(service_id, service_name, day_of_week, start_time)
         `)
         .gte('assignment_date', today)
         .order('assignment_date', { ascending: true });
 
       if (error) throw error;
-      setAssignments(data || []);
+      
+      // Group assignments by staff + date + role + notes (created at same time)
+      const grouped = {};
+      data?.forEach(assignment => {
+        const key = `${assignment.staff_id}-${assignment.assignment_date}-${assignment.role}-${assignment.notes || ''}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            ...assignment,
+            services: [assignment.services],
+            assignment_ids: [assignment.assignment_id]
+          };
+        } else {
+          grouped[key].services.push(assignment.services);
+          grouped[key].assignment_ids.push(assignment.assignment_id);
+        }
+      });
+      
+      setAssignments(Object.values(grouped));
     } catch (error) {
       console.error('Error fetching assignments:', error);
       Swal.fire({
@@ -44,10 +61,10 @@ const StaffAssignmentsList = ({ onAddClick }) => {
     }
   };
 
-  const handleDeleteAssignment = async (assignmentId, staffName, serviceName, date) => {
+  const handleDeleteAssignment = async (assignmentIds, staffName, serviceNames, date) => {
     const result = await Swal.fire({
       title: 'Are you sure?',
-      html: `Remove <strong>${staffName}</strong> from <strong>${serviceName}</strong> on <strong>${formatDate(date)}</strong>?`,
+      html: `Remove <strong>${staffName}</strong> from <strong>${serviceNames}</strong> on <strong>${formatDate(date)}</strong>?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
@@ -57,19 +74,20 @@ const StaffAssignmentsList = ({ onAddClick }) => {
     });
 
     if (result.isConfirmed) {
-      setDeletingId(assignmentId);
+      setDeletingId(assignmentIds[0]);
       try {
+        // Delete all assignments in the group
         const { error } = await supabase
           .from('staff_assignments')
           .delete()
-          .eq('assignment_id', assignmentId);
+          .in('assignment_id', assignmentIds);
 
         if (error) throw error;
         
         Swal.fire({
           icon: 'success',
           title: 'Removed!',
-          text: 'Assignment has been removed.',
+          text: 'Assignment(s) have been removed.',
           timer: 1500
         });
         
@@ -187,17 +205,36 @@ const StaffAssignmentsList = ({ onAddClick }) => {
       width: "250px"
     },
     {
-      header: "Service",
+      header: "Services",
       cell: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.services?.service_name}</div>
-          <div className="text-sm text-gray-500">
-            {row.services?.day_of_week}
-            {row.services?.start_time && ` • ${formatTime(row.services.start_time)}`}
-          </div>
+        <div className="space-y-1">
+          {Array.isArray(row.services) ? (
+            row.services.map((service, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <div className="font-medium text-gray-900">{service?.service_name}</div>
+                <div className="text-xs text-gray-500">
+                  {service?.day_of_week}
+                  {service?.start_time && ` • ${formatTime(service.start_time)}`}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div>
+              <div className="font-medium text-gray-900">{row.services?.service_name}</div>
+              <div className="text-sm text-gray-500">
+                {row.services?.day_of_week}
+                {row.services?.start_time && ` • ${formatTime(row.services.start_time)}`}
+              </div>
+            </div>
+          )}
+          {Array.isArray(row.services) && row.services.length > 1 && (
+            <Badge variant="info" size="xs">
+              {row.services.length} services
+            </Badge>
+          )}
         </div>
       ),
-      width: "220px"
+      width: "280px"
     },
     {
       header: "Role",
@@ -224,12 +261,14 @@ const StaffAssignmentsList = ({ onAddClick }) => {
           variant="danger"
           size="xs"
           onClick={() => handleDeleteAssignment(
-            row.assignment_id,
+            row.assignment_ids || [row.assignment_id],
             `${row.staff?.first_name} ${row.staff?.last_name}`,
-            row.services?.service_name,
+            Array.isArray(row.services) 
+              ? row.services.map(s => s?.service_name).join(', ')
+              : row.services?.service_name,
             row.assignment_date
           )}
-          disabled={deletingId === row.assignment_id}
+          disabled={deletingId === (row.assignment_ids?.[0] || row.assignment_id)}
           icon={
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

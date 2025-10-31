@@ -18,7 +18,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
     if (isEdit && initialData) {
       return {
         staff_id: initialData.staff_id || '',
-        service_id: initialData.service_id || '',
+        service_ids: initialData.service_id ? [initialData.service_id] : [], // Convert to array for editing
         assignment_date: initialData.assignment_date || new Date().toISOString().split('T')[0],
         role: initialData.role || 'helper',
         notes: initialData.notes || ''
@@ -48,7 +48,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
     // Default empty form
     return {
       staff_id: '',
-      service_id: '',
+      service_ids: [], // Changed to array for multiple services
       assignment_date: new Date().toISOString().split('T')[0],
       role: 'helper',
       notes: ''
@@ -98,9 +98,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
       if (!isEdit && !formData.staff_id && staffData?.length > 0) {
         setFormData(prev => ({ ...prev, staff_id: staffData[0].staff_id }));
       }
-      if (!isEdit && !formData.service_id && servicesData?.length > 0) {
-        setFormData(prev => ({ ...prev, service_id: servicesData[0].service_id }));
-      }
+      // No default service selection for checkboxes
     } catch (error) {
       console.error('Error fetching data:', error);
       Swal.fire({
@@ -129,11 +127,31 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
     }
   };
 
+  const handleServiceChange = (serviceId) => {
+    const serviceIds = [...(formData.service_ids || [])];
+    if (serviceIds.includes(serviceId)) {
+      serviceIds.splice(serviceIds.indexOf(serviceId), 1);
+    } else {
+      serviceIds.push(serviceId);
+    }
+    setFormData({ ...formData, service_ids: serviceIds });
+    
+    // Clear error for this field when user selects
+    if (errors.service_ids) {
+      setErrors({
+        ...errors,
+        service_ids: null
+      });
+    }
+  };
+
   const validateForm = () => {
     const newErrors = {};
     
     if (!formData.staff_id) newErrors.staff_id = 'Please select a staff member';
-    if (!formData.service_id) newErrors.service_id = 'Please select a service';
+    if (!formData.service_ids || formData.service_ids.length === 0) {
+      newErrors.service_ids = 'Please select at least one service';
+    }
     if (!formData.assignment_date) newErrors.assignment_date = 'Date is required';
     if (!formData.role) newErrors.role = 'Please select a role';
     
@@ -156,7 +174,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
   const formHasData = () => {
     return (
       formData.staff_id !== '' ||
-      formData.service_id !== '' ||
+      (formData.service_ids && formData.service_ids.length > 0) ||
       formData.role !== 'helper' ||
       formData.notes.trim() !== ''
     );
@@ -203,12 +221,12 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
     try {
       if (isEdit && initialData?.assignment_id) {
-        // Update existing assignment
+        // Update existing assignment (single service for edit mode)
         const { error } = await supabase
           .from('staff_assignments')
           .update({
             staff_id: formData.staff_id,
-            service_id: formData.service_id,
+            service_id: formData.service_ids[0], // Use first service for edit
             assignment_date: formData.assignment_date,
             role: formData.role,
             notes: formData.notes?.trim() || null
@@ -227,28 +245,36 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
         // Check if assignment already exists (only for new assignments)
         const { data: existingAssignments, error: checkError } = await supabase
           .from('staff_assignments')
-          .select('assignment_id')
+          .select('service_id')
           .eq('staff_id', formData.staff_id)
-          .eq('service_id', formData.service_id)
-          .eq('assignment_date', formData.assignment_date);
+          .eq('assignment_date', formData.assignment_date)
+          .in('service_id', formData.service_ids);
 
         if (checkError) throw checkError;
 
-        if (existingAssignments?.length > 0) {
-          throw new Error('This staff member is already assigned to this service on this date');
+        if (existingAssignments && existingAssignments.length > 0) {
+          const duplicateServices = existingAssignments.map(a => a.service_id);
+          const serviceNames = services
+            .filter(s => duplicateServices.includes(s.service_id))
+            .map(s => s.service_name)
+            .join(', ');
+          throw new Error(`Staff member is already assigned to: ${serviceNames} on this date`);
         }
 
-        // Create new assignment
+        // Create assignments for each selected service
+        const assignments = formData.service_ids.map(serviceId => ({
+          staff_id: formData.staff_id,
+          service_id: serviceId,
+          assignment_date: formData.assignment_date,
+          role: formData.role,
+          notes: formData.notes?.trim() || null
+        }));
+
+        // Insert all assignments
         const { error } = await supabase
           .from('staff_assignments')
-          .insert([{
-            staff_id: formData.staff_id,
-            service_id: formData.service_id,
-            assignment_date: formData.assignment_date,
-            role: formData.role,
-            notes: formData.notes?.trim() || null
-          }]);
-
+          .insert(assignments);
+        
         if (error) throw error;
 
         Swal.fire({
@@ -409,26 +435,43 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                   </div>
 
                   <div>
-                    <label htmlFor="service_id" className="block text-sm font-medium text-gray-700 mb-1">
-                      Service *
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Services * (select all that apply)
                     </label>
-                    <select
-                      id="service_id"
-                      name="service_id"
-                      value={formData.service_id}
-                      onChange={handleInputChange}
-                      className={`mt-1 block w-full py-2 px-3 border ${errors.service_id ? 'border-red-300' : 'border-gray-300'} bg-white rounded-md shadow-sm focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm`}
-                      required
-                    >
-                      <option value="">Select a service</option>
-                      {services.map((service) => (
-                        <option key={service.service_id} value={service.service_id}>
-                          {service.service_name} - {service.day_of_week} {service.start_time ? `at ${service.start_time.slice(0, 5)}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.service_id && (
-                      <p className="mt-1 text-sm text-red-600">{errors.service_id}</p>
+                    <div className={`space-y-2 p-4 border ${errors.service_ids ? 'border-red-300' : 'border-gray-300'} rounded-md bg-gray-50 max-h-60 overflow-y-auto`}>
+                      {services.length === 0 ? (
+                        <p className="text-sm text-gray-500">No services available</p>
+                      ) : (
+                        services.map((service) => (
+                          <label
+                            key={service.service_id}
+                            className="flex items-start space-x-3 p-2 hover:bg-white rounded-md cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.service_ids?.includes(service.service_id) || false}
+                              onChange={() => handleServiceChange(service.service_id)}
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-nextgen-blue focus:ring-nextgen-blue"
+                            />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900">
+                                {service.service_name}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {service.day_of_week} {service.start_time ? `at ${service.start_time.slice(0, 5)}` : ''}
+                              </div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    {errors.service_ids && (
+                      <p className="mt-1 text-sm text-red-600">{errors.service_ids}</p>
+                    )}
+                    {formData.service_ids && formData.service_ids.length > 0 && (
+                      <p className="mt-2 text-sm text-nextgen-blue">
+                        {formData.service_ids.length} service{formData.service_ids.length > 1 ? 's' : ''} selected
+                      </p>
                     )}
                   </div>
                 </div>

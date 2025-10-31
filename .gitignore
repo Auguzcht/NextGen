@@ -29,6 +29,7 @@ dist-ssr
 # db schema copy
 db_nextgen.sql
 postgre_nextgen.sql
+Reset_DB.sql
 
 *.md
 

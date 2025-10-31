@@ -511,7 +511,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             last_name: formData.lastName.trim(),
             birthdate: formData.birthdate,
             gender: formData.gender.trim(),
-            photo_url: imageUrl || initialData.photo_url,
+            photo_url: imageUrl || null,
             notes: formData.notes?.trim() || null
           })
           .eq('child_id', initialData.child_id);
@@ -916,9 +916,26 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                           text: error.message
                         });
                       }}
-                      onDeleteComplete={() => {
+                      onDeleteComplete={async () => {
                         setImageUrl('');
                         setImagePath('');
+                        
+                        // If editing, also update the database
+                        if (isEdit && initialData?.child_id) {
+                          try {
+                            const { error } = await supabase
+                              .from('children')
+                              .update({
+                                photo_url: null
+                              })
+                              .eq('child_id', initialData.child_id);
+                            
+                            if (error) throw error;
+                          } catch (error) {
+                            console.error('Error updating database:', error);
+                          }
+                        }
+                        
                         Swal.fire({
                           icon: 'success',
                           title: 'Photo Removed',
@@ -929,7 +946,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                       accept="image/*"
                       maxSize={5}
                       initialPreview={initialData?.photo_url || imageUrl} // Use initialData.photo_url first
-                      previewClass="w-full h-72 object-cover rounded-md"
+                      initialPath={imagePath}
+                      previewClass="w-64 h-64 object-cover rounded-full mx-auto"
                       alt={`${formData.firstName} ${formData.lastName}`}
                       className="w-full mb-3"
                     />

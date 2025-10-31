@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import supabase, { supabaseAdmin } from '../../services/supabase.js';
 import { Input, Button } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,8 +6,10 @@ import Swal from 'sweetalert2';
 import FileUpload from '../common/FileUpload.jsx';
 import { ref, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { user } = useAuth();
   // Add state to track if this is a restored draft
   const [isRestoredDraft, setIsRestoredDraft] = useState(false);
   
@@ -138,6 +140,20 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
       setFormData({
         ...formData,
         [name]: formattedPhone
+      });
+    } else if (name === 'role') {
+      // Automatically set access_level based on role
+      let access_level = 1; // Default for Volunteer
+      if (value === 'Administrator') {
+        access_level = 10;
+      } else if (value === 'Coordinator') {
+        access_level = 5;
+      }
+      
+      setFormData({
+        ...formData,
+        role: value,
+        access_level: access_level
       });
     } else {
       setFormData({
@@ -309,8 +325,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
           role: formData.role,
           is_active: formData.is_active,
           access_level: formData.access_level,
-          profile_image_url: imageUrl || initialData.profile_image_url,
-          profile_image_path: imagePath || initialData.profile_image_path
+          profile_image_url: imageUrl || null,
+          profile_image_path: imagePath || null
         };
 
         const { error } = await supabase
@@ -319,6 +335,44 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
           .eq('staff_id', initialData.staff_id);
         
         if (error) throw error;
+
+        // If admin is changing password for this staff member
+        if (showPasswordFields && passwordData.password && initialData.user_id) {
+          try {
+            const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+              initialData.user_id,
+              { password: passwordData.password }
+            );
+            
+            if (passwordError) throw passwordError;
+            
+            await Swal.fire({
+              icon: 'success',
+              title: 'Updated!',
+              text: 'Staff member and password updated successfully.',
+              timer: 2000
+            });
+          } catch (passwordError) {
+            console.error('Password update error:', passwordError);
+            await Swal.fire({
+              icon: 'warning',
+              title: 'Partial Success',
+              text: 'Staff member updated but password could not be changed.',
+              timer: 3000
+            });
+          }
+        } else {
+          await Swal.fire({
+            icon: 'success',
+            title: 'Updated!',
+            text: 'Staff member has been updated successfully.',
+            timer: 1500
+          });
+        }
+        
+        // Call onSuccess and close after update
+        if (onSuccess) onSuccess();
+        if (onClose) onClose();
       } else {
         // Create new staff - first check if email already exists
         const { data: existingStaff, error: checkError } = await supabase
@@ -377,7 +431,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
             if (updateError) throw updateError;
 
-            Swal.fire({
+            await Swal.fire({
               icon: 'success',
               title: 'Success!',
               text: 'Staff member added with login credentials created.',
@@ -385,7 +439,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
             });
           } catch (authError) {
             console.error('Auth error:', authError);
-            Swal.fire({
+            await Swal.fire({
               icon: 'warning',
               title: 'Partial Success',
               text: 'Staff member added but login credentials could not be created. You can create them later.',
@@ -393,7 +447,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
             });
           }
         } else {
-          Swal.fire({
+          await Swal.fire({
             icon: 'success',
             title: 'Added!',
             text: 'Staff member has been added successfully.',
@@ -403,11 +457,11 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
         // Clear form cache on successful submission
         clearFormCache();
+        
+        // Call onSuccess and close after create
+        if (onSuccess) onSuccess();
+        if (onClose) onClose();
       }
-      
-      // Call onSuccess first, then close
-      if (onSuccess) onSuccess();
-      if (onClose) onClose();
     } catch (error) {
       console.error('Error saving staff member:', error);
       Swal.fire({
@@ -535,9 +589,27 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                           text: error.message
                         });
                       }}
-                      onDeleteComplete={() => {
+                      onDeleteComplete={async () => {
                         setImageUrl('');
                         setImagePath('');
+                        
+                        // If editing, also update the database
+                        if (isEdit && initialData?.staff_id) {
+                          try {
+                            const { error } = await supabase
+                              .from('staff')
+                              .update({
+                                profile_image_url: null,
+                                profile_image_path: null
+                              })
+                              .eq('staff_id', initialData.staff_id);
+                            
+                            if (error) throw error;
+                          } catch (error) {
+                            console.error('Error updating database:', error);
+                          }
+                        }
+                        
                         Swal.fire({
                           icon: 'success',
                           title: 'Photo Removed',
@@ -548,7 +620,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                       accept="image/*"
                       maxSize={5}
                       initialPreview={initialData?.profile_image_url || imageUrl}
-                      previewClass="w-full h-72 object-cover rounded-md"
+                      initialPath={initialData?.profile_image_path || imagePath}
+                      previewClass="w-64 h-64 object-cover rounded-full mx-auto"
                       alt={`${formData.first_name} ${formData.last_name}`}
                       className="w-full mb-3"
                     />
@@ -664,8 +737,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 </div>
               </motion.div>
 
-              {/* Login Credentials Section - Only for new staff */}
-              {!isEdit && (
+              {/* Login Credentials Section - For new staff OR admin editing existing staff */}
+              {(!isEdit || (isEdit && user?.role === 'Administrator')) && (
                 <motion.div 
                   className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
                   initial={{ opacity: 0, y: 20 }}
@@ -674,14 +747,14 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 >
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-medium text-nextgen-blue-dark">
-                      Login Credentials (Optional)
+                      {isEdit ? 'Reset Password' : 'Login Credentials (Optional)'}
                     </h3>
                     <button
                       type="button"
                       onClick={() => setShowPasswordFields(!showPasswordFields)}
                       className="text-sm text-nextgen-blue hover:text-nextgen-blue-dark"
                     >
-                      {showPasswordFields ? 'Hide' : 'Create Login'}
+                      {showPasswordFields ? 'Hide' : (isEdit ? 'Change Password' : 'Create Login')}
                     </button>
                   </div>
 

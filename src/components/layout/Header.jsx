@@ -47,6 +47,7 @@ const Header = () => {
   const { user, logout } = useAuth();
   const { toggleSidebar, sidebarOpen } = useNavigation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [profileImageUrl, setProfileImageUrl] = useState(null);
@@ -183,7 +184,15 @@ const Header = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const toggleUserMenu = () => setShowUserMenu(!showUserMenu);
+  const toggleUserMenu = () => {
+    if (showNotifications) setShowNotifications(false);
+    setShowUserMenu(!showUserMenu);
+  };
+
+  const toggleNotifications = () => {
+    if (showUserMenu) setShowUserMenu(false);
+    setShowNotifications(!showNotifications);
+  };
   
   // Format current time
   const formattedTime = currentTime.toLocaleTimeString('en-US', {
@@ -324,7 +333,11 @@ const Header = () => {
           {/* Right side - User profile */}
           <div className="flex items-center justify-end space-x-5">
             {/* Notification dropdown */}
-            <NotificationDropdown />
+            <NotificationDropdown 
+              isOpen={showNotifications}
+              onToggle={toggleNotifications}
+              onClose={() => setShowNotifications(false)}
+            />
 
             {/* User profile button */}
             <div className="relative">

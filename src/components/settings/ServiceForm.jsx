@@ -186,7 +186,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
 
   // Render modal using portal to ensure it's at the root level
   const modalContent = (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-[9999] p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
       <motion.div 
         className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}

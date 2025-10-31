@@ -247,15 +247,36 @@ const StaffDetailView = ({ staff: initialStaff, staffId, isOpen, onClose }) => {
                       </div>
 
                       <div>
-                        <p className="font-semibold text-gray-900 text-sm mb-1">
-                          {recentAssignment.services.service_name}
-                        </p>
-                        <div className="space-y-0.5">
-                          <p className="text-xs text-gray-600">
-                            {recentAssignment.services.day_of_week}
-                            {recentAssignment.services.start_time && ` • ${formatTime(recentAssignment.services.start_time)}`}
-                          </p>
-                        </div>
+                        {Array.isArray(recentAssignment.services) ? (
+                          <div>
+                            <p className="font-semibold text-gray-900 text-sm mb-1">
+                              {recentAssignment.services.map(s => s.service_name).join(', ')}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-gray-600">
+                                {recentAssignment.services[0].day_of_week}
+                                {recentAssignment.services[0].start_time && ` • ${formatTime(recentAssignment.services[0].start_time)}`}
+                              </p>
+                              {recentAssignment.services.length > 1 && (
+                                <Badge variant="info" size="xs">
+                                  {recentAssignment.services.length} services
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="font-semibold text-gray-900 text-sm mb-1">
+                              {recentAssignment.services.service_name}
+                            </p>
+                            <div className="space-y-0.5">
+                              <p className="text-xs text-gray-600">
+                                {recentAssignment.services.day_of_week}
+                                {recentAssignment.services.start_time && ` • ${formatTime(recentAssignment.services.start_time)}`}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {recentAssignment.notes && (

@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../../services/supabase';
 
-const NotificationDropdown = () => {
+const NotificationDropdown = ({ isOpen, onToggle, onClose }) => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchNotifications = async () => {
@@ -87,7 +86,7 @@ const NotificationDropdown = () => {
   };
 
   const handleNotificationClick = (notification) => {
-    setShowDropdown(false);
+    if (onClose) onClose();
     if (notification.action_url) {
       navigate(notification.action_url);
     }
@@ -97,7 +96,7 @@ const NotificationDropdown = () => {
     <div className="relative">
       <motion.button
         className="relative bg-white p-2.5 rounded-full hover:bg-nextgen-blue/5 shadow-sm border border-nextgen-blue/10"
-        onClick={() => setShowDropdown(!showDropdown)}
+        onClick={onToggle}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
@@ -112,7 +111,7 @@ const NotificationDropdown = () => {
       </motion.button>
 
       <AnimatePresence>
-        {showDropdown && (
+        {isOpen && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: -10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

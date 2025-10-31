@@ -19,7 +19,6 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      console.log('Fetching staff profile for:', authUser.id);
       
       const { data, error } = await supabase
         .from('staff')
@@ -32,7 +31,6 @@ export const AuthProvider = ({ children }) => {
       }
       
       if (!data) {
-        console.warn('No staff record found for user:', authUser.id);
         
         // Create fallback user object with ministry-specific roles
         const fallbackUser = { 
@@ -63,7 +61,7 @@ export const AuthProvider = ({ children }) => {
           });
           
           if (!insertError) {
-            console.log('Created missing staff record for user:', authUser.id);
+            // Staff record created successfully
           }
         } catch (createErr) {
           console.error('Failed to create staff record:', createErr);
@@ -84,8 +82,6 @@ export const AuthProvider = ({ children }) => {
           profile_image_path: data.profile_image_path,
           phone_number: data.phone_number
         });
-        
-        console.log('Staff profile loaded with image:', data.profile_image_url);
       }
 
       setConnectionStatus('connected');
@@ -119,17 +115,14 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Prevent multiple initializations
     if (initializedRef.current) {
-      console.log('Auth already initialized, skipping...');
       return;
     }
 
-    console.log('Initializing auth listener...');
     initializedRef.current = true;
 
     // Set up the auth state listener - this handles EVERYTHING
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        console.log('Auth state changed:', event, currentSession?.user?.email || 'No session');
         
         // Always update session state first
         setSession(currentSession);
@@ -138,37 +131,31 @@ export const AuthProvider = ({ children }) => {
           case 'INITIAL_SESSION':
             // This handles both fresh page loads AND returning from inactive tabs
             if (currentSession) {
-              console.log('Initial session found, fetching user profile');
               try {
                 await fetchStaffProfile(currentSession.user);
                 setConnectionStatus('connected');
               } catch (error) {
-                console.error('Error during initial profile fetch:', error);
                 setConnectionStatus('degraded');
               }
             } else {
-              console.log('No initial session found');
               setUser(null);
             }
             setLoading(false);
             break;
 
           case 'SIGNED_IN':
-            console.log('User signed in');
             if (!loading) {
               try {
                 await fetchStaffProfile(currentSession.user);
                 setConnectionStatus('connected');
                 toast.success('Successfully signed in!');
               } catch (error) {
-                console.error('Error during sign-in profile fetch:', error);
                 setConnectionStatus('degraded');
               }
             }
             break;
 
           case 'SIGNED_OUT':
-            console.log('User signed out');
             setUser(null);
             setSession(null);
             setConnectionStatus('connected');
@@ -176,39 +163,35 @@ export const AuthProvider = ({ children }) => {
             break;
 
           case 'USER_UPDATED':
-            console.log('User updated');
             if (currentSession) {
               try {
                 await fetchStaffProfile(currentSession.user);
               } catch (error) {
-                console.error('Error during user update profile fetch:', error);
+                // Silent error handling
               }
             }
             break;
 
           case 'TOKEN_REFRESHED':
-            console.log('Token refreshed successfully');
             setConnectionStatus('connected');
             break;
 
           default:
-            console.log('Unhandled auth event:', event);
+            // Unhandled auth event
         }
       }
     );
 
     // Cleanup function
     return () => {
-      console.log('Cleaning up auth listener');
       subscription.unsubscribe();
       initializedRef.current = false;
     };
   }, []); // Empty dependency array - initialize once and only once
 
   // Login function
-  const login = async (email, password, remember = true) => {
+  const login = async (email, password, remember = false) => {
     try {
-      console.log('Attempting login for:', email);
       
       if (!email || !password) {
         return {
@@ -224,9 +207,7 @@ export const AuthProvider = ({ children }) => {
           mode: 'no-cors',
           cache: 'no-store'
         });
-        console.log('Network connectivity check passed');
       } catch (networkError) {
-        console.error('Network connectivity issue detected:', networkError);
         return {
           success: false,
           error: 'Unable to connect to the internet. Please check your network connection.'
@@ -243,14 +224,11 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) {
-        console.error('Login error details:', error);
         return {
           success: false,
           error: error.message || 'Failed to sign in. Please check your credentials.'
         };
       }
-
-      console.log('Login successful for:', email);
       
       // Wait for profile fetch to complete before returning success
       if (data.user) {
@@ -263,7 +241,6 @@ export const AuthProvider = ({ children }) => {
             redirectTo: '/dashboard'
           };
         } catch (profileError) {
-          console.error('Profile fetch error:', profileError);
           return {
             success: false,
             error: 'Failed to load user profile. Please try again.'
@@ -287,7 +264,6 @@ export const AuthProvider = ({ children }) => {
   // Logout function
   const logout = async () => {
     try {
-      console.log('Logging out user');
       
       const { error } = await supabase.auth.signOut();
       
