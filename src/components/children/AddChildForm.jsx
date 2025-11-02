@@ -1197,6 +1197,35 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   </div>
                 )}
               </motion.div>
+
+              {/* Additional Notes Section */}
+              <motion.div 
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+              >
+                <h3 className="text-lg font-semibold text-[#571C1F] mb-4 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Additional Notes
+                </h3>
+                
+                <Input
+                  type="textarea"
+                  label="Notes (Optional)"
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleChange}
+                  placeholder="Add any additional information about the child (allergies, medical conditions, special needs, etc.)"
+                  rows={4}
+                  className="w-full"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  This information will be visible to staff members and can help provide better care for the child.
+                </p>
+              </motion.div>
             </div>
           </form>
         </div>
