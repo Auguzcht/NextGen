@@ -73,7 +73,7 @@ const ChildrenPage = () => {
         .select(`
           *,
           age_categories(category_name),
-          child_guardian!inner(
+          child_guardian(
             guardian_id,
             is_primary,
             guardians(first_name, last_name, phone_number, email)
