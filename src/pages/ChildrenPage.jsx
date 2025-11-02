@@ -46,9 +46,13 @@ const ChildrenPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Use the debounced search query for fetching
+  // Reset to first page when search query changes
   useEffect(() => {
-    setCurrentPage(1); // Reset to first page when search query changes
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  // Fetch children when page or search changes
+  useEffect(() => {
     fetchChildren();
   }, [currentPage, debouncedSearchQuery]);
 
@@ -118,7 +122,10 @@ const ChildrenPage = () => {
   };
 
   const handlePageChange = (page) => {
-    setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleAddChildSuccess = async (childData) => {
@@ -444,16 +451,24 @@ const ChildrenPage = () => {
         </div>
 
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-          <Table
-            data={children}
-            columns={columns}
-            isLoading={loading}
-            noDataMessage="No children found"
-            highlightOnHover={true}
-            variant="primary"
-            stickyHeader={true}
-            onRowClick={(row) => handleViewChild(row)}
-          />
+          <motion.div
+            key={currentPage}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Table
+              data={children}
+              columns={columns}
+              isLoading={loading}
+              noDataMessage="No children found"
+              highlightOnHover={true}
+              variant="primary"
+              stickyHeader={true}
+              onRowClick={(row) => handleViewChild(row)}
+            />
+          </motion.div>
         </div>
         
         {totalPages > 1 && renderPagination()}

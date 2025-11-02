@@ -35,9 +35,13 @@ const GuardiansPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Use the debounced search query for fetching
+  // Reset to first page when search query changes
   useEffect(() => {
-    setCurrentPage(1); // Reset to first page when search query changes
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  // Fetch guardians when page or search changes
+  useEffect(() => {
     fetchGuardians();
   }, [currentPage, debouncedSearchQuery]);
 
@@ -99,7 +103,10 @@ const GuardiansPage = () => {
   };
 
   const handlePageChange = (page) => {
-    setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleAddGuardianSuccess = () => {
@@ -398,16 +405,24 @@ const GuardiansPage = () => {
           </Button>
         </div>
 
-        <Table
-          data={guardians}
-          columns={columns}
-          isLoading={loading}
-          noDataMessage="No guardians found"
-          onRowClick={handleViewGuardian}
-          highlightOnHover={true}
-          variant="primary"
-          stickyHeader
-        />
+        <motion.div
+          key={currentPage}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Table
+            data={guardians}
+            columns={columns}
+            isLoading={loading}
+            noDataMessage="No guardians found"
+            onRowClick={handleViewGuardian}
+            highlightOnHover={true}
+            variant="primary"
+            stickyHeader
+          />
+        </motion.div>
         
         {totalPages > 1 && renderPagination()}
       </Card>
