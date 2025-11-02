@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import supabase from '../services/supabase.js';
 import AddGuardianForm from '../components/guardians/AddGuardianForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
@@ -35,18 +35,8 @@ const GuardiansPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset to first page when search query changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearchQuery]);
-
-  // Fetch guardians when page or search changes
-  useEffect(() => {
-    fetchGuardians();
-  }, [currentPage, debouncedSearchQuery]);
-
-  // Modified to include photo_url in the query
-  const fetchGuardians = async () => {
+  // Memoize fetchGuardians to prevent unnecessary re-renders
+  const fetchGuardians = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -100,7 +90,26 @@ const GuardiansPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearchQuery, itemsPerPage]);
+
+  // Reset to first page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  // Fetch guardians when page or search changes
+  useEffect(() => {
+    fetchGuardians();
+  }, [fetchGuardians]);
+
+  // Auto-refresh every 30 seconds to detect changes from other devices
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchGuardians();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [fetchGuardians]);
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import supabase from '../services/supabase.js';
 import AddChildForm from '../components/children/AddChildForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
@@ -23,11 +23,9 @@ const ChildrenPage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [lastFetchTime, setLastFetchTime] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showPrintableID, setShowPrintableID] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
-  const CACHE_DURATION = 60000; // 1 minute in milliseconds
 
   // Debounce search query
   useEffect(() => {
@@ -46,26 +44,8 @@ const ChildrenPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset to first page when search query changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearchQuery]);
-
-  // Fetch children when page or search changes
-  useEffect(() => {
-    fetchChildren();
-  }, [currentPage, debouncedSearchQuery]);
-
-  const fetchChildren = async (forceFresh = false) => {
-    // Check if we can use cached data
-    const now = Date.now();
-    if (!forceFresh && 
-        children.length > 0 && 
-        now - lastFetchTime < CACHE_DURATION && 
-        !debouncedSearchQuery) {
-      return; // Use cached data
-    }
-    
+  // Memoize fetchChildren to prevent unnecessary re-renders
+  const fetchChildren = useCallback(async (forceFresh = false) => {
     setLoading(true);
     try {
       let query = supabase
@@ -113,13 +93,31 @@ const ChildrenPage = () => {
         throw error;
       }
       setChildren(data || []);
-      setLastFetchTime(Date.now());
     } catch (error) {
       console.error('Error fetching children:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearchQuery, itemsPerPage]);
+
+  // Reset to first page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  // Fetch children when page or search changes
+  useEffect(() => {
+    fetchChildren();
+  }, [fetchChildren]);
+
+  // Auto-refresh every 30 seconds to detect changes from other devices
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchChildren(true); // Force fresh data
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [fetchChildren]);
 
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
