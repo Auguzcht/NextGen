@@ -143,12 +143,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
       });
     } else if (name === 'role') {
       // Automatically set access_level based on role
-      let access_level = 1; // Default for Volunteer
-      if (value === 'Administrator') {
-        access_level = 10;
-      } else if (value === 'Coordinator') {
-        access_level = 5;
-      }
+      const selectedRole = roleOptions.find(r => r.value === value);
+      const access_level = selectedRole ? selectedRole.accessLevel : 0;
       
       setFormData({
         ...formData,
@@ -336,28 +332,60 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
         
         if (error) throw error;
 
-        // If admin is changing password for this staff member
-        if (showPasswordFields && passwordData.password && initialData.user_id) {
+        // Handle password/credentials update or creation
+        if (showPasswordFields && passwordData.password) {
           try {
-            const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
-              initialData.user_id,
-              { password: passwordData.password }
-            );
-            
-            if (passwordError) throw passwordError;
-            
-            await Swal.fire({
-              icon: 'success',
-              title: 'Updated!',
-              text: 'Staff member and password updated successfully.',
-              timer: 2000
-            });
-          } catch (passwordError) {
-            console.error('Password update error:', passwordError);
+            if (initialData.user_id) {
+              // User already has auth account - update password
+              const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+                initialData.user_id,
+                { password: passwordData.password }
+              );
+              
+              if (passwordError) throw passwordError;
+              
+              await Swal.fire({
+                icon: 'success',
+                title: 'Updated!',
+                text: 'Staff member and password updated successfully.',
+                timer: 2000
+              });
+            } else {
+              // User doesn't have auth account - create one
+              const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+                email: formData.email.trim(),
+                password: passwordData.password,
+                email_confirm: true,
+                user_metadata: {
+                  first_name: formData.first_name.trim(),
+                  last_name: formData.last_name.trim(),
+                  role: formData.role
+                }
+              });
+
+              if (authError) throw authError;
+
+              // Link staff record to new auth user
+              const { error: linkError } = await supabase
+                .from('staff')
+                .update({ user_id: authData.user.id })
+                .eq('staff_id', initialData.staff_id);
+
+              if (linkError) throw linkError;
+
+              await Swal.fire({
+                icon: 'success',
+                title: 'Updated!',
+                text: 'Staff member updated and login credentials created successfully.',
+                timer: 2000
+              });
+            }
+          } catch (credentialError) {
+            console.error('Credential update error:', credentialError);
             await Swal.fire({
               icon: 'warning',
               title: 'Partial Success',
-              text: 'Staff member updated but password could not be changed.',
+              text: 'Staff member updated but credentials could not be ' + (initialData.user_id ? 'changed' : 'created') + '.',
               timer: 3000
             });
           }
@@ -476,9 +504,10 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
   // Role options with descriptions
   const roleOptions = [
-    { value: 'Volunteer', label: 'Volunteer', description: 'Basic access for volunteers' },
-    { value: 'Coordinator', label: 'Coordinator', description: 'Can manage staff and schedules' },
-    { value: 'Administrator', label: 'Administrator', description: 'Full system access' }
+    { value: 'Volunteer', label: 'Volunteer', description: 'No system access - volunteers only', accessLevel: 0 },
+    { value: 'Team Leader', label: 'Team Leader', description: 'Access to dashboard, children, attendance & guardians', accessLevel: 3 },
+    { value: 'Coordinator', label: 'Coordinator', description: 'Can manage staff and schedules', accessLevel: 5 },
+    { value: 'Administrator', label: 'Administrator', description: 'Full system access', accessLevel: 10 }
   ];
 
   return (
@@ -738,7 +767,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               </motion.div>
 
               {/* Login Credentials Section - For new staff OR admin editing existing staff */}
-              {(!isEdit || (isEdit && user?.role === 'Administrator')) && (
+                            {/* Login Credentials Section - Only show for non-Volunteers or if editing existing staff */}
+              {((!isEdit && formData.role !== 'Volunteer') || (isEdit && user?.role === 'Administrator')) && (
                 <motion.div 
                   className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
                   initial={{ opacity: 0, y: 20 }}
@@ -747,14 +777,23 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 >
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-medium text-nextgen-blue-dark">
-                      {isEdit ? 'Reset Password' : 'Login Credentials (Optional)'}
+                      {isEdit 
+                        ? (initialData?.user_id ? 'Reset Password' : 'Add Login Credentials')
+                        : 'Login Credentials (Optional)'
+                      }
                     </h3>
                     <button
                       type="button"
                       onClick={() => setShowPasswordFields(!showPasswordFields)}
                       className="text-sm text-nextgen-blue hover:text-nextgen-blue-dark"
                     >
-                      {showPasswordFields ? 'Hide' : (isEdit ? 'Change Password' : 'Create Login')}
+                      {showPasswordFields 
+                        ? 'Hide' 
+                        : (isEdit 
+                            ? (initialData?.user_id ? 'Change Password' : 'Add Login')
+                            : 'Create Login'
+                          )
+                      }
                     </button>
                   </div>
 
@@ -768,7 +807,12 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                       >
                         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-md mb-4">
                           <p className="text-sm text-blue-700">
-                            Create login credentials now, or you can add them later from the staff list.
+                            {isEdit && initialData?.user_id
+                              ? 'Change the password for this staff member\'s login credentials.'
+                              : isEdit 
+                                ? 'Create login credentials for this staff member. They will be able to access the system based on their role.'
+                                : 'Create login credentials now, or you can add them later from the staff list.'
+                            }
                           </p>
                         </div>
 

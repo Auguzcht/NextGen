@@ -243,6 +243,209 @@ app.post('/api/email/send-test', async (req, res) => {
   }
 });
 
+// Send staff credentials handler
+app.post('/api/email/send-credentials', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const { staffMembers, eventType = 'new_account' } = req.body;
+
+    if (!staffMembers || !Array.isArray(staffMembers) || staffMembers.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No staff members provided' 
+      });
+    }
+
+    // Get email configuration from database
+    const { data: emailConfig, error: configError } = await supabase
+      .from('email_api_config')
+      .select('*')
+      .eq('is_active', true)
+      .single();
+
+    if (configError || !emailConfig) {
+      console.error('Error fetching email config:', configError);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Email configuration not found. Please configure your email settings first.' 
+      });
+    }
+
+    // Event type configurations
+    const eventConfigs = {
+      new_account: {
+        subject: 'Welcome to NextGen Ministry - Set Up Your Account',
+        title: 'Account Access Information',
+        greeting: 'Your account for the NextGen Ministry management system is ready!',
+        buttonText: 'Set My Password',
+        note: 'Set up your password to get started with the system.'
+      },
+      password_reset: {
+        subject: 'NextGen Ministry - Password Reset Request',
+        title: 'Password Reset',
+        greeting: 'We received a request to reset your password.',
+        buttonText: 'Reset Password',
+        note: 'If you didn\'t request this, please ignore this email.'
+      },
+      account_reactivation: {
+        subject: 'NextGen Ministry - Your Account Has Been Reactivated',
+        title: 'Account Reactivated',
+        greeting: 'Good news! Your NextGen Ministry account has been reactivated.',
+        buttonText: 'Access Your Account',
+        note: 'Set up a new password to regain access to the system.'
+      },
+      access_reminder: {
+        subject: 'NextGen Ministry - Your Login Credentials',
+        title: 'Login Credentials Reminder',
+        greeting: 'Here are your login credentials for the NextGen Ministry system.',
+        buttonText: 'Set/Reset Password',
+        note: 'Click below to set a new password or reset your existing one.'
+      }
+    };
+
+    const config = eventConfigs[eventType] || eventConfigs.new_account;
+
+    const results = {
+      success: [],
+      failed: [],
+      total: staffMembers.length
+    };
+
+    // Initialize Supabase Admin client for password reset links
+    const supabaseAdmin = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // Send email to each staff member
+    for (const staff of staffMembers) {
+      try {
+        // Generate password reset link
+        const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: staff.email,
+        });
+
+        if (resetError) {
+          console.error(`Failed to generate reset link for ${staff.email}:`, resetError);
+          throw resetError;
+        }
+
+        const resetLink = resetData.properties.action_link;
+        
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Your NextGen Ministry Login Credentials</title>
+          </head>
+          <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
+              <tr>
+                <td align="center">
+                  <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <tr>
+                      <td style="background: linear-gradient(135deg, #30cee4 0%, #2ba5c7 100%); padding: 40px 20px; text-align: center;">
+                        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">NextGen Ministry</h1>
+                        <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">${config.title}</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 40px 30px;">
+                        <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 22px;">Hello ${staff.first_name}!</h2>
+                        <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;">${config.greeting}</p>
+                        <div style="background-color: #f8f9fa; border-left: 4px solid #30cee4; padding: 20px; margin: 20px 0; border-radius: 4px;">
+                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Email:</strong> ${staff.email}</p>
+                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Role:</strong> ${staff.role}</p>
+                        </div>
+                        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                          <p style="margin: 0; color: #856404; font-size: 14px;"><strong>⚠️ Action Required:</strong> ${config.note}</p>
+                        </div>
+                        <div style="text-align: center; margin: 30px 0;">
+                          <a href="${resetLink}" style="display: inline-block; background-color: #30cee4; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: bold;">${config.buttonText}</a>
+                        </div>
+                        <p style="color: #999999; font-size: 12px; margin: 20px 0; text-align: center; font-style: italic;">This link will expire in 24 hours for security reasons.</p>
+                        <p style="color: #666666; line-height: 1.6; margin: 20px 0 0 0; font-size: 14px;">If you have any questions or need help, please contact your administrator.</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="background-color: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef;">
+                        <p style="color: #999999; font-size: 12px; margin: 0; text-align: center;">This is an automated message from NextGen Ministry Management System.<br/>Please do not reply to this email.</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+          </html>
+        `;
+
+        // Send email via Resend
+        const emailResponse = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${emailConfig.api_key}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: `${emailConfig.from_name} <${emailConfig.from_email}>`,
+            to: [staff.email],
+            subject: config.subject,
+            html: emailHtml,
+          })
+        });
+
+        if (!emailResponse.ok) {
+          const error = await emailResponse.json();
+          throw new Error(error.message || emailResponse.statusText);
+        }
+
+        const emailResult = await emailResponse.json();
+
+        results.success.push({
+          email: staff.email,
+          name: `${staff.first_name} ${staff.last_name}`,
+          messageId: emailResult.id
+        });
+      } catch (emailError) {
+        console.error(`Error sending to ${staff.email}:`, emailError);
+        results.failed.push({
+          email: staff.email,
+          name: `${staff.first_name} ${staff.last_name}`,
+          error: emailError.message
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Sent ${results.success.length} out of ${results.total} emails`,
+      successCount: results.success.length,
+      failureCount: results.failed.length,
+      results: results.success,
+      errors: results.failed.map(f => `${f.name} (${f.email}): ${f.error}`)
+    });
+  } catch (error) {
+    console.error('Error in send-credentials endpoint:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Development API server is running' });

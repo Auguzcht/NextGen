@@ -23,19 +23,6 @@ const Sidebar = () => {
     setLogoError(false);
   }, [sidebarOpen]);
 
-  // Debug - can be removed after fixing
-  useEffect(() => {
-    console.log('🔍 Staff Profile Debug:', {
-      staffProfile,
-      user,
-      profile,
-      role: profile?.role,
-      roleType: typeof profile?.role,
-      isAdministrator: profile?.role?.toLowerCase() === 'administrator',
-      isCoordinator: profile?.role?.toLowerCase() === 'coordinator'
-    });
-  }, [staffProfile, user, profile]);
-
   // Helper function to check if user has a specific role (case-insensitive)
   const hasRole = (...roles) => {
     if (!profile?.role) return false;
@@ -45,7 +32,7 @@ const Sidebar = () => {
 
   // Define navigation items with role-based access
   const navLinks = [
-    // Volunteer, Coordinator, Administrator can access these
+    // Team Leader, Coordinator, Administrator can access these
     { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
     { name: 'Children', path: '/children', icon: 'child' },
     { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' },
@@ -281,8 +268,7 @@ const Sidebar = () => {
                     className="h-16 w-auto mb-2" 
                     src={NextGenLogoSvg} 
                     alt="NextGen"
-                    onError={(e) => {
-                      console.error("Logo failed to load:", e);
+                    onError={() => {
                       setLogoError(true);
                     }} 
                   />

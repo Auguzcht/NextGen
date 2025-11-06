@@ -196,18 +196,38 @@ const ReportsPage = () => {
   // Fix 4: Update API functions to accept date parameters directly
   const fetchAttendanceData = async (start, end) => {
     console.log(`Fetching attendance data from ${start} to ${end}`);
+    
+    // Query from attendance_analytics table
     const { data, error } = await supabase
-      .from('daily_attendance_summary')
-      .select('*')
-      .gte('attendance_date', start)
-      .lte('attendance_date', end)
-      .order('attendance_date', { ascending: true });
+      .from('attendance_analytics')
+      .select(`
+        report_date,
+        service_id,
+        total_attendance,
+        first_timers,
+        services (service_name)
+      `)
+      .gte('report_date', start)
+      .lte('report_date', end)
+      .order('report_date', { ascending: true });
 
     if (error) {
       console.error('Error fetching attendance data:', error);
       throw error;
     }
-    return data || [];
+    
+    console.log(`Attendance analytics records found: ${data?.length || 0}`);
+    
+    // Transform to match expected format
+    const result = (data || []).map(record => ({
+      attendance_date: record.report_date,
+      service_name: record.services?.service_name || 'Unknown Service',
+      total_children: record.total_attendance,
+      first_timers: record.first_timers
+    }));
+    
+    console.log(`Attendance summary records: ${result.length}`);
+    return result;
   };
 
   const fetchRawAttendanceData = async (start, end) => {
@@ -238,37 +258,123 @@ const ReportsPage = () => {
 
   const fetchGrowthData = async (start, end) => {
     console.log(`Fetching growth data from ${start} to ${end}`);
-    // Create month strings for filtering
-    const startMonth = start.substring(0, 7); // YYYY-MM format
-    const endMonth = end.substring(0, 7); // YYYY-MM format
-
+    
+    // Query from attendance_analytics table grouped by month
     const { data, error } = await supabase
-      .from('service_growth_trend')
-      .select('*')
-      .gte('month', startMonth)
-      .lte('month', endMonth)
-      .order('month', { ascending: true });
+      .from('attendance_analytics')
+      .select(`
+        report_date,
+        service_id,
+        total_attendance,
+        first_timers,
+        services (service_name)
+      `)
+      .gte('report_date', start)
+      .lte('report_date', end)
+      .order('report_date', { ascending: true });
 
     if (error) {
       console.error('Error fetching growth data:', error);
       throw error;
     }
-    return data || [];
+    
+    console.log(`Growth analytics records found: ${data?.length || 0}`);
+    
+    // Group by month and service
+    const monthlyData = {};
+    (data || []).forEach(record => {
+      const month = record.report_date.substring(0, 7); // YYYY-MM
+      const key = `${month}_${record.services?.service_name || 'Unknown'}`;
+      
+      if (!monthlyData[key]) {
+        monthlyData[key] = {
+          month,
+          service_name: record.services?.service_name || 'Unknown',
+          monthly_attendance: 0,
+          new_registrations: 0
+        };
+      }
+      
+      monthlyData[key].monthly_attendance += record.total_attendance;
+      monthlyData[key].new_registrations += record.first_timers;
+    });
+    
+    // Convert to array and sort
+    const result = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+    
+    console.log(`Growth summary records: ${result.length}`);
+    return result;
   };
 
   const fetchAgeDistributionData = async (start, end) => {
     console.log(`Fetching age data from ${start} to ${end}`);
+    
+    // Query from attendance_analytics table
     const { data, error } = await supabase
-      .from('age_group_analysis')
-      .select('*')
-      .gte('attendance_date', start)
-      .lte('attendance_date', end);
+      .from('attendance_analytics')
+      .select(`
+        report_date,
+        service_id,
+        age_4_5_count,
+        age_6_7_count,
+        age_8_9_count,
+        age_10_12_count,
+        services (service_name)
+      `)
+      .gte('report_date', start)
+      .lte('report_date', end);
 
     if (error) {
       console.error('Error fetching age data:', error);
       throw error;
     }
-    return data || [];
+    
+    console.log(`Age analytics records found: ${data?.length || 0}`);
+    
+    // Transform to expected format
+    const ageData = [];
+    (data || []).forEach(record => {
+      const serviceName = record.services?.service_name || 'Unknown';
+      
+      if (record.age_4_5_count > 0) {
+        ageData.push({
+          attendance_date: record.report_date,
+          service_name: serviceName,
+          age_category: '4-5 YO',
+          count: record.age_4_5_count
+        });
+      }
+      
+      if (record.age_6_7_count > 0) {
+        ageData.push({
+          attendance_date: record.report_date,
+          service_name: serviceName,
+          age_category: '6-7 YO',
+          count: record.age_6_7_count
+        });
+      }
+      
+      if (record.age_8_9_count > 0) {
+        ageData.push({
+          attendance_date: record.report_date,
+          service_name: serviceName,
+          age_category: '8-9 YO',
+          count: record.age_8_9_count
+        });
+      }
+      
+      if (record.age_10_12_count > 0) {
+        ageData.push({
+          attendance_date: record.report_date,
+          service_name: serviceName,
+          age_category: '10-12 YO',
+          count: record.age_10_12_count
+        });
+      }
+    });
+    
+    console.log(`Age summary records: ${ageData.length}`);
+    return ageData;
   };
 
   const fetchRegisteredChildrenCount = async (start, end) => {
@@ -838,6 +944,169 @@ const ReportsPage = () => {
           
           yPosition += 6;
         });
+      }
+      
+      // ===== NEW PAGE: NEW REGISTRATIONS & ACTIVITY =====
+      pdf.addPage();
+      yPosition = margin;
+      
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(28, 167, 188);
+      pdf.text('New Registrations & Activity', margin, yPosition);
+      yPosition += 10;
+      
+      // Fetch new registrations with staff who registered them
+      const { data: newRegistrations, error: regError } = await supabase
+        .from('children')
+        .select(`
+          child_id,
+          formal_id,
+          first_name,
+          last_name,
+          birthdate,
+          registration_date,
+          age_categories (category_name)
+        `)
+        .gte('registration_date', startDate)
+        .lte('registration_date', endDate)
+        .order('registration_date', { ascending: false });
+      
+      if (!regError && newRegistrations && newRegistrations.length > 0) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(48, 206, 228);
+        pdf.text(`New Children Registered (${newRegistrations.length})`, margin, yPosition);
+        yPosition += 8;
+        
+        // Table header
+        pdf.setFillColor(48, 206, 228);
+        pdf.rect(margin, yPosition, contentWidth, 7, 'F');
+        
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(255, 255, 255);
+        
+        let xPos = margin + 2;
+        pdf.text('ID', xPos, yPosition + 5);
+        pdf.text('Name', xPos + 25, yPosition + 5);
+        pdf.text('Age Group', xPos + 80, yPosition + 5);
+        pdf.text('Date', xPos + 130, yPosition + 5);
+        
+        yPosition += 9;
+        
+        // Table rows
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        let regRowIndex = 0;
+        
+        newRegistrations.forEach(child => {
+          checkPageBreak(7);
+          
+          if (regRowIndex % 2 === 0) {
+            pdf.setFillColor(250, 250, 250);
+            pdf.rect(margin, yPosition - 1, contentWidth, 6, 'F');
+          }
+          
+          xPos = margin + 2;
+          pdf.setFontSize(8);
+          pdf.text(child.formal_id || 'N/A', xPos, yPosition + 4);
+          pdf.text(`${child.first_name} ${child.last_name}`, xPos + 25, yPosition + 4);
+          pdf.text(child.age_categories?.category_name || 'N/A', xPos + 80, yPosition + 4);
+          pdf.text(formatDate(child.registration_date, { month: 'short', day: 'numeric', year: 'numeric' }), xPos + 130, yPosition + 4);
+          
+          yPosition += 6;
+          regRowIndex++;
+        });
+        
+        yPosition += 10;
+      } else {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('No new registrations during this period', margin, yPosition);
+        yPosition += 15;
+      }
+      
+      // Fetch new guardians added
+      const { data: newGuardians, error: guardError } = await supabase
+        .from('child_guardian')
+        .select(`
+          id,
+          child_id,
+          guardians (
+            guardian_id,
+            first_name,
+            last_name,
+            email,
+            phone_number,
+            relationship
+          ),
+          children (
+            first_name,
+            last_name,
+            registration_date
+          )
+        `)
+        .gte('children.registration_date', startDate)
+        .lte('children.registration_date', endDate);
+      
+      if (!guardError && newGuardians && newGuardians.length > 0) {
+        checkPageBreak(40);
+        
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(48, 206, 228);
+        pdf.text(`New Guardians Added (${newGuardians.length})`, margin, yPosition);
+        yPosition += 8;
+        
+        // Table header
+        pdf.setFillColor(48, 206, 228);
+        pdf.rect(margin, yPosition, contentWidth, 7, 'F');
+        
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(255, 255, 255);
+        
+        let xPos = margin + 2;
+        pdf.text('Guardian Name', xPos, yPosition + 5);
+        pdf.text('Child', xPos + 50, yPosition + 5);
+        pdf.text('Relationship', xPos + 90, yPosition + 5);
+        pdf.text('Contact', xPos + 120, yPosition + 5);
+        
+        yPosition += 9;
+        
+        // Table rows
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        let guardRowIndex = 0;
+        
+        newGuardians.forEach(item => {
+          checkPageBreak(7);
+          
+          if (guardRowIndex % 2 === 0) {
+            pdf.setFillColor(250, 250, 250);
+            pdf.rect(margin, yPosition - 1, contentWidth, 6, 'F');
+          }
+          
+          xPos = margin + 2;
+          pdf.setFontSize(8);
+          pdf.text(`${item.guardians?.first_name || ''} ${item.guardians?.last_name || ''}`, xPos, yPosition + 4);
+          pdf.text(`${item.children?.first_name || ''} ${item.children?.last_name || ''}`, xPos + 50, yPosition + 4);
+          pdf.text(item.guardians?.relationship || 'N/A', xPos + 90, yPosition + 4);
+          pdf.text(item.guardians?.phone_number || item.guardians?.email || 'N/A', xPos + 120, yPosition + 4);
+          
+          yPosition += 6;
+          guardRowIndex++;
+        });
+        
+        yPosition += 10;
+      } else {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('No new guardians added during this period', margin, yPosition);
+        yPosition += 15;
       }
       
       // ===== PAGE 4: GROWTH TRENDS =====

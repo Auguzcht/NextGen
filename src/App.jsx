@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { NavigationProvider, useNavigation } from './context/NavigationContext.jsx';
 import LoadingScreen from './components/common/LoadingScreen.jsx';
+import ChangelogModal from './components/common/ChangelogModal.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ChildrenPage from './pages/ChildrenPage.jsx';
@@ -17,6 +18,7 @@ import Sidebar from './components/layout/Sidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
 import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { CURRENT_VERSION, shouldShowChangelog, markChangelogAsShown } from './utils/changelog.js';
 import './App.css';
 
 // AuthCheck component for route protection
@@ -64,9 +66,43 @@ const MainLayout = () => {
 const MainLayoutContent = () => {
   const location = useLocation();
   const { sidebarOpen } = useNavigation(); // Now this is inside NavigationProvider
+  const { user } = useAuth();
+  const [showChangelog, setShowChangelog] = useState(false);
+  
+  // Check if we should show the changelog on first login
+  useEffect(() => {
+    if (user) {
+      if (shouldShowChangelog(user.id)) {
+        // Delay showing the modal slightly to let the UI settle
+        const timer = setTimeout(() => {
+          setShowChangelog(true);
+        }, 1000);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [user]);
+  
+  const handleCloseChangelog = () => {
+    setShowChangelog(false);
+    if (user) {
+      markChangelogAsShown(user.id);
+    }
+  };
+  
+  const handleOpenChangelog = () => {
+    setShowChangelog(true);
+  };
   
   return (
     <div className="flex min-h-screen bg-gray-100 overflow-hidden">
+      {/* Changelog Modal */}
+      <ChangelogModal 
+        isOpen={showChangelog} 
+        onClose={handleCloseChangelog}
+        version={CURRENT_VERSION}
+      />
+      
       {/* Fixed sidebar that doesn't scroll */}
       <div className="fixed h-full z-30">
         <Sidebar />
@@ -107,7 +143,7 @@ const MainLayoutContent = () => {
         </main>
         
         {/* Footer at the bottom of the scrollable area */}
-        <Footer />
+        <Footer onVersionClick={handleOpenChangelog} />
       </div>
     </div>
   );

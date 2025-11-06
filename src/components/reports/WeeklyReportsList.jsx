@@ -87,16 +87,8 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
         }
       });
       
-      // First, update the reportId with a timestamp to show email was sent
-      const { error: updateError } = await supabase
-        .from('weekly_reports')
-        .update({ email_sent_date: new Date().toISOString() })
-        .eq('report_id', reportId);
-        
-      if (updateError) throw updateError;
-      
-      // Now manually call Resend API since the RPC function isn't working
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/send-weekly-report`, {
+      // Call the API endpoint to send weekly report
+      const response = await fetch('/api/email/send-weekly-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,16 +96,26 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
         body: JSON.stringify({ reportId }),
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error(`API responded with status: ${response.status}`);
+        throw new Error(data.error || `API responded with status: ${response.status}`);
       }
       
       Swal.fire({
         icon: 'success',
         title: 'Email Sent!',
-        text: 'Weekly report email has been sent successfully',
+        html: `
+          <div class="text-left">
+            <p class="mb-2"><strong>Successfully sent:</strong> ${data.data?.successful || 0} email(s)</p>
+            ${data.data?.failed > 0 ? `
+              <p class="mb-2 text-red-600"><strong>Failed:</strong> ${data.data.failed} email(s)</p>
+            ` : ''}
+            <p class="text-sm text-gray-600"><strong>Success Rate:</strong> ${data.data?.successRate || '100%'}</p>
+          </div>
+        `,
         confirmButtonColor: '#30cee4',
-        timer: 3000
+        timer: 5000
       });
       
       fetchReports();
@@ -123,12 +125,9 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: `Email sending is not configured yet. The report is marked as sent for demonstration purposes.`,
+        text: error.message || 'Failed to send weekly report emails. Please check your email configuration.',
         confirmButtonColor: '#30cee4'
       });
-      
-      await fetchReports();
-      
     } finally {
       setSendingEmail(false);
     }

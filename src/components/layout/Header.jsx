@@ -68,49 +68,32 @@ const Header = () => {
       try {
         // Priority 1: Check if user object already has profile_image_url from database
         if (user.profile_image_url) {
-          console.log('Using profile_image_url from user object:', user.profile_image_url);
           setProfileImageUrl(user.profile_image_url);
           setImageLoading(false);
           return;
         }
 
-        // Priority 2: Try to get from Firebase Storage using staff_id or uid
-        const staffId = user.staff_id || user.uid;
-        
-        // Try multiple possible paths
-        const possiblePaths = [
-          user.profile_image_path, // Use provided path if exists
-          `NextGen/staff-photos/${staffId}`,
-          `NextGen/staff-photos/${staffId}.jpg`,
-          `NextGen/staff-photos/${staffId}.png`,
-          `NextGen/staff-photos/${staffId}.jpeg`
-        ].filter(Boolean); // Remove null/undefined values
-
-        console.log('Trying to fetch from Firebase Storage paths:', possiblePaths);
-
-        for (const storagePath of possiblePaths) {
+        // Priority 2: Only try Firebase Storage if profile_image_path exists
+        // This prevents unnecessary 404 requests when user has no profile image
+        if (user.profile_image_path) {
           try {
-            const storageRef = ref(storage, storagePath);
+            const storageRef = ref(storage, user.profile_image_path);
             const url = await getDownloadURL(storageRef);
             
             if (url) {
-              console.log('Found profile image at:', storagePath);
               setProfileImageUrl(url);
               setImageLoading(false);
               return;
             }
           } catch (error) {
-            // Continue to next path
-            console.log('Not found at:', storagePath);
-            continue;
+            // Silently handle - image doesn't exist, will use fallback
           }
         }
 
-        // If no image found in any path
-        console.log('No profile image found for user');
+        // No profile image found - use fallback gradient
         setProfileImageUrl(null);
       } catch (error) {
-        console.error('Error fetching profile image:', error);
+        // Silently handle error
         setProfileImageUrl(null);
       } finally {
         setImageLoading(false);
@@ -214,7 +197,7 @@ const Header = () => {
       await logout(); // Use logout instead of signOut
       // No need for navigate - logout will redirect to login page
     } catch (error) {
-      console.error('Logout failed:', error);
+      // Silently handle logout errors
     }
   };
 
@@ -238,7 +221,6 @@ const Header = () => {
           alt={`${user?.first_name || ''} ${user?.last_name || ''}`}
           className="h-full w-full object-cover"
           onError={(e) => {
-            console.error('Failed to load profile image:', profileImageUrl);
             e.target.onerror = null; // Prevent infinite loop
             setProfileImageUrl(null); // Fall back to gradient
             setImageLoading(false);

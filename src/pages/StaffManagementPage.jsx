@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import supabase, { supabaseAdmin } from '../services/supabase.js';
+import { useState, useEffect, useMemo } from 'react';
+import supabase from '../services/supabase.js';
 import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
+import SendCredentialsModal from '../components/staff/SendCredentialsModal.jsx';
 import { Card, Button, Badge, Table, Input } from '../components/ui';
-import { motion } from 'framer-motion';
 import Swal from 'sweetalert2';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const StaffManagementPage = () => {
+  const { user } = useAuth();
   const [staffMembers, setStaffMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -16,9 +18,7 @@ const StaffManagementPage = () => {
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isUserCredentialsModalOpen, setIsUserCredentialsModalOpen] = useState(false);
-  const [selectedStaffForCredentials, setSelectedStaffForCredentials] = useState(null);
-  const [credentialsStatus, setCredentialsStatus] = useState({ loading: false, error: null, success: null });
+  const [isSendCredentialsModalOpen, setIsSendCredentialsModalOpen] = useState(false);
 
   // Debounce search query
   useEffect(() => {
@@ -217,57 +217,6 @@ const StaffManagementPage = () => {
     }
   };
 
-
-  const handleCreateUser = async (password) => {
-    if (!selectedStaffForCredentials) return;
-    
-    setCredentialsStatus({ loading: true, error: null, success: null });
-    
-    try {
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: selectedStaffForCredentials.email,
-        password: password,
-        email_confirm: true,
-        user_metadata: {
-          first_name: selectedStaffForCredentials.first_name,
-          last_name: selectedStaffForCredentials.last_name,
-          role: selectedStaffForCredentials.role
-        }
-      });
-
-      if (authError) throw authError;
-
-      const { error: updateError } = await supabase
-        .from('staff')
-        .update({ user_id: authData.user.id })
-        .eq('staff_id', selectedStaffForCredentials.staff_id);
-
-      if (updateError) throw updateError;
-
-      setCredentialsStatus({ 
-        loading: false, 
-        error: null, 
-        success: `Login credentials created successfully for ${selectedStaffForCredentials.first_name} ${selectedStaffForCredentials.last_name}` 
-      });
-      
-      fetchStaffMembers();
-      
-      setTimeout(() => {
-        setIsUserCredentialsModalOpen(false);
-        setSelectedStaffForCredentials(null);
-        setCredentialsStatus({ loading: false, error: null, success: null });
-      }, 3000);
-      
-    } catch (error) {
-      console.error('Error creating user credentials:', error);
-      setCredentialsStatus({ 
-        loading: false, 
-        error: error.message || 'Failed to create user credentials', 
-        success: null 
-      });
-    }
-  };
-
   const handleEditSuccess = async () => {
     await fetchStaffMembers();
     setIsEditModalOpen(false);
@@ -462,17 +411,34 @@ const StaffManagementPage = () => {
             />
           </div>
           
-          <Button
-            variant="primary"
-            onClick={() => setIsAddModalOpen(true)}
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-            }
-          >
-            Add Staff
-          </Button>
+          <div className="flex gap-2">
+            {user?.access_level >= 10 && (
+              <Button
+                variant="outline"
+                onClick={() => setIsSendCredentialsModalOpen(true)}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                  </svg>
+                }
+              >
+                Send Access Emails
+              </Button>
+            )}
+            
+            <Button
+              variant="primary"
+              onClick={() => setIsAddModalOpen(true)}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+              }
+            >
+              Add Staff
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
@@ -526,160 +492,12 @@ const StaffManagementPage = () => {
         />
       )}
 
-      {/* User Credentials Modal */}
-      {isUserCredentialsModalOpen && (
-        <UserCredentialsModal
-          staff={selectedStaffForCredentials}
-          onClose={() => {
-            setIsUserCredentialsModalOpen(false);
-            setSelectedStaffForCredentials(null);
-            setCredentialsStatus({ loading: false, error: null, success: null });
-          }}
-          onSubmit={handleCreateUser}
-          status={credentialsStatus}
-        />
-      )}
-    </div>
-  );
-};
-
-// User Credentials Modal Component
-const UserCredentialsModal = ({ staff, onClose, onSubmit, status }) => {
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState(null);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!password) {
-      setError('Password is required');
-      return;
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    onSubmit(password);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg overflow-hidden shadow-xl max-w-md w-full">
-        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Create Login Credentials
-          </h3>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-500"
-            disabled={status.loading}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {status.loading ? (
-          <div className="px-4 py-5 sm:p-6 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
-          </div>
-        ) : status.success ? (
-          <div className="px-4 py-5 sm:p-6">
-            <div className="rounded-md bg-green-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">{status.success}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="px-4 py-5 sm:p-6 space-y-4">
-              {(error || status.error) && (
-                <div className="rounded-md bg-red-50 p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-red-800">{error || status.error}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm text-gray-700 mb-4">
-                  Create login credentials for <span className="font-medium">{staff?.first_name} {staff?.last_name}</span> ({staff?.email})
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
-                  minLength="8"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  id="confirm-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
-                  minLength="8"
-                  required
-                />
-              </div>
-            </div>
-            <div className="px-4 py-3 bg-gray-50 text-right sm:px-6">
-              <Button
-                variant="ghost"
-                onClick={onClose}
-                className="mr-3"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                type="submit"
-              >
-                Create Credentials
-              </Button>
-            </div>
-          </form>
-        )}
-      </div>
+      {/* Send Credentials Modal */}
+      <SendCredentialsModal
+        isOpen={isSendCredentialsModalOpen}
+        onClose={() => setIsSendCredentialsModalOpen(false)}
+        staffMembers={staffMembers}
+      />
     </div>
   );
 };

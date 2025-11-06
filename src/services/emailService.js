@@ -178,6 +178,22 @@ export const generateEmailPreview = (template, data = {}) => {
   return html;
 };
 
+/**
+ * Send staff credentials emails
+ */
+export const sendStaffCredentials = async (staffMembers, eventType = 'new_account') => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/email/send-credentials`, {
+      staffMembers,
+      eventType
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending staff credentials:', error);
+    throw error;
+  }
+};
+
 export default {
   getEmailConfig,
   updateEmailConfig,
@@ -189,5 +205,6 @@ export default {
   getEmailStats,
   validateEmailConfig,
   formatRecipients,
-  generateEmailPreview
+  generateEmailPreview,
+  sendStaffCredentials
 };

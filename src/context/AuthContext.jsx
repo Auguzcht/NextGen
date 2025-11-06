@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import supabase from '../services/supabase';
+import { clearChangelogSession, markNewLogin } from '../utils/changelog.js';
 
 export const AuthContext = createContext(null);
 
@@ -148,6 +149,8 @@ export const AuthProvider = ({ children }) => {
               try {
                 await fetchStaffProfile(currentSession.user);
                 setConnectionStatus('connected');
+                // Mark this as a new login for changelog tracking
+                markNewLogin(currentSession.user.id);
                 toast.success('Successfully signed in!');
               } catch (error) {
                 setConnectionStatus('degraded');
@@ -264,6 +267,10 @@ export const AuthProvider = ({ children }) => {
   // Logout function
   const logout = async () => {
     try {
+      // Clear changelog session data before logout
+      if (user?.id) {
+        clearChangelogSession(user.id);
+      }
       
       const { error } = await supabase.auth.signOut();
       
