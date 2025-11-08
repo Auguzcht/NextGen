@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from '../ui/Button';
-import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import Swal from 'sweetalert2';
 import { sendStaffCredentials } from '../../services/emailService';
@@ -13,16 +12,19 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
   const [isSending, setIsSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter staff with credentials and active status
-  const eligibleStaff = staffMembers.filter(
-    staff => staff.user_id && staff.is_active && staff.email
+  // Memoize filtered staff to prevent recalculation
+  const eligibleStaff = useMemo(() => 
+    staffMembers.filter(staff => staff.user_id && staff.is_active && staff.email),
+    [staffMembers]
   );
 
-  // Filter by search query
-  const filteredStaff = eligibleStaff.filter(staff =>
-    `${staff.first_name} ${staff.last_name} ${staff.email}`
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
+  const filteredStaff = useMemo(() => 
+    eligibleStaff.filter(staff =>
+      `${staff.first_name} ${staff.last_name} ${staff.email}`
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
+    ),
+    [eligibleStaff, searchQuery]
   );
 
   // Select/deselect all
@@ -48,7 +50,7 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
     {
       value: 'new_account',
       label: 'New Account Setup',
-      description: 'Send welcome email with password setup instructions for newly registered accounts',
+      description: 'Send welcome email with magic link for instant access (Supabase template)',
       icon: (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -58,7 +60,7 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
     {
       value: 'password_reset',
       label: 'Password Reset',
-      description: 'Send password reset link to staff members who need to reset their password',
+      description: 'Send password reset link requiring new password entry (Supabase template)',
       icon: (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -68,7 +70,7 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
     {
       value: 'account_reactivation',
       label: 'Account Reactivation',
-      description: 'Notify staff that their account has been reactivated with login instructions',
+      description: 'Send reactivation email with magic link for instant access (Supabase template)',
       icon: (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -78,7 +80,7 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
     {
       value: 'access_reminder',
       label: 'Access Reminder',
-      description: 'Send login credentials reminder to existing staff members',
+      description: 'Send credentials reminder requiring password reset (Supabase template)',
       icon: (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -181,22 +183,24 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50"
         />
 
         {/* Modal */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.15 }}
           className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl"
         >
           {/* Header */}

@@ -84,116 +84,67 @@ export default async function handler(req, res) {
       total: staffMembers.length
     };
 
-    // Send email to each staff member
+    // Send email to each staff member using Supabase templates
     for (const staff of staffMembers) {
       try {
-        // Generate password reset link
-        const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: staff.email,
-        });
+        // Determine redirect URL and method based on event type
+        const redirectUrl = process.env.NODE_ENV === 'production'
+          ? 'https://nextgen-ministry.vercel.app'
+          : 'http://localhost:3002/nextgen';
 
-        if (resetError) {
-          console.error(`Failed to generate reset link for ${staff.email}:`, resetError);
-          throw resetError;
-        }
+        if (eventType === 'password_reset' || eventType === 'access_reminder') {
+          // Use Supabase's resetPasswordForEmail (sends "Reset Password" template)
+          const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(
+            staff.email,
+            {
+              redirectTo: `${redirectUrl}/reset-password`
+            }
+          );
 
-        const resetLink = resetData.properties.action_link;
-        
-        const emailHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Your NextGen Ministry Login Credentials</title>
-          </head>
-          <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
-              <tr>
-                <td align="center">
-                  <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <!-- Header -->
-                    <tr>
-                      <td style="background: linear-gradient(135deg, #30cee4 0%, #2ba5c7 100%); padding: 40px 20px; text-align: center;">
-                        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">NextGen Ministry</h1>
-                        <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">${config.title}</p>
-                      </td>
-                    </tr>
-                    
-                    <!-- Body -->
-                    <tr>
-                      <td style="padding: 40px 30px;">
-                        <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 22px;">Hello ${staff.first_name}!</h2>
-                        
-                        <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;">
-                          ${config.greeting}
-                        </p>
-                        
-                        <div style="background-color: #f8f9fa; border-left: 4px solid #30cee4; padding: 20px; margin: 20px 0; border-radius: 4px;">
-                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Email:</strong> ${staff.email}</p>
-                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Role:</strong> ${staff.role}</p>
-                        </div>
-                        
-                        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                          <p style="margin: 0; color: #856404; font-size: 14px;">
-                            <strong>⚠️ Action Required:</strong> ${config.note}
-                          </p>
-                        </div>
-                        
-                        <div style="text-align: center; margin: 30px 0;">
-                          <a href="${resetLink}" 
-                             style="display: inline-block; background-color: #30cee4; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: bold;">
-                            ${config.buttonText}
-                          </a>
-                        </div>
-                        
-                        <p style="color: #999999; font-size: 12px; margin: 20px 0; text-align: center; font-style: italic;">
-                          This link will expire in 24 hours for security reasons.
-                        </p>
-                        
-                        <p style="color: #666666; line-height: 1.6; margin: 20px 0 0 0; font-size: 14px;">
-                          If you have any questions or need help, please contact your administrator.
-                        </p>
-                      </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                      <td style="background-color: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef;">
-                        <p style="color: #999999; font-size: 12px; margin: 0; text-align: center;">
-                          This is an automated message from NextGen Ministry Management System.<br/>
-                          Please do not reply to this email.
-                        </p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </body>
-          </html>
-        `;
+          if (resetError) {
+            console.error(`Failed to send reset email for ${staff.email}:`, resetError);
+            results.failed.push({
+              email: staff.email,
+              name: `${staff.first_name} ${staff.last_name}`,
+              error: resetError.message
+            });
+            continue;
+          }
 
-        const { data, error } = await resend.emails.send({
-          from: `${emailConfig.from_name} <${emailConfig.from_email}>`,
-          to: [staff.email],
-          subject: config.subject,
-          html: emailHtml,
-        });
-
-        if (error) {
-          console.error(`Failed to send email to ${staff.email}:`, error);
-          results.failed.push({
-            email: staff.email,
-            name: `${staff.first_name} ${staff.last_name}`,
-            error: error.message
-          });
-        } else {
           results.success.push({
             email: staff.email,
             name: `${staff.first_name} ${staff.last_name}`,
-            messageId: data.id
+            type: 'password_reset'
+          });
+        } else {
+          // Use Supabase's inviteUserByEmail for new accounts/reactivation (sends "Invite User" template)
+          // This uses the Magic Link template and redirects to dashboard
+          const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+            staff.email,
+            {
+              redirectTo: `${redirectUrl}/dashboard`,
+              data: {
+                first_name: staff.first_name,
+                last_name: staff.last_name,
+                role: staff.role
+              }
+            }
+          );
+
+          if (inviteError) {
+            console.error(`Failed to send invite for ${staff.email}:`, inviteError);
+            results.failed.push({
+              email: staff.email,
+              name: `${staff.first_name} ${staff.last_name}`,
+              error: inviteError.message
+            });
+            continue;
+          }
+
+          results.success.push({
+            email: staff.email,
+            name: `${staff.first_name} ${staff.last_name}`,
+            type: 'magic_link'
           });
         }
       } catch (emailError) {
@@ -206,16 +157,35 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({
-      success: true,
-      message: `Sent ${results.success.length} out of ${results.total} emails`,
-      results
-    });
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        success: true,
+        message: `Sent ${results.success.length} out of ${results.total} emails`,
+        successCount: results.success.length,
+        failureCount: results.failed.length,
+        results: results.success,
+        errors: results.failed.map(f => `${f.name} (${f.email}): ${f.error}`)
+      })
+    };
   } catch (error) {
-    console.error('Error in send-credentials endpoint:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: error.message
-    });
+    console.error('Error in send-credentials:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        success: false,
+        error: 'Internal server error',
+        message: error.message
+      })
+    };
   }
-}
+};

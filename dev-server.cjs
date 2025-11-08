@@ -325,99 +325,65 @@ app.post('/api/email/send-credentials', async (req, res) => {
       process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    // Send email to each staff member
+    // Send email to each staff member using Supabase templates
     for (const staff of staffMembers) {
       try {
-        // Generate password reset link
-        const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: staff.email,
-        });
+        // Determine redirect URL and method based on event type
+        if (eventType === 'password_reset' || eventType === 'access_reminder') {
+          // Use Supabase's resetPasswordForEmail (sends "Reset Password" template)
+          const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(
+            staff.email,
+            {
+              redirectTo: 'http://localhost:3002/nextgen/reset-password'
+            }
+          );
 
-        if (resetError) {
-          console.error(`Failed to generate reset link for ${staff.email}:`, resetError);
-          throw resetError;
+          if (resetError) {
+            console.error(`Failed to send reset email for ${staff.email}:`, resetError);
+            results.failed.push({
+              email: staff.email,
+              name: `${staff.first_name} ${staff.last_name}`,
+              error: resetError.message
+            });
+            continue;
+          }
+
+          results.success.push({
+            email: staff.email,
+            name: `${staff.first_name} ${staff.last_name}`,
+            type: 'password_reset'
+          });
+        } else {
+          // Use Supabase's inviteUserByEmail for new accounts/reactivation (sends "Magic Link" template)
+          // This uses the Magic Link template and redirects to dashboard
+          const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+            staff.email,
+            {
+              redirectTo: 'http://localhost:3002/nextgen/dashboard',
+              data: {
+                first_name: staff.first_name,
+                last_name: staff.last_name,
+                role: staff.role
+              }
+            }
+          );
+
+          if (inviteError) {
+            console.error(`Failed to send invite for ${staff.email}:`, inviteError);
+            results.failed.push({
+              email: staff.email,
+              name: `${staff.first_name} ${staff.last_name}`,
+              error: inviteError.message
+            });
+            continue;
+          }
+
+          results.success.push({
+            email: staff.email,
+            name: `${staff.first_name} ${staff.last_name}`,
+            type: 'magic_link'
+          });
         }
-
-        const resetLink = resetData.properties.action_link;
-        
-        const emailHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Your NextGen Ministry Login Credentials</title>
-          </head>
-          <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
-              <tr>
-                <td align="center">
-                  <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <tr>
-                      <td style="background: linear-gradient(135deg, #30cee4 0%, #2ba5c7 100%); padding: 40px 20px; text-align: center;">
-                        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">NextGen Ministry</h1>
-                        <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">${config.title}</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 40px 30px;">
-                        <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 22px;">Hello ${staff.first_name}!</h2>
-                        <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0; font-size: 16px;">${config.greeting}</p>
-                        <div style="background-color: #f8f9fa; border-left: 4px solid #30cee4; padding: 20px; margin: 20px 0; border-radius: 4px;">
-                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Email:</strong> ${staff.email}</p>
-                          <p style="margin: 0 0 10px 0; color: #333333; font-size: 14px;"><strong>Role:</strong> ${staff.role}</p>
-                        </div>
-                        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                          <p style="margin: 0; color: #856404; font-size: 14px;"><strong>⚠️ Action Required:</strong> ${config.note}</p>
-                        </div>
-                        <div style="text-align: center; margin: 30px 0;">
-                          <a href="${resetLink}" style="display: inline-block; background-color: #30cee4; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: bold;">${config.buttonText}</a>
-                        </div>
-                        <p style="color: #999999; font-size: 12px; margin: 20px 0; text-align: center; font-style: italic;">This link will expire in 24 hours for security reasons.</p>
-                        <p style="color: #666666; line-height: 1.6; margin: 20px 0 0 0; font-size: 14px;">If you have any questions or need help, please contact your administrator.</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="background-color: #f8f9fa; padding: 20px 30px; border-top: 1px solid #e9ecef;">
-                        <p style="color: #999999; font-size: 12px; margin: 0; text-align: center;">This is an automated message from NextGen Ministry Management System.<br/>Please do not reply to this email.</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </body>
-          </html>
-        `;
-
-        // Send email via Resend
-        const emailResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${emailConfig.api_key}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            from: `${emailConfig.from_name} <${emailConfig.from_email}>`,
-            to: [staff.email],
-            subject: config.subject,
-            html: emailHtml,
-          })
-        });
-
-        if (!emailResponse.ok) {
-          const error = await emailResponse.json();
-          throw new Error(error.message || emailResponse.statusText);
-        }
-
-        const emailResult = await emailResponse.json();
-
-        results.success.push({
-          email: staff.email,
-          name: `${staff.first_name} ${staff.last_name}`,
-          messageId: emailResult.id
-        });
       } catch (emailError) {
         console.error(`Error sending to ${staff.email}:`, emailError);
         results.failed.push({

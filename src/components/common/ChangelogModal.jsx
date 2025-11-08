@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from '../ui/Button';
-import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import { CHANGELOG, CURRENT_VERSION } from '../../utils/changelog';
 
 const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
   const [selectedVersion, setSelectedVersion] = useState(version);
-  const versionData = CHANGELOG.find(v => v.version === selectedVersion) || CHANGELOG[0];
+  
+  // Memoize version data lookup
+  const versionData = useMemo(() => 
+    CHANGELOG.find(v => v.version === selectedVersion) || CHANGELOG[0],
+    [selectedVersion]
+  );
 
   // Update selected version when prop changes
   useEffect(() => {
@@ -30,22 +34,24 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50"
         />
 
         {/* Modal */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.15 }}
           className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl"
         >
           {/* Header */}

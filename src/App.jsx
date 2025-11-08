@@ -5,6 +5,7 @@ import { NavigationProvider, useNavigation } from './context/NavigationContext.j
 import LoadingScreen from './components/common/LoadingScreen.jsx';
 import ChangelogModal from './components/common/ChangelogModal.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ChildrenPage from './pages/ChildrenPage.jsx';
 import AttendancePage from './pages/AttendancePage.jsx';
@@ -155,7 +156,11 @@ const PublicRoute = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
+  // Special case: Allow /reset-password to have a session (needed for password update)
+  // Don't redirect to dashboard if user is on reset-password page
   useEffect(() => {
+    // Only redirect if on /login page and has a session
+    // Never redirect if on /reset-password
     if (session && location.pathname === '/login') {
       console.log('Session exists, redirecting to dashboard');
       navigate('/dashboard', { replace: true });
@@ -167,8 +172,14 @@ const PublicRoute = () => {
     return <LoadingScreen isInitialLoadingComplete={true} />;
   }
   
-  // If user is already logged in, redirect them
-  if (session) {
+  // Allow /reset-password to proceed even with a session
+  // User needs to be authenticated to change their password
+  if (location.pathname === '/reset-password') {
+    return <Outlet />;
+  }
+  
+  // If user is already logged in and trying to access login, redirect them
+  if (session && location.pathname === '/login') {
     return <Navigate to="/dashboard" replace />;
   }
   
@@ -204,6 +215,7 @@ function AppContent() {
       {/* Public routes */}
       <Route element={<PublicRoute />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
       
       {/* Protected routes with persistent layout */}
