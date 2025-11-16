@@ -481,6 +481,17 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     localStorage.removeItem('nextgen_child_form_image_path');
   };
 
+  // Helper function to format names properly (capitalize first letter of each word)
+  const formatName = (name) => {
+    if (!name || typeof name !== 'string') return '';
+    return name
+      .trim()
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   // Update handleSubmit to handle both create and edit
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -506,9 +517,9 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         const { error: updateError } = await supabase
           .from('children')
           .update({
-            first_name: formData.firstName.trim(),
-            middle_name: formData.middleName?.trim() || null,
-            last_name: formData.lastName.trim(),
+            first_name: formatName(formData.firstName),
+            middle_name: formatName(formData.middleName) || null,
+            last_name: formatName(formData.lastName),
             birthdate: formData.birthdate,
             gender: formData.gender.trim(),
             photo_url: imageUrl || null,
@@ -522,8 +533,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         const { error: guardianError } = await supabase
           .from('guardians')
           .update({
-            first_name: formData.guardianFirstName.trim(),
-            last_name: formData.guardianLastName.trim(),
+            first_name: formatName(formData.guardianFirstName),
+            last_name: formatName(formData.guardianLastName),
             phone_number: formData.guardianPhone?.trim() || null,
             email: formData.guardianEmail?.trim() || null,
             relationship: formData.guardianRelationship
@@ -591,8 +602,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 `${formData.guardianEmail && formData.guardianPhone ? ',' : ''}`+
                 `${formData.guardianPhone ? `phone_number.eq.${formData.guardianPhone.trim()}` : ''}`
               )
-              .eq('first_name', formData.guardianFirstName.trim())
-              .eq('last_name', formData.guardianLastName.trim());
+              .eq('first_name', formatName(formData.guardianFirstName))
+              .eq('last_name', formatName(formData.guardianLastName));
               
             if (searchError) throw searchError;
             
@@ -603,9 +614,9 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
               const { data: childData, error: childError } = await supabase
                 .from('children')
                 .insert({
-                  first_name: formData.firstName.trim(),
-                  middle_name: formData.middleName?.trim() || null,
-                  last_name: formData.lastName.trim(),
+                  first_name: formatName(formData.firstName),
+                  middle_name: formatName(formData.middleName) || null,
+                  last_name: formatName(formData.lastName),
                   birthdate: formData.birthdate,
                   gender: formData.gender.trim(),
                   photo_url: imageUrl,
@@ -632,13 +643,13 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             } else {
               // No existing guardian found, use the register_new_child function
               const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
-                p_first_name: formData.firstName.trim(),
-                p_middle_name: formData.middleName?.trim() || null,
-                p_last_name: formData.lastName.trim(),
+                p_first_name: formatName(formData.firstName),
+                p_middle_name: formatName(formData.middleName) || null,
+                p_last_name: formatName(formData.lastName),
                 p_birthdate: formData.birthdate,
                 p_gender: formData.gender.trim(),
-                p_guardian_first_name: formData.guardianFirstName.trim(),
-                p_guardian_last_name: formData.guardianLastName.trim(),
+                p_guardian_first_name: formatName(formData.guardianFirstName),
+                p_guardian_last_name: formatName(formData.guardianLastName),
                 p_guardian_phone: formData.guardianPhone?.trim() || null,
                 p_guardian_email: formData.guardianEmail?.trim() || null,
                 p_guardian_relationship: formData.guardianRelationship.trim(),
@@ -671,13 +682,13 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
           } else {
             // If no email or phone provided, just use the register_new_child function
             const { data: childData, error: childError } = await supabase.rpc('register_new_child', {
-              p_first_name: formData.firstName.trim(),
-              p_middle_name: formData.middleName?.trim() || null,
-              p_last_name: formData.lastName.trim(),
+              p_first_name: formatName(formData.firstName),
+              p_middle_name: formatName(formData.middleName) || null,
+              p_last_name: formatName(formData.lastName),
               p_birthdate: formData.birthdate,
               p_gender: formData.gender.trim(),
-              p_guardian_first_name: formData.guardianFirstName.trim(),
-              p_guardian_last_name: formData.guardianLastName.trim(),
+              p_guardian_first_name: formatName(formData.guardianFirstName),
+              p_guardian_last_name: formatName(formData.guardianLastName),
               p_guardian_phone: formData.guardianPhone?.trim() || null,
               p_guardian_email: formData.guardianEmail?.trim() || null,
               p_guardian_relationship: formData.guardianRelationship.trim(),

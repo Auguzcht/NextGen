@@ -40,7 +40,21 @@ export const CHANGELOG = [
           'Implemented real-time search by child name or formal ID',
           'Enhanced children selection with intuitive search interface',
           'Improved usability for guardians with many associated children',
-          'Added search icon and placeholder text for better UX'
+          'Added search icon and placeholder text for better UX',
+          'Replaced table-based children list with modern flex layout matching SendCredentialsModal design',
+          'Added height limitation and scrolling for better performance with large child lists'
+        ]
+      },
+      {
+        category: 'Data Quality',
+        icon: '✨',
+        updates: [
+          'Added automatic name formatting to ensure proper capitalization in all forms',
+          'Implemented formatName helper function for consistent name handling',
+          'Names now automatically convert from "JOHN SMITH" to "John Smith" format',
+          'Applied to both AddChildForm and AddGuardianForm for all name fields',
+          'Handles child names, guardian names, and middle names consistently',
+          'Formatting applied during form submission to maintain data integrity'
         ]
       },
       {

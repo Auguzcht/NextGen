@@ -259,6 +259,17 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
     localStorage.removeItem('nextgen_guardian_form_draft');
   };
 
+  // Helper function to format names properly (capitalize first letter of each word)
+  const formatName = (name) => {
+    if (!name || typeof name !== 'string') return '';
+    return name
+      .trim()
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -278,8 +289,8 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
         const { error: updateError } = await supabase
           .from('guardians')
           .update({
-            first_name: formData.firstName,
-            last_name: formData.lastName,
+            first_name: formatName(formData.firstName),
+            last_name: formatName(formData.lastName),
             phone_number: formData.phone || null,
             email: formData.email || null,
             relationship: formData.relationship
@@ -354,8 +365,8 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
         const { data: guardianData, error: guardianError } = await supabase
           .from('guardians')
           .insert({
-            first_name: formData.firstName,
-            last_name: formData.lastName,
+            first_name: formatName(formData.firstName),
+            last_name: formatName(formData.lastName),
             phone_number: formData.phone || null,
             email: formData.email || null,
             relationship: formData.relationship
@@ -653,76 +664,78 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                   </div>
                 </div>
                 
-                {children.length === 0 ? (
-                  <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    <p className="text-gray-500 text-sm">No children available to associate</p>
-                  </div>
-                ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Select
-                          </th>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Name / ID
-                          </th>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Age / Group
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {children
-                          .filter(child => {
-                            if (!childrenSearchQuery) return true;
-                            const searchLower = childrenSearchQuery.toLowerCase();
-                            const fullName = `${child.first_name} ${child.last_name}`.toLowerCase();
-                            const formalId = (child.formal_id || '').toLowerCase();
-                            return fullName.includes(searchLower) || formalId.includes(searchLower);
-                          })
-                          .map((child) => {
-                          const isSelected = formData.associatedChildren.some(
-                            c => c.childId === child.child_id
-                          );
-                          const isPrimary = formData.associatedChildren.some(
-                            c => c.childId === child.child_id && c.isPrimary
-                          );
-                          
-                          return (
-                            <tr key={child.child_id} className={`hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}>
-                              <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                <input
-                                  type="checkbox"
-                                  value={child.child_id}
-                                  checked={isSelected}
-                                  onChange={handleChildSelection}
-                                  className="h-4 w-4 text-nextgen-blue border-gray-300 rounded focus:ring-nextgen-blue"
-                                />
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
-                                <div className="font-medium text-gray-900">
-                                  {child.first_name} {child.last_name}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {child.formal_id || 'No ID'}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                {calculateAge(child.birthdate)} years<br />
-                                <span className="text-xs">{child.age_categories?.category_name || 'N/A'}</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {/* Children List */}
+                <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
+                  {children
+                    .filter(child => {
+                      if (!childrenSearchQuery) return true;
+                      const searchLower = childrenSearchQuery.toLowerCase();
+                      const fullName = `${child.first_name} ${child.last_name}`.toLowerCase();
+                      const formalId = (child.formal_id || '').toLowerCase();
+                      return fullName.includes(searchLower) || formalId.includes(searchLower);
+                    }).length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">
+                      <svg className="h-12 w-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <p className="font-medium">No children found</p>
+                      <p className="text-sm mt-1">
+                        {childrenSearchQuery ? 'Try adjusting your search terms' : 'No children available to associate'}
+                      </p>
+                    </div>
+                  ) : (
+                    children
+                      .filter(child => {
+                        if (!childrenSearchQuery) return true;
+                        const searchLower = childrenSearchQuery.toLowerCase();
+                        const fullName = `${child.first_name} ${child.last_name}`.toLowerCase();
+                        const formalId = (child.formal_id || '').toLowerCase();
+                        return fullName.includes(searchLower) || formalId.includes(searchLower);
+                      })
+                      .map((child) => {
+                        const isSelected = formData.associatedChildren.some(
+                          c => c.childId === child.child_id
+                        );
+                        
+                        return (
+                          <div
+                            key={child.child_id}
+                            onClick={() => handleChildSelection({ target: { value: child.child_id, checked: !isSelected } })}
+                            className={`
+                              flex items-center gap-3 p-3 border-b border-gray-100 last:border-b-0 cursor-pointer transition-colors
+                              ${isSelected ? 'bg-nextgen-blue/5' : 'hover:bg-gray-50'}
+                            `}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={handleChildSelection}
+                              value={child.child_id}
+                              className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded cursor-pointer"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">
+                                {child.first_name} {child.last_name}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                {child.formal_id || 'No ID'}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1 text-right">
+                              <Badge variant="secondary" size="sm">
+                                {calculateAge(child.birthdate)} years
+                              </Badge>
+                              {child.age_categories?.category_name && (
+                                <span className="text-xs text-gray-500">
+                                  {child.age_categories.category_name}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               </motion.div>
             </div>
 
