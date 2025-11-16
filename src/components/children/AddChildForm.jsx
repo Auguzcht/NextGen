@@ -1000,7 +1000,6 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     onChange={handleChange}
                     error={errors.birthdate}
                     max={new Date().toISOString().split('T')[0]}
-                    disabled={isEdit}
                     className="h-[42px]"
                     required
                   />
@@ -1017,7 +1016,6 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                       { value: "Female", label: "Female" },
                       { value: "Other", label: "Other" }
                     ]}
-                    disabled={isEdit} // Correct - gender should be locked
                   />
                 </div>
 
