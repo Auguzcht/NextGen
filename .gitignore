@@ -31,6 +31,8 @@ db_nextgen.sql
 postgre_nextgen.sql
 Reset_DB.sql
 
+changelog.js
+
 *.md
 
 /public/migrations

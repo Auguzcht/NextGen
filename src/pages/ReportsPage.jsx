@@ -36,6 +36,7 @@ const ReportsPage = () => {
     return date.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => {
+    // Set end date to current date
     return new Date().toISOString().split('T')[0];
   });
 
@@ -128,6 +129,9 @@ const ReportsPage = () => {
     try {
       console.log(`Fetching data from ${startDate} to ${endDate}`);
       
+      // Generate analytics for the current date range to ensure data availability
+      await generateAnalyticsForCurrentRange(startDate, endDate);
+      
       // Fetch all data types in parallel
       const [attendanceData, growthData, ageData, rawData, registeredCount, totalStats] = await Promise.all([
         fetchWithCache('attendance', () => fetchAttendanceData(startDate, endDate)),
@@ -135,7 +139,7 @@ const ReportsPage = () => {
         fetchWithCache('age', () => fetchAgeDistributionData(startDate, endDate)),
         fetchWithCache('raw', () => fetchRawAttendanceData(startDate, endDate)),
         fetchWithCache('registered', () => fetchRegisteredChildrenCount(startDate, endDate)),
-        fetchWithCache('totalStats', () => fetchTotalStats()),
+        fetchWithCache('totalStats', () => fetchTotalStats(startDate, endDate)),
       ]);
       
       console.log('Attendance data count:', attendanceData?.length);
@@ -193,6 +197,29 @@ const ReportsPage = () => {
     }
   }, [reportType]);
 
+  // Function to generate analytics for the current date range
+  const generateAnalyticsForCurrentRange = async (start, end) => {
+    console.log(`Generating analytics for date range ${start} to ${end}`);
+    
+    try {
+      const { data, error } = await supabase.rpc('generate_analytics_for_date_range', {
+        p_start_date: start,
+        p_end_date: end
+      });
+      
+      if (error) {
+        console.error('Error generating analytics:', error);
+        throw error;
+      }
+      
+      console.log('Analytics generation result:', data);
+      return data;
+    } catch (error) {
+      console.error('Failed to generate analytics:', error);
+      throw error;
+    }
+  };
+
   // Fix 4: Update API functions to accept date parameters directly
   const fetchAttendanceData = async (start, end) => {
     console.log(`Fetching attendance data from ${start} to ${end}`);
@@ -217,6 +244,7 @@ const ReportsPage = () => {
     }
     
     console.log(`Attendance analytics records found: ${data?.length || 0}`);
+    console.log('Raw analytics data:', data);
     
     // Transform to match expected format
     const result = (data || []).map(record => ({
@@ -226,6 +254,7 @@ const ReportsPage = () => {
       first_timers: record.first_timers
     }));
     
+    console.log('Transformed attendance data:', result);
     console.log(`Attendance summary records: ${result.length}`);
     return result;
   };
@@ -263,10 +292,7 @@ const ReportsPage = () => {
     const { data, error } = await supabase
       .from('attendance_analytics')
       .select(`
-        report_date,
-        service_id,
-        total_attendance,
-        first_timers,
+        *,
         services (service_name)
       `)
       .gte('report_date', start)
@@ -279,30 +305,68 @@ const ReportsPage = () => {
     }
     
     console.log(`Growth analytics records found: ${data?.length || 0}`);
+    console.log('Raw growth data:', data);
     
-    // Group by month and service
-    const monthlyData = {};
-    (data || []).forEach(record => {
-      const month = record.report_date.substring(0, 7); // YYYY-MM
-      const key = `${month}_${record.services?.service_name || 'Unknown'}`;
+    if (data && data.length > 0) {
+      console.log('First record keys:', Object.keys(data[0]));
+      console.log('First record full:', data[0]);
       
-      if (!monthlyData[key]) {
-        monthlyData[key] = {
-          month,
-          service_name: record.services?.service_name || 'Unknown',
-          monthly_attendance: 0,
-          new_registrations: 0
-        };
-      }
-      
-      monthlyData[key].monthly_attendance += record.total_attendance;
-      monthlyData[key].new_registrations += record.first_timers;
+      // Test direct access to attendance_growth_percent
+      console.log('Direct access test:', {
+        attendance_growth_percent: data[0].attendance_growth_percent,
+        attendance_growth_percent_type: typeof data[0].attendance_growth_percent,
+        all_growth_values: data.map(r => r.attendance_growth_percent)
+      });
+    }
+    
+    // Debug: Check the attendance_growth_percent values
+    (data || []).forEach((record, index) => {
+      console.log(`Record ${index}:`, {
+        attendance_growth_percent: record.attendance_growth_percent,
+        type: typeof record.attendance_growth_percent,
+        hasField: record.hasOwnProperty('attendance_growth_percent'),
+        fullRecord: record
+      });
     });
     
-    // Convert to array and sort
-    const result = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+    // Use individual records instead of grouping to preserve growth percentages
+    const result = (data || []).map(record => {
+      const growthValue = record.attendance_growth_percent;
+      
+      // Try multiple ways to parse the growth value
+      let parsedGrowth = 0;
+      if (growthValue !== null && growthValue !== undefined) {
+        if (typeof growthValue === 'string') {
+          parsedGrowth = parseFloat(growthValue);
+        } else if (typeof growthValue === 'number') {
+          parsedGrowth = growthValue;
+        }
+      }
+      
+      // Log if growth is still 0 to help debug
+      if (parsedGrowth === 0) {
+        console.log(`Warning: Growth percentage is 0 for service ${record.service_id} on ${record.report_date}`);
+      }
+      
+      console.log(`Parsing growth: "${growthValue}" (${typeof growthValue}) -> ${parsedGrowth}`);
+      
+      return {
+        month: record.report_date.substring(0, 7), // YYYY-MM
+        service_name: record.services?.service_name || 'Unknown',
+        monthly_attendance: record.total_attendance,
+        new_registrations: record.first_timers,
+        growth_percent: parsedGrowth
+      };
+    }).sort((a, b) => {
+      // Sort by month first, then by service name
+      if (a.month !== b.month) {
+        return a.month.localeCompare(b.month);
+      }
+      return a.service_name.localeCompare(b.service_name);
+    });
     
     console.log(`Growth summary records: ${result.length}`);
+    console.log('Growth data with database percentages:', result);
     return result;
   };
 
@@ -398,32 +462,58 @@ const ReportsPage = () => {
     }
   };
 
-  // Add this function to fetch total counts regardless of date range
-  const fetchTotalStats = async () => {
-    console.log('Fetching total stats (regardless of date filters)');
+  // Add this function to fetch total counts based on date range
+  const fetchTotalStats = async (start = null, end = null) => {
+    console.log(`Fetching total stats for date range: ${start || 'all'} to ${end || 'all'}`);
     
     try {
-      // Get total children count (same as Dashboard)
-      const { count: totalChildren, error: childrenError } = await supabase
-        .from('children')
-        .select('*', { count: 'exact', head: true });
+      // Get total children count (filtered by registration date if date range provided)
+      let childrenQuery = supabase.from('children').select('*', { count: 'exact', head: true });
+      
+      if (start && end) {
+        childrenQuery = childrenQuery
+          .gte('registration_date', start)
+          .lte('registration_date', end);
+      }
+      
+      const { count: totalChildren, error: childrenError } = await childrenQuery;
         
       if (childrenError) throw childrenError;
       
-      // Get total attendance count
-      const { count: totalAttendance, error: attendanceError } = await supabase
-        .from('attendance')
-        .select('*', { count: 'exact', head: true });
+      // Get total attendance count (filtered by attendance date if date range provided)
+      let attendanceQuery = supabase.from('attendance').select('*', { count: 'exact', head: true });
+      
+      if (start && end) {
+        attendanceQuery = attendanceQuery
+          .gte('attendance_date', start)
+          .lte('attendance_date', end);
+      }
+      
+      const { count: totalAttendance, error: attendanceError } = await attendanceQuery;
         
       if (attendanceError) throw attendanceError;
       
+      // Get unique children count for the date range
+      let uniqueChildrenQuery = supabase.from('attendance').select('child_id', { count: 'exact', head: true });
+      
+      if (start && end) {
+        uniqueChildrenQuery = uniqueChildrenQuery
+          .gte('attendance_date', start)
+          .lte('attendance_date', end);
+      }
+      
+      const { count: uniqueChildren, error: uniqueError } = await uniqueChildrenQuery;
+      
+      if (uniqueError) throw uniqueError;
+      
       return {
         totalChildren: totalChildren || 0,
-        totalAttendance: totalAttendance || 0
+        totalAttendance: totalAttendance || 0,
+        uniqueChildren: uniqueChildren || 0
       };
     } catch (err) {
       console.error('Error fetching total stats:', err);
-      return { totalChildren: 0, totalAttendance: 0 };
+      return { totalChildren: 0, totalAttendance: 0, uniqueChildren: 0 };
     }
   };
 
@@ -1374,9 +1464,13 @@ const ReportsPage = () => {
   // Add this function to your ReportsPage component
   const updateChartData = useCallback((type, attendanceData, growthData, ageData) => {
     console.log('Updating chart data for:', type);
+    console.log('Attendance data for chart:', attendanceData);
+    console.log('Growth data for chart:', growthData);
+    console.log('Age data for chart:', ageData);
     
     if (type === 'attendance') {
       const groupedData = groupDataByTimeRange(attendanceData, 'attendance_date', 'total_children');
+      console.log('Grouped data for attendance chart:', groupedData);
       
       setChartData({
         labels: groupedData.map(item => item.label),
@@ -1436,12 +1530,16 @@ const ReportsPage = () => {
       // For age distribution chart
       const ageGroups = {};
       
+      console.log('Age data for chart:', ageData);
+      
       ageData.forEach(item => {
         if (!ageGroups[item.age_category]) {
           ageGroups[item.age_category] = 0;
         }
-        ageGroups[item.age_category] += item.attendance_count;
+        ageGroups[item.age_category] += item.count; // Fixed: was item.attendance_count
       });
+      
+      console.log('Processed age groups:', ageGroups);
       
       // NextGen theme colors for age groups
       const backgroundColors = [
@@ -1565,25 +1663,35 @@ const ReportsPage = () => {
 
   // Generate data and stats for service comparison chart
   const generateServiceStats = (serviceData) => {
+    console.log('generateServiceStats called with:', serviceData);
+    
     if (!serviceData || serviceData.length === 0) {
+      console.log('No service data available');
       return { topService: null, fastestGrowing: null };
     }
     
     // Get unique services
     const services = [...new Set(serviceData.map(item => item.service_name))];
+    console.log('Unique services found:', services);
     
     // Aggregate data by service
     const serviceStats = services.map(service => {
       const serviceItems = serviceData.filter(item => item.service_name === service);
       const total = serviceItems.reduce((sum, item) => sum + item.monthly_attendance, 0);
       const monthCount = serviceItems.length;
-      const growth = calculateServiceGrowth(serviceItems);
+      
+      // Use the growth percentage from database (should be the same for all records of the same service/date)
+      const latestGrowth = serviceItems.length > 0 
+        ? serviceItems[serviceItems.length - 1].growth_percent || 0
+        : 0;
+      
+      console.log(`Service ${service}: growth = ${latestGrowth}% from ${serviceItems.length} records`);
       
       return {
         service,
         total,
         average: monthCount > 0 ? total / monthCount : 0,
-        growth
+        growth: latestGrowth
       };
     });
     
@@ -1637,12 +1745,18 @@ const ReportsPage = () => {
       const serviceItems = serviceData.filter(item => item.service_name === service);
       const monthCount = serviceItems.length;
       const total = serviceItems.reduce((sum, item) => sum + item.monthly_attendance, 0);
-      const growth = calculateServiceGrowth(serviceItems);
+      
+      // Use the latest growth percentage from database instead of calculating
+      const latestGrowth = serviceItems.length > 0 
+        ? serviceItems[serviceItems.length - 1].growth_percent || 0
+        : 0;
+      
+      console.log(`Service comparison - ${service}: growth = ${latestGrowth}%`);
       
       return {
         service,
         average: monthCount > 0 ? Math.round(total / monthCount) : 0,
-        growth
+        growth: latestGrowth
       };
     });
     
@@ -2024,7 +2138,7 @@ const ReportsPage = () => {
             </svg>
           </div>
           <div className="ml-5">
-            <p className="text-sm font-medium text-gray-500">Total Children</p>
+            <p className="text-sm font-medium text-gray-500">Children</p>
             <p className="text-2xl font-semibold text-nextgen-blue-dark">
               {loading ? (
                 <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
@@ -2032,7 +2146,7 @@ const ReportsPage = () => {
                 reportData.totalStats?.totalChildren || 0
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">All children</p>
+            <p className="text-xs text-gray-500 mt-1">In date range</p>
           </div>
         </div>
       </div>
@@ -2092,7 +2206,7 @@ const ReportsPage = () => {
                 reportData.attendance?.reduce((sum, item) => sum + item.total_children, 0) || 0
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">All check-ins</p>
+            <p className="text-xs text-gray-500 mt-1">In date range</p>
           </div>
         </div>
       </div>

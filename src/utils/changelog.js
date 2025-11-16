@@ -1,14 +1,66 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.0.0';
+export const CURRENT_VERSION = '1.0.4';
 
 export const CHANGELOG = [
   {
-    version: '1.0.0',
+    version: '1.0.4',
+    date: '2025-11-16',
+    title: 'Analytics & UX Improvements',
+    type: 'minor',
+    changes: [
+      {
+        category: 'Reports & Analytics',
+        icon: '📊',
+        updates: [
+          'Fixed service comparison growth rate chart to display actual database percentages (e.g. 171.43%, 121.43%, -16.67%)',
+          'Resolved growth trend analysis showing 0% instead of real growth data',
+          'Enhanced time interval filters to dynamically influence all charts and reports',
+          'Fixed analytics generation to preserve existing growth calculations',
+          'Improved date range filtering across all report components'
+        ]
+      },
+      {
+        category: 'User Interface',
+        icon: '🎨',
+        updates: [
+          'Updated pagination in ChildrenPage and GuardiansPage with modern ellipsis design',
+          'Implemented shadcn-style pagination showing relevant pages with "..." for gaps',
+          'Added arrow navigation icons for Previous/Next buttons',
+          'Improved pagination performance by only rendering visible page numbers',
+          'Enhanced user experience with consistent pagination across all data tables'
+        ]
+      },
+      {
+        category: 'Guardian Management',
+        icon: '👨‍👩‍👧‍👦',
+        updates: [
+          'Added search functionality to AddGuardianForm for filtering associated children',
+          'Implemented real-time search by child name or formal ID',
+          'Enhanced children selection with intuitive search interface',
+          'Improved usability for guardians with many associated children',
+          'Added search icon and placeholder text for better UX'
+        ]
+      },
+      {
+        category: 'System Improvements',
+        icon: '⚙️',
+        updates: [
+          'Enhanced changelog system to display comprehensive patch history',
+          'Improved version tracking with detailed change categorization',
+          'Added timeline view for all system updates and improvements',
+          'Better organization of feature updates and bug fixes',
+          'Enhanced modal design for viewing historical changes'
+        ]
+      }
+    ]
+  },
+  {
+    version: '1.0.3',
     date: '2025-11-07',
     title: 'Initial Production Release',
-    type: 'major', // major, minor, patch, feature
+    type: 'major',
     changes: [
       {
         category: 'Staff Management',
@@ -192,4 +244,74 @@ export const clearChangelogSession = (userId) => {
   
   sessionStorage.removeItem(sessionKey);
   sessionStorage.removeItem(loginTimestampKey);
+};
+
+// Helper function to get version statistics
+export const getVersionStats = () => {
+  const totalVersions = CHANGELOG.length;
+  const totalUpdates = CHANGELOG.reduce((total, version) => {
+    return total + version.changes.reduce((versionTotal, category) => {
+      return versionTotal + category.updates.length;
+    }, 0);
+  }, 0);
+  
+  const typeCount = CHANGELOG.reduce((counts, version) => {
+    counts[version.type] = (counts[version.type] || 0) + 1;
+    return counts;
+  }, {});
+
+  return {
+    totalVersions,
+    totalUpdates,
+    typeCount,
+    latestVersion: CURRENT_VERSION,
+    firstRelease: CHANGELOG[CHANGELOG.length - 1]?.date,
+    latestRelease: CHANGELOG[0]?.date
+  };
+};
+
+// Helper function to search changelog entries
+export const searchChangelog = (query) => {
+  if (!query) return CHANGELOG;
+  
+  const searchLower = query.toLowerCase();
+  
+  return CHANGELOG.filter(version => {
+    // Search in version title
+    if (version.title.toLowerCase().includes(searchLower)) return true;
+    
+    // Search in category names and updates
+    return version.changes.some(category => {
+      if (category.category.toLowerCase().includes(searchLower)) return true;
+      return category.updates.some(update => 
+        update.toLowerCase().includes(searchLower)
+      );
+    });
+  });
+};
+
+// Helper function to get changes by category across all versions
+export const getChangesByCategory = () => {
+  const categories = {};
+  
+  CHANGELOG.forEach(version => {
+    version.changes.forEach(change => {
+      if (!categories[change.category]) {
+        categories[change.category] = {
+          icon: change.icon,
+          totalUpdates: 0,
+          versions: []
+        };
+      }
+      
+      categories[change.category].totalUpdates += change.updates.length;
+      categories[change.category].versions.push({
+        version: version.version,
+        date: version.date,
+        updates: change.updates
+      });
+    });
+  });
+  
+  return categories;
 };

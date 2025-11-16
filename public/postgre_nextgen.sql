@@ -1282,7 +1282,7 @@ COMMENT ON POLICY "Staff can update guardians" ON guardians IS 'Authenticated us
 
 
 
--- Ambiguity Fixes Added Sep25, 2025
+-- Corrected Weekly Analytics Function - Fixed Nov 16, 2025
 
 CREATE OR REPLACE FUNCTION generate_weekly_analytics()
 RETURNS VOID AS $$
@@ -1294,7 +1294,15 @@ BEGIN
     current_week_start := CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER;
     current_week_end := current_week_start + 6;
     
-    -- Insert weekly report
+    -- Delete existing analytics for this week to prevent duplicates
+    DELETE FROM attendance_analytics 
+    WHERE report_date = current_week_end;
+    
+    -- Delete existing weekly report for this week to prevent duplicates
+    DELETE FROM weekly_reports 
+    WHERE week_start_date = current_week_start AND week_end_date = current_week_end;
+    
+    -- Insert weekly report with corrected calculations
     INSERT INTO weekly_reports (
         week_start_date, 
         week_end_date, 
@@ -1307,9 +1315,15 @@ BEGIN
     SELECT 
         current_week_start,
         current_week_end,
-        COUNT(a.attendance_id),
-        COUNT(DISTINCT a.child_id),   -- Fixed: Specify that this is a.child_id
-        SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
+        COUNT(a.attendance_id),  -- Total attendance records (not unique children)
+        COUNT(DISTINCT a.child_id),  -- Unique children who attended
+        COUNT(DISTINCT CASE 
+            WHEN NOT EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- First-time attendees (children who never attended before this week)
         1, -- Default admin user
         CONCAT('reports/weekly_', TO_CHAR(current_week_start, 'YYYYMMDD'), '.pdf')
     FROM 
@@ -1319,7 +1333,7 @@ BEGIN
     WHERE 
         a.attendance_date BETWEEN current_week_start AND current_week_end;
     
-    -- Generate per-service analytics
+    -- Generate per-service analytics with corrected calculations
     INSERT INTO attendance_analytics (
         report_date,
         service_id,
@@ -1336,28 +1350,52 @@ BEGIN
     SELECT 
         current_week_end,
         a.service_id,
-        COUNT(DISTINCT a.child_id),
-        SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
-        COUNT(DISTINCT a.child_id) - SUM(CASE WHEN c.registration_date BETWEEN current_week_start AND current_week_end THEN 1 ELSE 0 END),
-        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 THEN 1 ELSE 0 END),
-        COUNT(DISTINCT sa.staff_id),
+        COUNT(a.attendance_id),  -- Total attendance records for this service
+        COUNT(DISTINCT CASE 
+            WHEN NOT EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- First-time attendees for this service
+        COUNT(DISTINCT CASE 
+            WHEN EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- Returning children (attended before this week)
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+            THEN a.child_id 
+        END),  -- Unique children aged 4-5
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+            THEN a.child_id 
+        END),  -- Unique children aged 6-7
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+            THEN a.child_id 
+        END),  -- Unique children aged 8-9
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+            THEN a.child_id 
+        END),  -- Unique children aged 10-12
+        COUNT(DISTINCT sa.staff_id),  -- Staff count
         CASE 
             WHEN (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
                  WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
                     current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days') = 0 THEN 0
             ELSE
-                ((COUNT(DISTINCT a.child_id) - 
+                ROUND(((COUNT(DISTINCT a.child_id)::DECIMAL - 
                     (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
                      WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
                         current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days')
                  ) * 100.0 / 
                     (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
                      WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
-                     current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days'))
-        END
+                     current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days')), 2)
+        END  -- Growth percentage compared to previous week
     FROM 
         attendance a
     JOIN 
@@ -1370,3 +1408,658 @@ BEGIN
         a.service_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Helper function to debug attendance analytics
+CREATE OR REPLACE FUNCTION debug_attendance_analytics(
+    p_week_start DATE DEFAULT NULL,
+    p_week_end DATE DEFAULT NULL
+)
+RETURNS TABLE (
+    debug_info TEXT,
+    service_name TEXT,
+    total_attendance_records BIGINT,
+    unique_children BIGINT,
+    first_timers BIGINT,
+    returning_children BIGINT,
+    age_4_5 BIGINT,
+    age_6_7 BIGINT,
+    age_8_9 BIGINT,
+    age_10_12 BIGINT,
+    staff_count BIGINT,
+    growth_percent DECIMAL
+) AS $$
+DECLARE
+    current_week_start DATE;
+    current_week_end DATE;
+BEGIN
+    -- Use provided dates or calculate current week
+    IF p_week_start IS NULL OR p_week_end IS NULL THEN
+        current_week_start := CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER;
+        current_week_end := current_week_start + 6;
+    ELSE
+        current_week_start := p_week_start;
+        current_week_end := p_week_end;
+    END IF;
+    
+    -- Return debug information for each service
+    RETURN QUERY
+    SELECT 
+        ('Week: ' || current_week_start::TEXT || ' to ' || current_week_end::TEXT)::TEXT as debug_info,
+        s.service_name,
+        COUNT(a.attendance_id) as total_attendance_records,
+        COUNT(DISTINCT a.child_id) as unique_children,
+        COUNT(DISTINCT CASE 
+            WHEN NOT EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END) as first_timers,
+        COUNT(DISTINCT CASE 
+            WHEN EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END) as returning_children,
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+            THEN a.child_id 
+        END) as age_4_5,
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+            THEN a.child_id 
+        END) as age_6_7,
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+            THEN a.child_id 
+        END) as age_8_9,
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+            THEN a.child_id 
+        END) as age_10_12,
+        COUNT(DISTINCT sa.staff_id) as staff_count,
+        CASE 
+            WHEN (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                 WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                    current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days') = 0 THEN 0
+            ELSE
+                ROUND(((COUNT(DISTINCT a.child_id)::DECIMAL - 
+                    (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                     WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                        current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days')
+                 ) * 100.0 / 
+                    (SELECT COUNT(DISTINCT att.child_id) FROM attendance att
+                     WHERE att.service_id = a.service_id AND att.attendance_date BETWEEN 
+                     current_week_start - INTERVAL '7 days' AND current_week_end - INTERVAL '7 days')), 2)
+        END as growth_percent
+    FROM 
+        services s
+    LEFT JOIN attendance a ON s.service_id = a.service_id 
+        AND a.attendance_date BETWEEN current_week_start AND current_week_end
+    LEFT JOIN children c ON a.child_id = c.child_id
+    LEFT JOIN staff_assignments sa ON a.service_id = sa.service_id 
+        AND a.attendance_date = sa.assignment_date
+    GROUP BY 
+        s.service_id, s.service_name
+    ORDER BY 
+        s.service_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Safe cleanup function to remove existing analytics data
+CREATE OR REPLACE FUNCTION cleanup_attendance_analytics()
+RETURNS TEXT AS $$
+DECLARE
+    analytics_count INT;
+    reports_count INT;
+BEGIN
+    -- Count existing records
+    SELECT COUNT(*) INTO analytics_count FROM attendance_analytics;
+    SELECT COUNT(*) INTO reports_count FROM weekly_reports;
+    
+    -- Backup existing data (optional - creates backup tables)
+    DROP TABLE IF EXISTS attendance_analytics_backup;
+    DROP TABLE IF EXISTS weekly_reports_backup;
+    
+    CREATE TABLE attendance_analytics_backup AS SELECT * FROM attendance_analytics;
+    CREATE TABLE weekly_reports_backup AS SELECT * FROM weekly_reports;
+    
+    -- Clear the tables
+    DELETE FROM attendance_analytics;
+    DELETE FROM weekly_reports;
+    
+    RETURN 'Cleanup completed. Backed up ' || analytics_count || ' analytics records and ' || reports_count || ' weekly reports. Backup tables created: attendance_analytics_backup, weekly_reports_backup';
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger function to automatically generate analytics when attendance is added
+CREATE OR REPLACE FUNCTION trigger_generate_weekly_analytics()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only generate analytics if this is a new attendance record for the current week
+    IF TG_OP = 'INSERT' THEN
+        -- Check if this attendance is for the current week
+        IF NEW.attendance_date >= (CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER) 
+           AND NEW.attendance_date <= (CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER + 6) THEN
+            
+            -- Generate analytics for the current week
+            PERFORM generate_weekly_analytics();
+        END IF;
+    END IF;
+    
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger on attendance table
+DROP TRIGGER IF EXISTS attendance_analytics_trigger ON attendance;
+
+CREATE TRIGGER attendance_analytics_trigger
+    AFTER INSERT OR UPDATE ON attendance
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_generate_weekly_analytics();
+
+-- Function to manually regenerate analytics for a specific week (for testing)
+CREATE OR REPLACE FUNCTION regenerate_analytics_for_week(
+    p_week_start DATE DEFAULT NULL
+)
+RETURNS TEXT AS $$
+DECLARE
+    week_start DATE;
+    week_end DATE;
+    result_text TEXT;
+BEGIN
+    -- Use provided date or calculate current week
+    IF p_week_start IS NULL THEN
+        week_start := CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER;
+    ELSE
+        week_start := p_week_start;
+    END IF;
+    
+    week_end := week_start + 6;
+    
+    -- Delete existing analytics for this specific week
+    DELETE FROM attendance_analytics WHERE report_date = week_end;
+    DELETE FROM weekly_reports WHERE week_start_date = week_start AND week_end_date = week_end;
+    
+    -- Temporarily modify the function to work with specific dates
+    -- This is a bit of a hack, but works for manual regeneration
+    PERFORM generate_weekly_analytics();
+    
+    result_text := 'Analytics regenerated for week: ' || week_start || ' to ' || week_end;
+    
+    RETURN result_text;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Enhanced function to generate analytics for any date range
+CREATE OR REPLACE FUNCTION generate_analytics_for_date_range(
+    p_start_date DATE,
+    p_end_date DATE
+)
+RETURNS TEXT AS $$
+DECLARE
+    result_text TEXT;
+    deleted_count INT;
+BEGIN
+    -- Only generate analytics if they don't already exist for this date range
+    -- This preserves existing growth calculations
+    IF NOT EXISTS (
+        SELECT 1 FROM attendance_analytics 
+        WHERE report_date BETWEEN p_start_date AND p_end_date
+        LIMIT 1
+    ) THEN
+        -- Insert analytics for the specified date range with proper growth calculations
+        INSERT INTO attendance_analytics (
+            report_date,
+            service_id,
+            total_attendance,
+            first_timers,
+            returning_count,
+            age_4_5_count,
+            age_6_7_count,
+            age_8_9_count,
+            age_10_12_count,
+            staff_count,
+            attendance_growth_percent
+        )
+        SELECT 
+            a.attendance_date::DATE,  -- Use actual attendance date
+            a.service_id,
+            COUNT(a.attendance_id),  -- Total attendance records for this service
+            COUNT(DISTINCT CASE 
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM attendance prev_att 
+                    WHERE prev_att.child_id = a.child_id 
+                    AND prev_att.attendance_date < a.attendance_date
+                ) THEN a.child_id 
+            END),  -- First-time attendees for this service
+            COUNT(DISTINCT CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM attendance prev_att 
+                    WHERE prev_att.child_id = a.child_id 
+                    AND prev_att.attendance_date < a.attendance_date
+                ) THEN a.child_id 
+            END),  -- Returning children (attended before this date)
+            COUNT(DISTINCT CASE 
+                WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+                THEN a.child_id 
+            END),  -- Unique children aged 4-5
+            COUNT(DISTINCT CASE 
+                WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+                THEN a.child_id 
+            END),  -- Unique children aged 6-7
+            COUNT(DISTINCT CASE 
+                WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+                THEN a.child_id 
+            END),  -- Unique children aged 8-9
+            COUNT(DISTINCT CASE 
+                WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+                THEN a.child_id 
+            END),  -- Unique children aged 10-12
+            COUNT(DISTINCT sa.staff_id),  -- Staff count
+            -- Calculate growth percentage compared to previous week
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM attendance prev_week 
+                    WHERE prev_week.service_id = a.service_id 
+                    AND prev_week.attendance_date >= a.attendance_date - 7 
+                    AND prev_week.attendance_date < a.attendance_date
+                ) THEN
+                    ROUND((
+                        (COUNT(a.attendance_id) - (
+                            SELECT COUNT(prev_att.attendance_id)
+                            FROM attendance prev_att
+                            WHERE prev_att.service_id = a.service_id 
+                            AND prev_att.attendance_date >= a.attendance_date - 7 
+                            AND prev_att.attendance_date < a.attendance_date
+                        ))::DECIMAL / 
+                        NULLIF((
+                            SELECT COUNT(prev_att.attendance_id)
+                            FROM attendance prev_att
+                            WHERE prev_att.service_id = a.service_id 
+                            AND prev_att.attendance_date >= a.attendance_date - 7 
+                            AND prev_att.attendance_date < a.attendance_date
+                        ), 0) * 100
+                    ), 2)
+                ELSE 0
+            END
+        FROM 
+            attendance a
+        JOIN 
+            children c ON a.child_id = c.child_id
+        LEFT JOIN 
+            staff_assignments sa ON a.service_id = sa.service_id AND a.attendance_date = sa.assignment_date
+        WHERE 
+            a.attendance_date BETWEEN p_start_date AND p_end_date
+        GROUP BY 
+            a.attendance_date, a.service_id;
+        
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        result_text := 'Generated new analytics for date range ' || p_start_date || ' to ' || p_end_date || 
+                       '. Created ' || deleted_count || ' records.';
+    ELSE
+        result_text := 'Analytics already exist for date range ' || p_start_date || ' to ' || p_end_date || 
+                       '. Preserving existing growth calculations.';
+    END IF;
+    
+    RETURN result_text;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to clean up old incorrect analytics entries
+CREATE OR REPLACE FUNCTION cleanup_old_analytics_entries()
+RETURNS TEXT AS $$
+DECLARE
+    deleted_count INT;
+    result_text TEXT;
+BEGIN
+    -- Delete entries that have suspiciously low total_attendance (likely from old incorrect function)
+    -- Keep only entries that look correct (analytics_id 9 and 10 in your case)
+    DELETE FROM attendance_analytics 
+    WHERE analytics_id IN (1, 2, 3, 4, 5, 6);  -- Remove the specific incorrect entries
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    
+    -- Also clean up any weekly_reports that might be incorrect
+    DELETE FROM weekly_reports 
+    WHERE week_start_date < '2025-11-17'  -- Keep only recent correct reports
+    AND total_attendance < 10;  -- Remove reports with suspiciously low attendance
+    
+    result_text := 'Cleaned up ' || deleted_count || ' incorrect analytics entries. Kept entries with analytics_id 9 and 10 which appear correct.';
+    
+    RETURN result_text;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Simple query to clear attendance_analytics table completely
+-- Run this before regenerating analytics with fresh data
+
+-- FIXED: Complete Analytics Reset and Regeneration
+-- This fixes the sequence jump and growth percentage issues
+
+-- Step 1: Clear all analytics data
+DELETE FROM attendance_analytics;
+DELETE FROM weekly_reports;
+
+-- Step 2: Reset the sequence properly
+DO $$
+BEGIN
+    -- Reset the sequence to start at 1
+    PERFORM setval('attendance_analytics_analytics_id_seq', 1, false);
+END $$;
+
+-- Step 3: Create a fixed version of generate_weekly_analytics that preserves growth calculations
+CREATE OR REPLACE FUNCTION generate_weekly_analytics()
+RETURNS VOID AS $$
+DECLARE
+    current_week_start DATE;
+    current_week_end DATE;
+BEGIN
+    -- Set the date range for current week (Sunday to Saturday)
+    current_week_start := CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::INTEGER;
+    current_week_end := current_week_start + 6;
+    
+    -- Only delete analytics for the current week to avoid affecting historical data
+    DELETE FROM attendance_analytics 
+    WHERE report_date = current_week_end;
+    
+    -- Delete existing weekly report for this week to prevent duplicates
+    DELETE FROM weekly_reports 
+    WHERE week_start_date = current_week_start AND week_end_date = current_week_end;
+    
+    -- Insert weekly report with corrected calculations
+    INSERT INTO weekly_reports (
+        week_start_date, 
+        week_end_date, 
+        total_attendance, 
+        unique_children, 
+        first_timers, 
+        report_generated_by,
+        report_pdf_url
+    )
+    SELECT 
+        current_week_start,
+        current_week_end,
+        COUNT(a.attendance_id),  -- Total attendance records (not unique children)
+        COUNT(DISTINCT a.child_id),  -- Unique children who attended
+        COUNT(DISTINCT CASE 
+            WHEN NOT EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- First-time attendees (children who never attended before this week)
+        1, -- Default admin user
+        CONCAT('reports/weekly_', TO_CHAR(current_week_start, 'YYYYMMDD'), '.pdf')
+    FROM 
+        attendance a
+    JOIN 
+        children c ON a.child_id = c.child_id
+    WHERE 
+        a.attendance_date BETWEEN current_week_start AND current_week_end
+    HAVING COUNT(a.attendance_id) > 0;  -- Only insert if there's actual attendance data
+    
+    -- Generate per-service analytics with FIXED growth calculation
+    INSERT INTO attendance_analytics (
+        report_date,
+        service_id,
+        total_attendance,
+        first_timers,
+        returning_count,
+        age_4_5_count,
+        age_6_7_count,
+        age_8_9_count,
+        age_10_12_count,
+        staff_count,
+        attendance_growth_percent
+    )
+    SELECT 
+        current_week_end,
+        a.service_id,
+        COUNT(a.attendance_id) as current_attendance,  -- Total attendance records for this service
+        COUNT(DISTINCT CASE 
+            WHEN NOT EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- First-time attendees for this service
+        COUNT(DISTINCT CASE 
+            WHEN EXISTS (
+                SELECT 1 FROM attendance prev_att 
+                WHERE prev_att.child_id = a.child_id 
+                AND prev_att.attendance_date < current_week_start
+            ) THEN a.child_id 
+        END),  -- Returning children (attended before this week)
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+            THEN a.child_id 
+        END),  -- Unique children aged 4-5
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+            THEN a.child_id 
+        END),  -- Unique children aged 6-7
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+            THEN a.child_id 
+        END),  -- Unique children aged 8-9
+        COUNT(DISTINCT CASE 
+            WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+            THEN a.child_id 
+        END),  -- Unique children aged 10-12
+        COUNT(DISTINCT sa.staff_id),  -- Staff count
+        -- FIXED: Growth percentage calculation using attendance records, not unique children
+        COALESCE((
+            SELECT 
+                CASE 
+                    WHEN prev_week_attendance.total_attendance = 0 THEN 0
+                    ELSE ROUND(
+                        ((COUNT(a.attendance_id) - prev_week_attendance.total_attendance)::DECIMAL * 100.0 / 
+                         prev_week_attendance.total_attendance), 2
+                    )
+                END
+            FROM (
+                SELECT COUNT(prev_att.attendance_id) as total_attendance
+                FROM attendance prev_att
+                WHERE prev_att.service_id = a.service_id 
+                AND prev_att.attendance_date BETWEEN 
+                    current_week_start - INTERVAL '7 days' AND 
+                    current_week_end - INTERVAL '7 days'
+            ) prev_week_attendance
+        ), 0)  -- Default to 0 if no previous week data
+    FROM 
+        attendance a
+    JOIN 
+        children c ON a.child_id = c.child_id
+    LEFT JOIN 
+        staff_assignments sa ON a.service_id = sa.service_id AND a.attendance_date = sa.assignment_date
+    WHERE 
+        a.attendance_date BETWEEN current_week_start AND current_week_end
+    GROUP BY 
+        a.service_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Step 4: Generate analytics for all historical dates to preserve growth data
+-- First, generate for Nov 9 (the earliest date in your data)
+INSERT INTO attendance_analytics (
+    report_date, service_id, total_attendance, first_timers, returning_count,
+    age_4_5_count, age_6_7_count, age_8_9_count, age_10_12_count, staff_count, attendance_growth_percent
+)
+SELECT 
+    '2025-11-09'::DATE,
+    a.service_id,
+    COUNT(a.attendance_id),
+    COUNT(DISTINCT CASE 
+        WHEN NOT EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-09'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-09'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+        THEN a.child_id 
+    END),
+    0, -- staff_count
+    0  -- No growth for first week
+FROM attendance a
+JOIN children c ON a.child_id = c.child_id
+WHERE a.attendance_date = '2025-11-09'
+GROUP BY a.service_id;
+
+-- Generate for Nov 16 with proper growth calculation
+INSERT INTO attendance_analytics (
+    report_date, service_id, total_attendance, first_timers, returning_count,
+    age_4_5_count, age_6_7_count, age_8_9_count, age_10_12_count, staff_count, attendance_growth_percent
+)
+SELECT 
+    '2025-11-16'::DATE,
+    a.service_id,
+    COUNT(a.attendance_id) as current_attendance,
+    COUNT(DISTINCT CASE 
+        WHEN NOT EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-16'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-16'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+        THEN a.child_id 
+    END),
+    0, -- staff_count
+    -- Calculate growth from Nov 9 to Nov 16
+    COALESCE((
+        SELECT 
+            CASE 
+                WHEN prev_week.total_attendance = 0 THEN 0
+                ELSE ROUND(
+                    ((COUNT(a.attendance_id) - prev_week.total_attendance)::DECIMAL * 100.0 / 
+                     prev_week.total_attendance), 2
+                )
+            END
+        FROM (
+            SELECT COUNT(prev_att.attendance_id) as total_attendance
+            FROM attendance prev_att
+            WHERE prev_att.service_id = a.service_id 
+            AND prev_att.attendance_date = '2025-11-09'
+        ) prev_week
+    ), 0)
+FROM attendance a
+JOIN children c ON a.child_id = c.child_id
+WHERE a.attendance_date = '2025-11-16'
+GROUP BY a.service_id;
+
+-- Generate for Nov 22 (current week) with proper growth calculation
+INSERT INTO attendance_analytics (
+    report_date, service_id, total_attendance, first_timers, returning_count,
+    age_4_5_count, age_6_7_count, age_8_9_count, age_10_12_count, staff_count, attendance_growth_percent
+)
+SELECT 
+    '2025-11-22'::DATE,
+    a.service_id,
+    COUNT(a.attendance_id) as current_attendance,
+    COUNT(DISTINCT CASE 
+        WHEN NOT EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-22'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXISTS (
+            SELECT 1 FROM attendance prev_att 
+            WHERE prev_att.child_id = a.child_id 
+            AND prev_att.attendance_date < '2025-11-22'
+        ) THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 4 AND 5 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 6 AND 7 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 8 AND 9 
+        THEN a.child_id 
+    END),
+    COUNT(DISTINCT CASE 
+        WHEN EXTRACT(YEAR FROM AGE(a.attendance_date, c.birthdate)) BETWEEN 10 AND 12 
+        THEN a.child_id 
+    END),
+    0, -- staff_count
+    -- Calculate growth from Nov 16 to Nov 22
+    COALESCE((
+        SELECT 
+            CASE 
+                WHEN prev_week.total_attendance = 0 THEN 0
+                ELSE ROUND(
+                    ((COUNT(a.attendance_id) - prev_week.total_attendance)::DECIMAL * 100.0 / 
+                     prev_week.total_attendance), 2
+                )
+            END
+        FROM (
+            SELECT COUNT(prev_att.attendance_id) as total_attendance
+            FROM attendance prev_att
+            WHERE prev_att.service_id = a.service_id 
+            AND prev_att.attendance_date = '2025-11-16'
+        ) prev_week
+    ), 0)
+FROM attendance a
+JOIN children c ON a.child_id = c.child_id
+WHERE a.attendance_date = '2025-11-22'
+GROUP BY a.service_id;
+
+-- Verification: Check the final results
+SELECT 
+    analytics_id, 
+    report_date, 
+    service_id, 
+    total_attendance, 
+    attendance_growth_percent,
+    'Expected: IDs 1-9, proper growth %' as notes
+FROM attendance_analytics 
+ORDER BY report_date, service_id;

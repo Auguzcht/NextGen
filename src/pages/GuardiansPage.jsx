@@ -318,8 +318,44 @@ const GuardiansPage = () => {
     }
   ];
 
-  // Render pagination controls
+  // Modern pagination with ellipsis (shadcn style)
   const renderPagination = () => {
+    const getVisiblePages = () => {
+      const delta = 2; // Number of pages to show on each side of current page
+      const range = [];
+      const rangeWithDots = [];
+
+      // Always show first page
+      range.push(1);
+
+      // Add pages around current page
+      for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+        range.push(i);
+      }
+
+      // Always show last page if more than 1 page
+      if (totalPages > 1) {
+        range.push(totalPages);
+      }
+
+      // Remove duplicates and sort
+      const uniqueRange = [...new Set(range)].sort((a, b) => a - b);
+
+      // Add ellipsis where needed
+      let prev = 0;
+      for (const page of uniqueRange) {
+        if (page - prev === 2) {
+          rangeWithDots.push(prev + 1);
+        } else if (page - prev !== 1) {
+          rangeWithDots.push('...');
+        }
+        rangeWithDots.push(page);
+        prev = page;
+      }
+
+      return rangeWithDots;
+    };
+
     return (
       <div className="flex items-center justify-between mt-4">
         <div>
@@ -331,25 +367,35 @@ const GuardiansPage = () => {
             of <span className="font-medium">{totalPages * itemsPerPage}</span> results
           </p>
         </div>
-        <div className="flex space-x-1">
+        <div className="flex items-center space-x-1">
           <Button
             variant="outline"
             size="sm"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}
+            className="px-3 py-2"
           >
-            Previous
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </Button>
           
-          {[...Array(totalPages)].map((_, i) => (
-            <Button
-              key={i}
-              variant={currentPage === i + 1 ? "primary" : "outline"}
-              size="sm"
-              onClick={() => handlePageChange(i + 1)}
-            >
-              {i + 1}
-            </Button>
+          {getVisiblePages().map((page, index) => (
+            page === '...' ? (
+              <span key={`ellipsis-${index}`} className="px-3 py-2 text-nextgen-blue-dark">
+                ...
+              </span>
+            ) : (
+              <Button
+                key={page}
+                variant={currentPage === page ? "primary" : "outline"}
+                size="sm"
+                onClick={() => handlePageChange(page)}
+                className="min-w-[40px] px-3 py-2"
+              >
+                {page}
+              </Button>
+            )
           ))}
           
           <Button
@@ -357,8 +403,11 @@ const GuardiansPage = () => {
             size="sm"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
+            className="px-3 py-2"
           >
-            Next
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </Button>
         </div>
       </div>
