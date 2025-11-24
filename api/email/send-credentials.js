@@ -14,41 +14,26 @@ const supabaseAdmin = createClient(
 
 export default async function handler(req, res) {
   // Set CORS headers
-  const headers = {
-    'Access-Control-Allow-Credentials': true,
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Content-Type': 'application/json'
-  };
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   // Handle OPTIONS request
   if (req.method === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({})
-    };
+    return res.status(200).end();
   }
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method not allowed' })
-    };
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const { staffMembers, eventType = 'new_account' } = req.body;
 
     if (!staffMembers || !Array.isArray(staffMembers) || staffMembers.length === 0) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'No staff members provided' })
-      };
+      return res.status(400).json({ error: 'No staff members provided' });
     }
 
     // Get email configuration from database
@@ -60,11 +45,7 @@ export default async function handler(req, res) {
 
     if (configError || !emailConfig) {
       console.error('Error fetching email config:', configError);
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'Email configuration not found' })
-      };
+      return res.status(500).json({ error: 'Email configuration not found' });
     }
 
     // Event type configurations
@@ -180,28 +161,20 @@ export default async function handler(req, res) {
       }
     }
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        message: `Sent ${results.success.length} out of ${results.total} emails`,
-        successCount: results.success.length,
-        failureCount: results.failed.length,
-        results: results.success,
-        errors: results.failed.map(f => `${f.name} (${f.email}): ${f.error}`)
-      })
-    };
+    return res.status(200).json({
+      success: true,
+      message: `Sent ${results.success.length} out of ${results.total} emails`,
+      successCount: results.success.length,
+      failureCount: results.failed.length,
+      results: results.success,
+      errors: results.failed.map(f => `${f.name} (${f.email}): ${f.error}`)
+    });
   } catch (error) {
     console.error('Error in send-credentials:', error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: 'Internal server error',
-        message: error.message
-      })
-    };
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
   }
 };

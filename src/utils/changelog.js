@@ -1,9 +1,50 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.0.5';
+export const CURRENT_VERSION = '1.0.6';
 
 export const CHANGELOG = [
+  {
+    version: '1.0.6',
+    date: '2025-11-24',
+    title: 'Password Reset & Production Email Fix',
+    type: 'patch',
+    changes: [
+      {
+        category: 'Bug Fixes',
+        icon: '🐛',
+        updates: [
+          'Fixed password reset flow - users now see reset form instead of auto-login',
+          'Corrected PublicRoute logic to allow authenticated sessions on /reset-password page',
+          'Added automatic sign-out after password reset to ensure new password must be used',
+          'Fixed production send-credentials API returning 500 error',
+          'Corrected Vercel serverless function to use res.status().json() instead of object return',
+          'Resolved "Request failed with status code 500" error on production domain'
+        ]
+      },
+      {
+        category: 'Authentication',
+        icon: '🔐',
+        updates: [
+          'Password reset links now properly display reset form instead of magic link behavior',
+          'Users are automatically logged out after changing password',
+          'Reset password page now correctly handles Supabase recovery tokens',
+          'Improved session handling during password reset flow',
+          'Enhanced token validation with better error messages'
+        ]
+      },
+      {
+        category: 'Email System',
+        icon: '📧',
+        updates: [
+          'Fixed production email sending via Vercel serverless functions',
+          'Corrected API response format for production deployment',
+          'Improved CORS handling in production environment',
+          'Enhanced error logging for email delivery failures'
+        ]
+      }
+    ]
+  },
   {
     version: '1.0.5',
     date: '2025-11-24',
