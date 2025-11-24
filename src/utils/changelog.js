@@ -15,8 +15,8 @@ export const CHANGELOG = [
         icon: '🐛',
         updates: [
           'Fixed critical 500 error in production send-credentials API endpoint',
-          'Corrected response format from serverless function format to Express response methods',
-          'Added proper CORS headers and OPTIONS request handling',
+          'Corrected response format to use Vercel serverless function format (statusCode, headers, body)',
+          'Added proper CORS headers and OPTIONS request handling for Vercel deployment',
           'Resolved "Error sending staff credentials: hQ" error in production environment',
           'Ensured API endpoint works consistently between development and production'
         ]
@@ -25,8 +25,8 @@ export const CHANGELOG = [
         category: 'Email System',
         icon: '📧',
         updates: [
-          'Fixed send-credentials API to use proper res.status().json() format',
-          'Removed incorrect serverless function return format causing production failures',
+          'Fixed send-credentials API to use proper Vercel serverless function return format',
+          'Corrected API response structure for Vercel deployment requirements',
           'Enhanced error handling and response consistency across environments'
         ]
       }
