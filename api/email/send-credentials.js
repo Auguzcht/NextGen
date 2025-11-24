@@ -3,7 +3,6 @@
  * Sends login credentials with password reset links to all staff members with UUID
  */
 
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase admin client
@@ -12,9 +11,25 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
 
+// Validate environment variables
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('[send-credentials] Missing Supabase credentials:', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseServiceKey,
+    env: process.env.NODE_ENV,
+    availableVars: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
+  });
+}
+
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export default async function handler(req, res) {
+  console.log('[send-credentials] Function invoked:', {
+    method: req.method,
+    hasBody: !!req.body,
+    supabaseConfigured: !!(supabaseUrl && supabaseServiceKey)
+  });
+
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,14 +46,31 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Check if Supabase is properly initialized
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('[send-credentials] Supabase not initialized - missing environment variables');
+    return res.status(500).json({
+      error: 'Server configuration error',
+      details: 'Missing Supabase credentials. Please check environment variables in Vercel.'
+    });
+  }
+
   try {
     const { staffMembers, eventType = 'new_account' } = req.body;
 
+    console.log('[send-credentials] Request received:', { 
+      staffCount: staffMembers?.length, 
+      eventType,
+      env: process.env.NODE_ENV 
+    });
+
     if (!staffMembers || !Array.isArray(staffMembers) || staffMembers.length === 0) {
+      console.error('[send-credentials] Invalid staff members:', staffMembers);
       return res.status(400).json({ error: 'No staff members provided' });
     }
 
     // Get email configuration from database
+    console.log('[send-credentials] Fetching email config...');
     const { data: emailConfig, error: configError } = await supabaseAdmin
       .from('email_api_config')
       .select('*')
@@ -46,9 +78,14 @@ export default async function handler(req, res) {
       .single();
 
     if (configError || !emailConfig) {
-      console.error('Error fetching email config:', configError);
-      return res.status(500).json({ error: 'Email configuration not found' });
+      console.error('[send-credentials] Email config error:', configError);
+      return res.status(500).json({ 
+        error: 'Email configuration not found',
+        details: configError?.message 
+      });
     }
+
+    console.log('[send-credentials] Email config found:', { provider: emailConfig.provider });
 
     // Event type configurations
     const eventConfigs = {
@@ -93,10 +130,22 @@ export default async function handler(req, res) {
     // Send email to each staff member using Supabase templates
     for (const staff of staffMembers) {
       try {
-        // Determine redirect URL and method based on event type
-        const redirectUrl = process.env.NODE_ENV === 'production'
-          ? 'https://nextgen-ministry.vercel.app'
-          : 'http://localhost:3002/nextgen';
+        console.log(`[send-credentials] Processing staff: ${staff.email}`);
+        
+        // Determine redirect URL based on environment
+        // VERCEL_URL doesn't include protocol, so we need to add it
+        let redirectUrl;
+        if (process.env.SITE_URL) {
+          redirectUrl = process.env.SITE_URL;
+        } else if (process.env.VERCEL_URL) {
+          redirectUrl = `https://${process.env.VERCEL_URL}`;
+        } else if (process.env.NODE_ENV === 'production') {
+          redirectUrl = 'https://www.nextgen-ccf.org';
+        } else {
+          redirectUrl = 'http://localhost:3002/nextgen';
+        }
+
+        console.log(`[send-credentials] Using redirect URL: ${redirectUrl}`);
 
         if (eventType === 'password_reset' || eventType === 'access_reminder') {
           // Use Supabase's resetPasswordForEmail (sends "Reset Password" template)
@@ -108,7 +157,7 @@ export default async function handler(req, res) {
           );
 
           if (resetError) {
-            console.error(`Failed to send reset email for ${staff.email}:`, resetError);
+            console.error(`[send-credentials] Reset email failed for ${staff.email}:`, resetError);
             results.failed.push({
               email: staff.email,
               name: `${staff.first_name} ${staff.last_name}`,
@@ -117,6 +166,7 @@ export default async function handler(req, res) {
             continue;
           }
 
+          console.log(`[send-credentials] Reset email sent to ${staff.email}`);
           results.success.push({
             email: staff.email,
             name: `${staff.first_name} ${staff.last_name}`,
@@ -138,7 +188,7 @@ export default async function handler(req, res) {
           );
 
           if (inviteError) {
-            console.error(`Failed to send invite for ${staff.email}:`, inviteError);
+            console.error(`[send-credentials] Invite failed for ${staff.email}:`, inviteError);
             results.failed.push({
               email: staff.email,
               name: `${staff.first_name} ${staff.last_name}`,
@@ -147,6 +197,7 @@ export default async function handler(req, res) {
             continue;
           }
 
+          console.log(`[send-credentials] Invite sent to ${staff.email}`);
           results.success.push({
             email: staff.email,
             name: `${staff.first_name} ${staff.last_name}`,
@@ -154,7 +205,7 @@ export default async function handler(req, res) {
           });
         }
       } catch (emailError) {
-        console.error(`Error sending to ${staff.email}:`, emailError);
+        console.error(`[send-credentials] Error sending to ${staff.email}:`, emailError);
         results.failed.push({
           email: staff.email,
           name: `${staff.first_name} ${staff.last_name}`,
@@ -162,6 +213,11 @@ export default async function handler(req, res) {
         });
       }
     }
+
+    console.log('[send-credentials] Results:', { 
+      success: results.success.length, 
+      failed: results.failed.length 
+    });
 
     return res.status(200).json({
       success: true,
@@ -172,11 +228,13 @@ export default async function handler(req, res) {
       errors: results.failed.map(f => `${f.name} (${f.email}): ${f.error}`)
     });
   } catch (error) {
-    console.error('Error in send-credentials:', error);
+    console.error('[send-credentials] Fatal error:', error);
+    console.error('[send-credentials] Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
-      message: error.message
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

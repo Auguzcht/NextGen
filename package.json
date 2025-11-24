@@ -39,6 +39,7 @@
     "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.4.1",
     "react-to-print": "^3.0.5",
+    "resend": "^6.5.2",
     "sweetalert2": "^11.17.2",
     "yup": "^1.6.1"
   },

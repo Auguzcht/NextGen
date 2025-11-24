@@ -17,10 +17,12 @@ export const CHANGELOG = [
           'Fixed password reset flow - users now see reset form instead of auto-login',
           'Corrected PublicRoute logic to allow authenticated sessions on /reset-password page',
           'Added automatic sign-out after password reset to ensure new password must be used',
-          'Fixed critical production API 500 errors caused by VITE_ prefixed environment variables',
+          'Fixed critical production API 500 errors - removed unused Resend import causing module resolution failure',
           'Corrected all API endpoints to use non-VITE prefixed environment variables in production',
           'Fixed Vercel serverless functions to use res.status().json() instead of object return format',
-          'Resolved "Request failed with status code 500" error on production domain'
+          'Added comprehensive logging to all API endpoints for better debugging',
+          'Fixed redirect URLs to use correct production domain (www.nextgen-ccf.org)',
+          'Resolved "Request failed with status code 500" and "hQ" error on production domain'
         ]
       },
       {
