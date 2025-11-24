@@ -17,8 +17,9 @@ export const CHANGELOG = [
           'Fixed password reset flow - users now see reset form instead of auto-login',
           'Corrected PublicRoute logic to allow authenticated sessions on /reset-password page',
           'Added automatic sign-out after password reset to ensure new password must be used',
-          'Fixed production send-credentials API returning 500 error',
-          'Corrected Vercel serverless function to use res.status().json() instead of object return',
+          'Fixed critical production API 500 errors caused by VITE_ prefixed environment variables',
+          'Corrected all API endpoints to use non-VITE prefixed environment variables in production',
+          'Fixed Vercel serverless functions to use res.status().json() instead of object return format',
           'Resolved "Request failed with status code 500" error on production domain'
         ]
       },
@@ -39,8 +40,21 @@ export const CHANGELOG = [
         updates: [
           'Fixed production email sending via Vercel serverless functions',
           'Corrected API response format for production deployment',
+          'Updated all email API endpoints (send-credentials, send-test, send-batch, send-weekly-report, config)',
           'Improved CORS handling in production environment',
-          'Enhanced error logging for email delivery failures'
+          'Enhanced error logging for email delivery failures',
+          'Fixed environment variable access in Vercel deployment'
+        ]
+      },
+      {
+        category: 'Configuration',
+        icon: '⚙️',
+        updates: [
+          'All API endpoints now use SUPABASE_URL instead of VITE_SUPABASE_URL in production',
+          'All API endpoints now use SUPABASE_ANON_KEY instead of VITE_SUPABASE_ANON_KEY in production',
+          'All API endpoints now use SUPABASE_SERVICE_KEY instead of VITE_SUPABASE_SERVICE_KEY in production',
+          'Added fallback to VITE_ prefixed vars for local development compatibility',
+          'Environment variables properly configured for both development and production'
         ]
       }
     ]

@@ -7,10 +7,12 @@ import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase admin client
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY
-);
+// In production (Vercel), use non-VITE prefixed vars
+// In development, fall back to VITE_ prefixed vars
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export default async function handler(req, res) {
   // Set CORS headers
