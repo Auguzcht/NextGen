@@ -1,9 +1,37 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.0.4';
+export const CURRENT_VERSION = '1.0.5';
 
 export const CHANGELOG = [
+  {
+    version: '1.0.5',
+    date: '2025-11-24',
+    title: 'Production API Fix',
+    type: 'patch',
+    changes: [
+      {
+        category: 'Bug Fixes',
+        icon: '🐛',
+        updates: [
+          'Fixed critical 500 error in production send-credentials API endpoint',
+          'Corrected response format from serverless function format to Express response methods',
+          'Added proper CORS headers and OPTIONS request handling',
+          'Resolved "Error sending staff credentials: hQ" error in production environment',
+          'Ensured API endpoint works consistently between development and production'
+        ]
+      },
+      {
+        category: 'Email System',
+        icon: '📧',
+        updates: [
+          'Fixed send-credentials API to use proper res.status().json() format',
+          'Removed incorrect serverless function return format causing production failures',
+          'Enhanced error handling and response consistency across environments'
+        ]
+      }
+    ]
+  },
   {
     version: '1.0.4',
     date: '2025-11-16',

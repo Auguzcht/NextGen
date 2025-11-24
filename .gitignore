@@ -26,13 +26,15 @@ dist-ssr
 # dotenv environment variables file
 .env
 
-# db schema copy
+# Database files and migrations
+*.sql
 db_nextgen.sql
 postgre_nextgen.sql
 Reset_DB.sql
+/migrations/
+/public/migrations/
+**/migrations/**
 
 changelog.js
 
 *.md
-
-/public/migrations
