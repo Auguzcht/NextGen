@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchEmails, validateEmailConfig } from '../utils/emailProviders.js';
+import { createWeeklyReportTemplate } from '../../src/utils/emailTemplates.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -102,14 +103,22 @@ export default async function handler(req, res) {
       .eq('is_active', true)
       .single();
 
-    // Prepare batch email data
+    // Prepare batch email data with standardized template
+    // Parse report data for the template
+    const reportData = {
+      guardianName: 'Guardian', // Will be personalized per recipient
+      weekStart: report.week_start,
+      weekEnd: report.week_end,
+      children: [] // Parse from report.email_html if needed
+    };
+
     const emailData = {
       fromEmail: report.from_email,
       fromName: report.from_name,
       recipients: formattedRecipients,
       subject: report.subject,
-      html: report.email_html,
-      text: 'Please view this email in HTML format for the best experience.'
+      html: createWeeklyReportTemplate(reportData),
+      text: 'Please view this email in HTML format for the best weekly report experience.'
     };
 
     // Send batch emails

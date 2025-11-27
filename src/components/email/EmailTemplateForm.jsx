@@ -4,6 +4,7 @@ import { Input, Button } from '../ui';
 import { motion } from 'framer-motion';
 import Swal from 'sweetalert2';
 import { createPortal } from 'react-dom';
+import { createEmailTemplate } from '../../utils/emailTemplates.js';
 
 const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
   const [formData, setFormData] = useState(() => {
@@ -181,7 +182,7 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
       className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4"
     >
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
@@ -293,43 +294,91 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
               </motion.div>
 
               {/* Email Content Section */}
-              <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-              >
-                <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
-                  Email Content
-                </h3>
-                
-                <Input
-                  type="textarea"
-                  label="HTML Content"
-                  name="body_html"
-                  rows={10}
-                  value={formData.body_html}
-                  onChange={handleInputChange}
-                  error={errors.body_html}
-                  placeholder="<h1>Your HTML content here...</h1>"
-                  helperText="Use HTML tags for formatting. Variables: {child_name}, {guardian_name}"
-                  className="font-mono"
-                  required
-                  animate
-                />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Content Input */}
+                <motion.div 
+                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
+                  <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
+                    Email Content
+                  </h3>
+                  
+                  <Input
+                    type="textarea"
+                    label="HTML Content"
+                    name="body_html"
+                    rows={8}
+                    value={formData.body_html}
+                    onChange={handleInputChange}
+                    error={errors.body_html}
+                    placeholder="<h1>Your HTML content here...</h1>"
+                    helperText="Use HTML tags for formatting. Variables: {child_name}, {guardian_name}"
+                    className="font-mono"
+                    required
+                    animate
+                  />
 
-                <Input
-                  type="textarea"
-                  label="Plain Text Content (Optional)"
-                  name="body_text"
-                  rows={6}
-                  value={formData.body_text}
-                  onChange={handleInputChange}
-                  placeholder="Plain text version of your email..."
-                  helperText="Fallback for email clients that don't support HTML"
-                  animate
-                />
-              </motion.div>
+                  <Input
+                    type="textarea"
+                    label="Plain Text Content (Optional)"
+                    name="body_text"
+                    rows={4}
+                    value={formData.body_text}
+                    onChange={handleInputChange}
+                    placeholder="Plain text version of your email..."
+                    helperText="Fallback for email clients that don't support HTML"
+                    animate
+                  />
+                </motion.div>
+
+                {/* Live Preview */}
+                <motion.div 
+                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm flex flex-col"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                >
+                  <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4">
+                    Live Preview
+                  </h3>
+                  
+                  <div className="bg-gray-50 rounded-lg border flex-1 overflow-hidden">
+                    {formData.template_name || formData.body_html || formData.body_text ? (
+                      <iframe
+                        className="w-full h-full border-0"
+                        srcDoc={createEmailTemplate({
+                          title: formData.template_name || 'Template Preview',
+                          subtitle: formData.template_type ? `${formData.template_type.charAt(0).toUpperCase() + formData.template_type.slice(1)} Template Preview` : 'Template Preview',
+                          content: formData.body_html || formData.body_text?.split('\n').map(line => `<p>${line}</p>`).join('') || '<p>Start typing your content to see the preview...</p>',
+                          footerText: 'This is a template preview - dynamic values will be replaced when emails are sent.',
+                          recipientEmail: 'recipient@example.com'
+                        })}
+                        title="Email Template Preview"
+                        style={{ 
+                          pointerEvents: 'none',
+                          transform: 'scale(0.5)',
+                          transformOrigin: 'top left',
+                          width: '200%',
+                          height: '200%'
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <div className="text-center">
+                          <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <p className="text-sm">Enter content above to see live preview</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              </div>
             </div>
           </form>
         </div>

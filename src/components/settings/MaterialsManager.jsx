@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
+import googleDrive from '../../services/googleDrive.js';
 import MaterialForm from './MaterialForm.jsx';
 import { Button, Badge } from '../ui';
 import { motion } from 'framer-motion';
@@ -50,7 +51,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
   const handleDelete = async (materialId) => {
     const result = await Swal.fire({
       title: 'Delete Material?',
-      text: 'This action cannot be undone. Are you sure?',
+      text: 'This will permanently delete the material and all associated files from Google Drive. This action cannot be undone.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
@@ -63,19 +64,47 @@ const MaterialsManager = ({ ageCategories = [] }) => {
     
     setDeletingId(materialId);
     try {
-      // Soft delete by setting is_active to false
-      const { error } = await supabase
+      // First, get the material to check if it has files to delete
+      const { data: material, error: fetchError } = await supabase
         .from('materials')
-        .update({ is_active: false })
+        .select('file_url, link_type')
+        .eq('material_id', materialId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      // Delete from Google Drive if it's an uploaded file (not external link)
+      if (material.file_url && material.link_type === 'upload') {
+        Swal.fire({
+          title: 'Deleting files...',
+          text: 'Removing files from Google Drive',
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+        
+        try {
+          await googleDrive.deleteMaterialFiles(material.file_url);
+        } catch (driveError) {
+          console.error('Error deleting from Google Drive:', driveError);
+          // Continue with database deletion even if Drive deletion fails
+        }
+      }
+      
+      // Hard delete from database
+      const { error: deleteError } = await supabase
+        .from('materials')
+        .delete()
         .eq('material_id', materialId);
         
-      if (error) throw error;
+      if (deleteError) throw deleteError;
       
       Swal.fire({
         icon: 'success',
         title: 'Deleted!',
-        text: 'Material has been deleted.',
-        timer: 1500
+        text: 'Material and all associated files have been permanently deleted.',
+        timer: 2000
       });
       
       fetchMaterials();
@@ -210,7 +239,18 @@ const MaterialsManager = ({ ageCategories = [] }) => {
                         {getCategoryIcon(material.category)}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{material.title}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-900">{material.title}</div>
+                          {material.link_type === 'external' ? (
+                            <Badge variant="info" size="xs">
+                              External URL
+                            </Badge>
+                          ) : material.file_url && material.file_url.includes('drive.google.com') ? (
+                            <Badge variant="success" size="xs">
+                              Google Drive
+                            </Badge>
+                          ) : null}
+                        </div>
                         {material.description && (
                           <div className="text-xs text-gray-500 line-clamp-1 max-w-xs">{material.description}</div>
                         )}
@@ -243,12 +283,23 @@ const MaterialsManager = ({ ageCategories = [] }) => {
                             variant="ghost"
                             size="xs"
                             icon={
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
+                              material.link_type === 'external' ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              ) : material.file_url.includes('drive.google.com') ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972a6.033 6.033 0 110-12.064c1.498 0 2.866.549 3.921 1.453l2.814-2.814A9.969 9.969 0 0012.545 2C7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.748l-9.426-.013z"/>
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              )
                             }
                           >
-                            Open
+                            {material.link_type === 'external' ? 'Open Link' : material.file_url.includes('drive.google.com') ? 'View' : 'Open'}
                           </Button>
                         </a>
                       )}

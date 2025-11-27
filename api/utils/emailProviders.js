@@ -7,19 +7,24 @@
  * Send email via Resend
  */
 async function sendViaResend(apiKey, emailData) {
+  const emailPayload = {
+    from: `${emailData.fromName} <${emailData.fromEmail}>`,
+    to: emailData.to,
+    subject: emailData.subject,
+    html: emailData.html,
+    text: emailData.text
+  };
+
+  // Note: Attachments are now embedded as links in the HTML content
+  // This provides better compatibility with Google Drive and external links
+
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      from: `${emailData.fromName} <${emailData.fromEmail}>`,
-      to: emailData.to,
-      subject: emailData.subject,
-      html: emailData.html,
-      text: emailData.text
-    })
+    body: JSON.stringify(emailPayload)
   });
 
   if (!response.ok) {

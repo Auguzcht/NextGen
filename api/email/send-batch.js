@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchEmails, validateEmailConfig } from '../utils/emailProviders.js';
+import { createCustomEmailTemplate } from '../../src/utils/emailTemplates.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipients, subject, html, text, templateId } = req.body;
+    const { recipients, subject, html, text, templateId, materialIds } = req.body;
 
     // Validate request
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -45,6 +46,29 @@ export default async function handler(req, res) {
         success: false,
         error: 'Subject and HTML content are required'
       });
+    }
+
+    // Fetch materials to include as links if provided
+    let materials = [];
+    if (materialIds && Array.isArray(materialIds) && materialIds.length > 0) {
+      const { data: materialsData, error: materialError } = await supabase
+        .from('materials')
+        .select(`
+          material_id, 
+          title, 
+          file_url, 
+          category, 
+          description,
+          age_categories (category_name)
+        `)
+        .in('material_id', materialIds)
+        .eq('is_active', true);
+
+      if (materialError) {
+        console.error('Error fetching materials:', materialError);
+      } else if (materialsData && materialsData.length > 0) {
+        materials = materialsData;
+      }
     }
 
     // Get email configuration
@@ -71,14 +95,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prepare batch email data
+    // Prepare batch email data with standardized template including materials
+    const standardizedHtml = createCustomEmailTemplate({
+      subject: subject,
+      htmlContent: html,
+      recipientName: null, // Will be personalized per recipient
+      materials: materials // Pass materials directly to the template
+    });
+
     const emailData = {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
       recipients: recipients,
       subject: subject,
-      html: html,
+      html: standardizedHtml,
       text: text || null
+      // Removed attachments - we're embedding links instead
     };
 
     // Send batch emails
@@ -95,9 +127,10 @@ export default async function handler(req, res) {
         template_id: templateId || null,
         recipient_email: item.email,
         guardian_id: item.guardianId || null,
+        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
         sent_date: new Date().toISOString(),
         status: 'sent',
-        notes: `Message ID: ${item.messageId || 'N/A'}`
+        notes: `Message ID: ${item.messageId || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`
       }));
 
       await supabase
@@ -111,6 +144,7 @@ export default async function handler(req, res) {
         template_id: templateId || null,
         recipient_email: item.email,
         guardian_id: item.guardianId || null,
+        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
         sent_date: new Date().toISOString(),
         status: 'failed',
         notes: `Error: ${item.error}`

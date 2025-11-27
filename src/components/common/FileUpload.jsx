@@ -16,15 +16,18 @@ const FileUpload = ({
   previewClass,
   alt,
   className,
-  mode = 'image' // 'image' or 'file'
+  mode = 'image', // 'image' or 'file'
+  autoReset = false // Auto reset after upload completes
 }) => {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(initialPreview);
   const [imagePath, setImagePath] = useState(initialPath);
   const [fileName, setFileName] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
   const [captureMode, setCaptureMode] = useState('file'); // 'file' or 'camera'
   const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
   const [stream, setStream] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -60,11 +63,25 @@ const FileUpload = ({
       setPreview(url);
       setImagePath(snapshot.ref.fullPath);
       setFileName(file.name);
+      
+      // Show success state
+      setShowSuccess(true);
+      
       onUploadComplete({
         url,
         path: snapshot.ref.fullPath,
         fileName: file.name
       });
+      
+      // Auto reset if enabled (for staging workflows)
+      if (autoReset) {
+        setTimeout(() => {
+          setPreview('');
+          setImagePath('');
+          setFileName('');
+          setShowSuccess(false);
+        }, 800);
+      }
     } catch (error) {
       onUploadError(error);
     } finally {
@@ -74,6 +91,43 @@ const FileUpload = ({
 
   const handleUpload = async (e) => {
     const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > maxSize * 1024 * 1024) {
+      onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      return;
+    }
+
+    await uploadFile(file);
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
     if (!file) return;
 
     if (file.size > maxSize * 1024 * 1024) {
@@ -167,6 +221,7 @@ const FileUpload = ({
       setPreview('');
       setImagePath('');
       setFileName('');
+      setShowSuccess(false);
       onDeleteComplete();
     } catch (error) {
       console.error('Error deleting file:', error);
@@ -174,6 +229,7 @@ const FileUpload = ({
       setPreview('');
       setImagePath('');
       setFileName('');
+      setShowSuccess(false);
       onDeleteComplete();
     }
   };
@@ -404,10 +460,26 @@ const FileUpload = ({
             ) : (
               /* File upload view */
               <motion.div
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-nextgen-blue hover:bg-nextgen-blue/5 transition-colors duration-200"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                onClick={() => !uploading && !showSuccess && fileInputRef.current?.click()}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 transition-all duration-200 ${
+                  isDragging
+                    ? 'border-nextgen-blue bg-nextgen-blue/10 scale-105 shadow-lg'
+                    : showSuccess 
+                    ? 'border-green-400 bg-green-50 cursor-default' 
+                    : uploading
+                    ? 'border-nextgen-blue bg-nextgen-blue/5 cursor-wait'
+                    : 'border-gray-300 hover:border-nextgen-blue hover:bg-nextgen-blue/5 cursor-pointer'
+                }`}
+                animate={{
+                  scale: isDragging ? 1.02 : 1,
+                  borderColor: isDragging ? '#30CEE4' : undefined
+                }}
+                whileHover={!uploading && !showSuccess && !isDragging ? { scale: 1.02 } : {}}
+                whileTap={!uploading && !showSuccess && !isDragging ? { scale: 0.98 } : {}}
               >
                 <input
                   ref={fileInputRef}
@@ -416,7 +488,21 @@ const FileUpload = ({
                   onChange={handleUpload}
                   className="hidden"
                 />
-                {uploading ? (
+                {showSuccess ? (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", duration: 0.5 }}
+                    className="flex flex-col items-center"
+                  >
+                    <div className="p-3 bg-green-500 rounded-full mb-2">
+                      <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-medium text-green-700">Added!</span>
+                  </motion.div>
+                ) : uploading ? (
                   <div className="flex flex-col items-center">
                     <motion.div 
                       className="w-10 h-10 border-4 border-gray-200 border-t-nextgen-blue rounded-full mb-2"
@@ -431,7 +517,16 @@ const FileUpload = ({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center space-y-3">
-                    <div className="p-3 bg-nextgen-blue/10 rounded-full">
+                    <motion.div 
+                      className="p-3 bg-nextgen-blue/10 rounded-full"
+                      animate={{
+                        y: isDragging ? [0, -5, 0] : 0
+                      }}
+                      transition={{
+                        duration: 0.5,
+                        repeat: isDragging ? Infinity : 0
+                      }}
+                    >
                       <svg 
                         className="w-6 h-6 text-nextgen-blue" 
                         fill="none" 
@@ -440,9 +535,14 @@ const FileUpload = ({
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                       </svg>
-                    </div>
+                    </motion.div>
                     <span className="text-sm font-medium text-nextgen-blue">
-                      {mode === 'image' ? 'Click to upload photo' : 'Click to upload file'}
+                      {isDragging 
+                        ? 'Drop file here' 
+                        : mode === 'image' 
+                        ? 'Click or drag to upload photo' 
+                        : 'Click or drag to upload file'
+                      }
                     </span>
                     <span className="text-xs text-gray-500">
                       Maximum file size: {maxSize}MB
@@ -459,3 +559,193 @@ const FileUpload = ({
 };
 
 export default FileUpload;
+
+// Multi-file upload component for materials
+export const MultiFileUpload = ({
+  category,
+  onUploadComplete,
+  onUploadError,
+  accept = '*/*',
+  maxSize = 100,
+  className
+}) => {
+  const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const uploadFiles = async (files) => {
+    const validFiles = Array.from(files).filter(file => {
+      if (file.size > maxSize * 1024 * 1024) {
+        onUploadError(new Error(`${file.name} exceeds ${maxSize}MB limit`));
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress({ current: 0, total: validFiles.length });
+
+    try {
+      const uploadPromises = validFiles.map(async (file, index) => {
+        const storageRef = ref(storage, `${category}/${Date.now()}_${file.name}`);
+        const metadata = {
+          cacheControl: 'public,max-age=31536000',
+          contentType: file.type
+        };
+        
+        const snapshot = await uploadBytes(storageRef, file, metadata);
+        const url = await getDownloadURL(storageRef);
+        
+        setUploadProgress(prev => ({ ...prev, current: index + 1 }));
+        
+        return {
+          url,
+          path: snapshot.ref.fullPath,
+          fileName: file.name
+        };
+      });
+
+      const results = await Promise.all(uploadPromises);
+      onUploadComplete(results);
+      
+      // Reset after short delay
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 800);
+    } catch (error) {
+      onUploadError(error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(files);
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(files);
+  };
+
+  return (
+    <div className={className}>
+      <motion.div
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 transition-all duration-200 ${
+          isDragging
+            ? 'border-nextgen-blue bg-nextgen-blue/10 scale-105 shadow-lg'
+            : uploading
+            ? 'border-nextgen-blue bg-nextgen-blue/5 cursor-wait'
+            : 'border-gray-300 hover:border-nextgen-blue hover:bg-nextgen-blue/5 cursor-pointer'
+        }`}
+        animate={{
+          scale: isDragging ? 1.02 : 1,
+          borderColor: isDragging ? '#30CEE4' : undefined
+        }}
+        whileHover={!uploading && !isDragging ? { scale: 1.02 } : {}}
+        whileTap={!uploading && !isDragging ? { scale: 0.98 } : {}}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={accept}
+          onChange={handleFileSelect}
+          className="hidden"
+          multiple
+        />
+        {uploadProgress ? (
+          <div className="flex flex-col items-center space-y-3 w-full">
+            <motion.div 
+              className="w-10 h-10 border-4 border-gray-200 border-t-nextgen-blue rounded-full"
+              animate={{ rotate: 360 }}
+              transition={{ 
+                duration: 1,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+            />
+            <span className="text-sm text-gray-600">
+              Uploading {uploadProgress.current} of {uploadProgress.total} files...
+            </span>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <motion.div
+                className="h-full bg-nextgen-blue"
+                initial={{ width: 0 }}
+                animate={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center space-y-3">
+            <motion.div 
+              className="p-3 bg-nextgen-blue/10 rounded-full"
+              animate={{
+                y: isDragging ? [0, -5, 0] : 0
+              }}
+              transition={{
+                duration: 0.5,
+                repeat: isDragging ? Infinity : 0
+              }}
+            >
+              <svg 
+                className="w-6 h-6 text-nextgen-blue" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </motion.div>
+            <span className="text-sm font-medium text-nextgen-blue">
+              {isDragging 
+                ? 'Drop files here' 
+                : 'Click or drag to upload files'
+              }
+            </span>
+            <span className="text-xs text-gray-500">
+              Select multiple files or drag them here
+            </span>
+            <span className="text-xs text-gray-400">
+              Maximum {maxSize}MB per file
+            </span>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+};

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, validateEmailConfig } from '../utils/emailProviders.js';
+import { createTestEmailTemplate } from '../../src/utils/emailTemplates.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -76,62 +77,29 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prepare test email
+    // Prepare test email using standardized template
     const emailData = {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
       to: [testEmail],
-      subject: 'NextGen Ministry - Test Email',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-            .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-            .success-badge { background: #10b981; color: white; padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 20px 0; }
-            .info-box { background: white; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; }
-            .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🎉 Test Email Successful!</h1>
-            </div>
-            <div class="content">
-              <div class="success-badge">✓ Configuration Working</div>
-              
-              <p>Congratulations! Your NextGen Ministry email configuration is working correctly.</p>
-              
-              <div class="info-box">
-                <strong>Configuration Details:</strong><br>
-                Provider: ${emailConfig.provider}<br>
-                From: ${emailConfig.from_name} &lt;${emailConfig.from_email}&gt;<br>
-                Batch Size: ${emailConfig.batch_size} emails per batch
-              </div>
-              
-              <p>You can now use this configuration to:</p>
-              <ul>
-                <li>Send weekly attendance reports to guardians</li>
-                <li>Send custom messages via Email Composer</li>
-                <li>Send event reminders and notifications</li>
-                <li>Send birthday messages</li>
-              </ul>
-              
-              <p>If you have any questions or need assistance, please contact your system administrator.</p>
-            </div>
-            <div class="footer">
-              <p>This is an automated test email from NextGen Ministry</p>
-              <p>Sent at ${new Date().toLocaleString()}</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
-      text: `NextGen Ministry - Test Email\n\nCongratulations! Your email configuration is working correctly.\n\nProvider: ${emailConfig.provider}\nFrom: ${emailConfig.from_name} <${emailConfig.from_email}>\n\nYou can now send emails through the NextGen Ministry system.`
+      subject: 'NextGen Ministry - Test Email Configuration',
+      html: createTestEmailTemplate(),
+      text: `NextGen Ministry - Test Email Configuration
+
+Congratulations! Your email configuration is working correctly.
+
+Provider: ${emailConfig.provider}
+From: ${emailConfig.from_name} <${emailConfig.from_email}>
+Batch Size: ${emailConfig.batch_size} emails per batch
+
+Your email system is now ready to:
+• Send Weekly Reports: Automated attendance summaries to guardians
+• Send Notifications: Event reminders and important announcements  
+• Send Custom Messages: Personalized communications via Email Composer
+• Send Staff Credentials: Account setup and password reset emails
+
+This is an automated test email from NextGen Ministry
+Sent at ${new Date().toLocaleString()}`
     };
 
     // Send test email

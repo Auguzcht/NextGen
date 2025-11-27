@@ -105,6 +105,7 @@ CREATE TABLE materials (
     title VARCHAR(100) NOT NULL,
     description TEXT,
     file_url VARCHAR(255),
+    link_type VARCHAR(20) DEFAULT 'upload',
     category VARCHAR(50),
     age_group VARCHAR(50),
     upload_date DATE DEFAULT CURRENT_DATE,

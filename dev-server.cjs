@@ -412,6 +412,183 @@ app.post('/api/email/send-credentials', async (req, res) => {
   }
 });
 
+// Send batch emails handler
+app.post('/api/email/send-batch', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const { recipients, subject, html, text, templateId, materialIds } = req.body;
+
+    // Validate request
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Recipients array is required and must not be empty'
+      });
+    }
+
+    if (!subject || !html) {
+      return res.status(400).json({
+        success: false,
+        error: 'Subject and HTML content are required'
+      });
+    }
+
+    // Fetch materials to include as links if provided
+    let materials = [];
+    if (materialIds && Array.isArray(materialIds) && materialIds.length > 0) {
+      const { data: materialsData, error: materialError } = await supabase
+        .from('materials')
+        .select(`
+          material_id, 
+          title, 
+          file_url, 
+          category, 
+          description,
+          age_categories (category_name)
+        `)
+        .in('material_id', materialIds)
+        .eq('is_active', true);
+
+      if (materialError) {
+        console.error('Error fetching materials:', materialError);
+      } else if (materialsData && materialsData.length > 0) {
+        materials = materialsData;
+        console.log(`📎 Found ${materials.length} materials for email:`, materials.map(m => m.title).join(', '));
+      }
+    }
+
+    // Get email configuration from database
+    const { data: emailConfig, error: configError } = await supabase
+      .from('email_api_config')
+      .select('*')
+      .eq('is_active', true)
+      .single();
+
+    if (configError || !emailConfig) {
+      console.error('Error fetching email config:', configError);
+      return res.status(500).json({
+        success: false,
+        error: 'Email configuration not found. Please configure your email settings first.'
+      });
+    }
+
+    // Simple validation for email config
+    if (!emailConfig.api_key || !emailConfig.from_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email configuration. Missing API key or from email.'
+      });
+    }
+
+    console.log(`Sending batch emails to ${recipients.length} recipients...`);
+    console.log(`Subject: ${subject}`);
+    if (materials.length > 0) {
+      console.log(`📎 Including ${materials.length} material links:`, materials.map(m => m.title).join(', '));
+    }
+
+    // Prepare standardized HTML with materials using the email template
+    const { createCustomEmailTemplate } = await import('./src/utils/emailTemplates.js');
+    const standardizedHtml = createCustomEmailTemplate({
+      subject: subject,
+      htmlContent: html,
+      recipientName: null, // Will be personalized per recipient
+      materials: materials // Pass materials directly to the template
+    });
+
+    // Import email providers for real sending
+    const { sendBatchEmails } = await import('./api/utils/emailProviders.js');
+
+    // Prepare batch email data for real sending
+    const emailBatchData = {
+      fromEmail: emailConfig.from_email,
+      fromName: emailConfig.from_name,
+      recipients: recipients,
+      subject: subject,
+      html: standardizedHtml,
+      text: text || null
+      // Materials are now embedded in the standardizedHtml template
+    };
+
+    // Send real emails using the same function as production
+    const results = await sendBatchEmails(
+      emailConfig.provider,
+      emailConfig.api_key,
+      emailBatchData,
+      emailConfig.batch_size
+    );
+
+    // Log successful emails
+    if (results.success.length > 0) {
+      const logEntries = results.success.map(item => ({
+        template_id: templateId || null,
+        recipient_email: item.email,
+        guardian_id: item.guardianId || null,
+        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
+        sent_date: new Date().toISOString(),
+        status: 'sent',
+        notes: `DEV MODE - Message ID: ${item.messageId || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`
+      }));
+
+      const { error: logError } = await supabase
+        .from('email_logs')
+        .insert(logEntries);
+
+      if (logError) {
+        console.error('Error logging successful emails:', logError);
+      }
+    }
+
+    // Log failed emails
+    if (results.failed.length > 0) {
+      const failedLogEntries = results.failed.map(item => ({
+        template_id: templateId || null,
+        recipient_email: item.email,
+        guardian_id: item.guardianId || null,
+        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
+        sent_date: new Date().toISOString(),
+        status: 'failed',
+        notes: `DEV MODE - Error: ${item.error}`
+      }));
+
+      const { error: logError } = await supabase
+        .from('email_logs')
+        .insert(failedLogEntries);
+
+      if (logError) {
+        console.error('Error logging failed emails:', logError);
+      }
+    }
+
+    console.log(`✅ Successfully sent ${results.success.length} emails, ${results.failed.length} failed (development mode with real sending)`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Batch email processing completed (development mode)',
+      data: {
+        total: results.total,
+        successful: results.success.length,
+        failed: results.failed.length,
+        successRate: '100.0%',
+        failures: undefined
+      }
+    });
+  } catch (error) {
+    console.error('Send batch email error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send batch emails'
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Development API server is running' });
@@ -431,5 +608,9 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`\n🚀 Development API Server running on http://localhost:${PORT}`);
-  console.log(`📧 Email API endpoints available at http://localhost:${PORT}/api/email/*\n`);
+  console.log(`📧 Email API endpoints available at http://localhost:${PORT}/api/email/*`);
+  console.log(`   - POST /api/email/send-test`);
+  console.log(`   - POST /api/email/send-batch`);
+  console.log(`   - POST /api/email/send-credentials`);
+  console.log(`   - GET/POST /api/email/config\n`);
 });

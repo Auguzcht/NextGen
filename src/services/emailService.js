@@ -179,6 +179,19 @@ export const generateEmailPreview = (template, data = {}) => {
 };
 
 /**
+ * Send emails from EmailComposer
+ */
+export const sendComposerEmail = async (emailData) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/email/send-composer`, emailData);
+    return response.data;
+  } catch (error) {
+    console.error('Error sending composer emails:', error);
+    throw error;
+  }
+};
+
+/**
  * Send staff credentials emails
  */
 export const sendStaffCredentials = async (staffMembers, eventType = 'new_account') => {
@@ -199,6 +212,7 @@ export default {
   updateEmailConfig,
   sendTestEmail,
   sendBatchEmails,
+  sendComposerEmail,
   sendWeeklyReport,
   getEmailLogs,
   getBatchJobDetails,
