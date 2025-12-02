@@ -1,9 +1,6 @@
-# NextGen - CCF NXTGen Children's Ministry Management System
-
 <div align="center">
   <img src="public/NextGen-Logo.svg" alt="NextGen Logo" width="200" height="200">
-  
-  <h1>🎯 NextGen</h1>
+
   <h3>CCF NXTGen Children's Ministry Management System</h3>
   
   <p><strong>A comprehensive management system designed exclusively for CCF NXTGen Children's Ministry</strong></p>
