@@ -1,9 +1,103 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.0.6';
+export const CURRENT_VERSION = '1.10.0';
 
 export const CHANGELOG = [
+  {
+    version: '1.10.0',
+    date: '2025-12-03',
+    title: 'Email System Overhaul & UI Improvements',
+    type: 'major',
+    changes: [
+      {
+        category: 'Email System',
+        icon: '📧',
+        updates: [
+          'Completely rebuilt Email Composer with advanced template selection and preview system',
+          'Fixed individual recipient personalization - emails now show "Dear [Name]," instead of generic "Hello!"',
+          'Implemented dynamic greeting system with preset greetings for guardians, staff, both, and individual recipients',
+          'Added materials browser integration allowing attachment of teaching resources to emails',
+          'Enhanced email template processing with proper NXTGen branding detection and content wrapping',
+          'Fixed double-wrapping issue where complete email templates were being wrapped in additional templates',
+          'Implemented client-side vs server-side template processing differentiation',
+          'Added {{name}} placeholder system for email provider personalization',
+          'Fixed "Dear undefined undefined" recipient name parsing with comprehensive fallback logic',
+          'Enhanced preview functionality to match actual sent email content',
+          'Streamlined server-side processing to use pre-processed templates from client',
+          'Removed debugging console logs for cleaner production code'
+        ]
+      },
+      {
+        category: 'User Interface',
+        icon: '🎨',
+        updates: [
+          'Added comprehensive pagination to Email Logs Viewer with modern ellipsis design',
+          'Implemented 15 items per page with full navigation controls (Previous/Next, page numbers)',
+          'Enhanced email logs display with total count tracking and page indicators',
+          'Added loading animations and smooth transitions for pagination',
+          'Improved table performance by limiting results per page instead of loading all 200+ logs',
+          'Enhanced email logs filtering with real-time search and pagination integration',
+          'Added motion animations for page transitions in email logs table',
+          'Updated pagination statistics showing "X to Y of Z results" format',
+          'Improved responsive design for email logs pagination controls'
+        ]
+      },
+      {
+        category: 'Template Management',
+        icon: '📝',
+        updates: [
+          'Enhanced createCustomEmailTemplate function with robust content detection',
+          'Added intelligent NXTGen branding detection to prevent template conflicts',
+          'Implemented proper HTML document extraction for complete email templates',
+          'Fixed materials duplication prevention in email content',
+          'Added support for complete email templates while maintaining proper wrapping',
+          'Enhanced recipient type handling with individual vs group processing',
+          'Improved template preview generation with proper recipient name handling',
+          'Added comprehensive debug logging for template processing workflow (removed in production)'
+        ]
+      },
+      {
+        category: 'Performance & Reliability',
+        icon: '⚡',
+        updates: [
+          'Optimized email logs loading with pagination instead of bulk loading',
+          'Enhanced database queries with proper count and range operations',
+          'Improved email sending reliability with proper template processing',
+          'Reduced client-side processing by moving template logic to appropriate layers',
+          'Enhanced error handling throughout email composition and sending pipeline',
+          'Improved recipient data validation and name formatting consistency',
+          'Optimized email provider integration with proper placeholder replacement',
+          'Enhanced server response handling for both development and production environments'
+        ]
+      },
+      {
+        category: 'Developer Experience',
+        icon: '💻',
+        updates: [
+          'Simplified development and production API endpoints by removing redundant template processing',
+          'Enhanced debugging capabilities with comprehensive logging (development only)',
+          'Improved code organization by centralizing template processing in client',
+          'Added clear separation between client preview and server processing logic',
+          'Enhanced error tracking throughout email composition workflow',
+          'Cleaned up console output by removing production debugging statements',
+          'Improved maintainability with better function separation and naming',
+          'Added comprehensive inline documentation for email processing flow'
+        ]
+      },
+      {
+        category: 'Future Features Preview',
+        icon: '🚀',
+        updates: [
+          'Foundation laid for upcoming Volunteer Assignment System integration',
+          'Email infrastructure prepared for volunteer scheduling notifications',
+          'Template system enhanced to support future volunteer-related email types',
+          'Database structure considerations for volunteer management features',
+          'UI patterns established for future volunteer assignment interfaces'
+        ]
+      }
+    ]
+  },
   {
     version: '1.0.6',
     date: '2025-11-24',

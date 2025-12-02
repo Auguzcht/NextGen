@@ -424,10 +424,18 @@ app.post('/api/email/send-batch', async (req, res) => {
   }
 
   try {
-    const { recipients, subject, html, text, templateId, materialIds } = req.body;
+    const { recipients, subject, html, text, templateId, materialIds, recipientType } = req.body;
+
+    console.log('📧 Send batch request received:', {
+      recipients: recipients?.length || 0,
+      subject: subject ? 'Present' : 'Missing',
+      html: html ? 'Present' : 'Missing',
+      materialIds: materialIds?.length || 0
+    });
 
     // Validate request
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      console.error('❌ Invalid recipients:', recipients);
       return res.status(400).json({
         success: false,
         error: 'Recipients array is required and must not be empty'
@@ -435,6 +443,7 @@ app.post('/api/email/send-batch', async (req, res) => {
     }
 
     if (!subject || !html) {
+      console.error('❌ Missing subject or html:', { subject: !!subject, html: !!html });
       return res.status(400).json({
         success: false,
         error: 'Subject and HTML content are required'
@@ -494,14 +503,10 @@ app.post('/api/email/send-batch', async (req, res) => {
       console.log(`📎 Including ${materials.length} material links:`, materials.map(m => m.title).join(', '));
     }
 
-    // Prepare standardized HTML with materials using the email template
-    const { createCustomEmailTemplate } = await import('./src/utils/emailTemplates.js');
-    const standardizedHtml = createCustomEmailTemplate({
-      subject: subject,
-      htmlContent: html,
-      recipientName: null, // Will be personalized per recipient
-      materials: materials // Pass materials directly to the template
-    });
+    // Use the HTML as-is since it's now always a complete template from client
+    let standardizedHtml = html;
+    console.log('📧 Using pre-processed template from client for recipientType:', recipientType || 'guardians');
+    console.log('📎 Materials will be handled by client-side template processing');
 
     // Import email providers for real sending
     const { sendBatchEmails } = await import('./api/utils/emailProviders.js');
@@ -581,7 +586,8 @@ app.post('/api/email/send-batch', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Send batch email error:', error);
+    console.error('❌ Send batch email error:', error);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to send batch emails'

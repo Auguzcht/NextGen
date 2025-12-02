@@ -337,72 +337,170 @@ export const createWeeklyReportTemplate = (reportData) => {
 };
 
 /**
+ * Get appropriate greeting based on recipient type
+ */
+export const getGreetingForRecipientType = (recipientType, recipientName = null, recipientCount = 1) => {
+  console.log('🎯 getGreetingForRecipientType called with:', { recipientType, recipientName, recipientCount });
+  
+  switch (recipientType) {
+    case 'guardians':
+      return 'Dear Parents,';
+    case 'staff':
+      return 'Dear Team,';
+    case 'both':
+      return 'Dear NXTGen Ministry Family,';
+    case 'individual':
+      if (!recipientName || recipientName === 'null' || recipientName === 'undefined' || recipientName.includes('undefined')) {
+        console.log('⚠️ Invalid recipientName for individual, using general greeting instead of Hello');
+        return 'Dear Valued Member,';
+      }
+      // Handle placeholder for email provider personalization
+      if (recipientName === '{{name}}') {
+        console.log('🏷️ Using placeholder for email provider personalization');
+        return 'Dear {{name}},';
+      }
+      // If multiple individual recipients, use general greeting
+      if (recipientCount > 1) return 'To Whom It May Concern,';
+      const greeting = `Dear ${recipientName},`;
+      console.log('✅ Generated individual greeting:', greeting);
+      return greeting;
+    default:
+      return 'Hello!';
+  }
+};
+
+/**
  * Custom Email Template (for Email Composer)
  */
-export const createCustomEmailTemplate = ({ subject, htmlContent, recipientName, materials = [] }) => {
-  // Clean and extract content from potentially nested HTML
-  let cleanContent = htmlContent || '';
+export const createCustomEmailTemplate = ({ 
+  subject, 
+  htmlContent, 
+  recipientName, 
+  materials = [], 
+  recipientType = 'guardians' 
+}) => {
+  // Use the original HTML content as-is (no complex extraction)
+  let bodyContent = htmlContent || '';
   
-  // If the content looks like a complete HTML document, extract just the body content
-  if (cleanContent.includes('<!DOCTYPE html>') || cleanContent.includes('<html>')) {
-    try {
-      // Extract content between <body> tags or fallback to the original content
-      const bodyMatch = cleanContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      if (bodyMatch) {
-        // Extract just the inner content of the email body, avoiding nested templates
-        let bodyContent = bodyMatch[1];
-        
-        // Look for the main content div and extract it (avoiding nested email templates)
-        const contentMatch = bodyContent.match(/<div style="color: #4a5568[^>]*>([\s\S]*?)<\/div>/);
-        if (contentMatch) {
-          cleanContent = contentMatch[1].trim();
-        } else {
-          // If we can't find the specific content div, use a more general approach
-          // Remove any nested email template structures
-          bodyContent = bodyContent.replace(/<table[^>]*>[\s\S]*?<\/table>/gi, '');
-          bodyContent = bodyContent.replace(/<div[^>]*background[^>]*>[\s\S]*?<\/div>/gi, '');
-          cleanContent = bodyContent.trim();
-        }
+  // Check if the content is a complete HTML document that needs body extraction
+  const isFullHtmlDoc = bodyContent.toLowerCase().includes('<!doctype html>') || 
+                        bodyContent.toLowerCase().includes('<html>');
+  
+  // Check if content already contains NXTGen branding (complete template)
+  // Look for multiple indicators to identify complete templates
+  const contentLower = bodyContent.toLowerCase();
+  const hasNXTGenBranding = contentLower.includes('nxtgen ministry davao') ||
+                           contentLower.includes('this is an automated message from nxtgen') ||
+                           (contentLower.includes('<!doctype html>') && contentLower.includes('nxtgen')) ||
+                           (contentLower.includes('<html>') && contentLower.includes('nxtgen')) ||
+                           contentLower.includes('facebook\tinstagram\tyoutube') ||
+                           contentLower.includes('resources for you');
+  
+  if (hasNXTGenBranding) {
+    console.log('📧 Content already contains NXTGen branding - treating as simple content for proper wrapping');
+    // Don't return early - let it fall through to be wrapped in NXTGen template
+  }
+  
+  // If it's a complete HTML document, extract just the body content
+  if (isFullHtmlDoc) {
+    console.log('📧 Extracting body content from complete HTML template');
+    
+    // Extract content between <body> tags, excluding the body tag itself
+    const bodyMatch = bodyContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch && bodyMatch[1]) {
+      // Get the inner content of the body tag
+      let extractedContent = bodyMatch[1].trim();
+      
+      // Remove any outer table wrappers to get just the content
+      // Look for the main content inside table cells
+      const tableContentMatch = extractedContent.match(/<td[^>]*style="[^"]*padding[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+      if (tableContentMatch && tableContentMatch[1]) {
+        bodyContent = tableContentMatch[1].trim();
+        console.log('✅ Extracted table cell content successfully');
+      } else {
+        bodyContent = extractedContent;
+        console.log('✅ Using full body content');
       }
-    } catch (error) {
-      console.warn('Error parsing nested HTML content, using original:', error);
-      // Fallback to original content if parsing fails
+    } else {
+      console.log('❌ Could not extract body content, using original');
     }
   }
   
-  // Generate materials HTML if any are provided
-  const materialsHtml = materials && materials.length > 0 ? `
-    <div style="background-color: #e6fffa; border-left: 4px solid ${NXTGEN_COLORS.primary}; padding: 20px; margin: 24px 0; border-radius: 8px;">
-      <h3 style="margin: 0 0 16px 0; color: #285e61; font-size: 18px; font-weight: 600;">Resources for You</h3>
-      <p style="margin: 0 0 12px 0; color: #285e61; font-size: 14px; line-height: 1.5;">
-        We've attached some helpful materials for your child's ministry journey:
-      </p>
-      <ul style="margin: 0; padding-left: 20px; color: #285e61; font-size: 14px; line-height: 1.5;">
-        ${materials.map(material => `
-          <li style="margin-bottom: 12px;">
-            <a href="${material.file_url || '#'}" style="color: #1a73e8; text-decoration: none; font-weight: 600;" target="_blank">
-              ${material.title}
-            </a>${material.category ? ` (${material.category})` : ''}
-            ${material.age_categories?.category_name ? `<br><small style="color: #4a7c59; font-size: 12px;">Age Group: ${material.age_categories.category_name}</small>` : ''}
-          </li>
-        `).join('')}
-      </ul>
-    </div>
-  ` : '';
+  // For simple content, wrap it in the template
+  console.log('📝 Processing simple content - applying NXTGen template');
   
-  const content = `
-    ${recipientName ? `<p style="color: #4a5568; line-height: 1.6; margin: 0 0 24px 0; font-size: 16px;">Hello ${recipientName}!</p>` : '<p style="color: #4a5568; line-height: 1.6; margin: 0 0 24px 0; font-size: 16px;">Hello!</p>'}
+  // Generate preset greeting based on recipient type
+  // For individual type, determine if we have multiple recipients
+  const recipientCount = recipientType === 'individual' && recipientName && recipientName.includes('Multiple Recipients') ? 2 : 1;
+  const greeting = getGreetingForRecipientType(recipientType, recipientName, recipientCount);
+  
+  // Check if "Questions?" section already exists to prevent duplication
+  const hasQuestionsSection = bodyContent.toLowerCase().includes('questions?') ||
+                             bodyContent.toLowerCase().includes('feel free to contact');
+
+  // Generate materials HTML if any are provided and not already in content
+  let materialsHtml = '';
+  if (materials && materials.length > 0) {
+    console.log('🔍 Materials received:', { 
+      materialsCount: materials.length, 
+      materialTitles: materials.map(m => m.title),
+      recipientType 
+    });
     
-    <div style="color: #4a5568; line-height: 1.6; font-size: 16px;">
-      ${cleanContent}
+    const contentToCheck = bodyContent.toLowerCase();
+    const hasExistingMaterials = (
+      contentToCheck.includes('resources for you') && 
+      (contentToCheck.includes('<h3') || contentToCheck.includes('<h2'))
+    ) || contentToCheck.includes('we\'ve attached some helpful materials');
+    
+    console.log('🔍 Materials content check:', { 
+      hasExistingMaterials,
+      contentSnippet: contentToCheck.substring(0, 100)
+    });
+    
+    if (!hasExistingMaterials) {
+      console.log('📎 Adding materials section');
+      materialsHtml = `
+        <div style="background-color: #e6fffa; border-left: 4px solid ${NXTGEN_COLORS.primary}; padding: 20px; margin: 24px 0; border-radius: 8px;">
+          <h3 style="margin: 0 0 16px 0; color: #285e61; font-size: 18px; font-weight: 600;">Resources for You</h3>
+          <p style="margin: 0 0 12px 0; color: #285e61; font-size: 14px; line-height: 1.5;">
+            We've attached some helpful materials for your child's ministry journey:
+          </p>
+          <ul style="margin: 0; padding-left: 20px; color: #285e61; font-size: 14px; line-height: 1.5;">
+            ${materials.map(material => `
+              <li style="margin-bottom: 12px;">
+                <a href="${material.file_url || '#'}" style="color: #1a73e8; text-decoration: none; font-weight: 600;" target="_blank">
+                  ${material.title}
+                </a>${material.category ? ` (${material.category})` : ''}
+                ${material.age_categories?.category_name ? `<br><small style="color: #4a7c59; font-size: 12px;">Age Group: ${material.age_categories.category_name}</small>` : ''}
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+      console.log('✅ Materials HTML generated, length:', materialsHtml.length);
+    } else {
+      console.log('⚠️ Materials section already exists in content, skipping');
+    }
+  } else {
+    console.log('ℹ️ No materials provided or empty array');
+  }
+
+  const content = `
+    <p style="color: #4a5568; line-height: 1.6; margin: 0 0 24px 0; font-size: 16px;">${greeting}</p>
+    
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 24px 0; color: #4a5568; line-height: 1.6; font-size: 16px;">
+      ${bodyContent}
     </div>
     
     ${materialsHtml}
     
-    <p style="color: #4a5568; line-height: 1.6; margin: 24px 0 0 0; font-size: 14px;">
+    ${!hasQuestionsSection ? `<p style="color: #4a5568; line-height: 1.6; margin: 24px 0 0 0; font-size: 14px;">
       <strong>Questions?</strong> Feel free to contact us if you need any assistance or have questions about NXTGen Ministry programs.
-    </p>
+    </p>` : ''}
   `;
+  
+  console.log('📧 Final template content includes materials:', content.includes('Resources for You'));
   
   return createEmailTemplate({
     title: subject,

@@ -216,6 +216,12 @@ const EmailComposer = ({ templates }) => {
 
   const handleTemplateSelect = (templateId) => {
     if (!templateId) {
+      setFormData({
+        ...formData,
+        template_id: '',
+        subject: '',
+        body_html: ''
+      });
       return;
     }
     
@@ -224,8 +230,8 @@ const EmailComposer = ({ templates }) => {
       setFormData({
         ...formData,
         template_id: templateId,
-        subject: template.subject,
-        body_html: template.body || template.body_html || ''
+        subject: template.subject || '',
+        body_html: template.body_html || template.body || ''
       });
     }
   };
@@ -261,7 +267,9 @@ const EmailComposer = ({ templates }) => {
             type,
             id: type === 'guardian' ? recipient.guardian_id : recipient.staff_id,
             email: recipient.email,
-            name: `${recipient.first_name} ${recipient.last_name}`
+            name: `${recipient.first_name} ${recipient.last_name}`,
+            first_name: recipient.first_name,
+            last_name: recipient.last_name
           }
         ]
       };
@@ -364,11 +372,18 @@ const EmailComposer = ({ templates }) => {
       let recipients = [];
 
       if (formData.recipient_type === 'individual') {
-        // Use selected recipients
-        recipients = formData.selected_recipients.map(r => ({
-          email: r.email,
-          name: r.name
-        }));
+        // Use selected recipients with proper name handling
+        recipients = formData.selected_recipients.map(r => {
+          let name = r.name;
+          // If name is undefined or contains 'undefined', construct it from first/last name
+          if (!name || name.includes('undefined')) {
+            name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || 'Valued Member';
+          }
+          return {
+            email: r.email,
+            name: name
+          };
+        });
       } else {
         // Fetch recipients based on filters
         if (formData.recipient_type === 'guardians' || formData.recipient_type === 'both') {
@@ -433,21 +448,36 @@ const EmailComposer = ({ templates }) => {
         throw new Error('No recipients found matching the specified criteria');
       }
 
-      // Prepare email data with standardized HTML template
-      const standardizedHtml = createCustomEmailTemplate({
-        subject: formData.subject,
-        htmlContent: formData.body_html,
-        recipientName: null // Will be personalized per recipient
-      });
+      // For individual recipients, create template with {{name}} placeholder for email provider personalization
+      // For group recipients, pre-process with appropriate group greeting
+      let emailHtml;
+      if (formData.recipient_type === 'individual') {
+        emailHtml = createCustomEmailTemplate({
+          subject: formData.subject,
+          htmlContent: formData.body_html,
+          recipientName: '{{name}}', // Placeholder will be replaced per recipient by email provider
+          materials: selectedMaterials,
+          recipientType: 'individual'
+        });
+      } else {
+        emailHtml = createCustomEmailTemplate({
+          subject: formData.subject,
+          htmlContent: formData.body_html,
+          recipientName: null, // Will be personalized per recipient
+          materials: selectedMaterials, // Include selected materials
+          recipientType: formData.recipient_type // Pass recipient type for appropriate greeting
+        });
+      }
 
-      // Format data for the existing send-batch API
+      // Format data for the existing send-batch API (which works)
       const emailData = {
         recipients: recipients,
         subject: formData.subject,
-        html: standardizedHtml,
+        html: emailHtml, // Raw or pre-processed HTML depending on recipient type
         text: null, // Could extract text version if needed
         templateId: formData.template_id || null,
-        materialIds: selectedMaterials.map(m => m.material_id) // Include selected materials
+        materialIds: selectedMaterials.map(m => m.material_id), // Include selected materials
+        recipientType: formData.recipient_type // Pass recipient type for server-side processing
       };
 
       // Call the email sending API via service
@@ -491,6 +521,35 @@ const EmailComposer = ({ templates }) => {
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Function to generate preview with always branded template
+  const generatePreviewHtml = () => {
+    let recipientName = null;
+    
+    if (formData.recipient_type === 'individual' && formData.selected_recipients.length > 0) {
+      if (formData.selected_recipients.length === 1) {
+        const recipient = formData.selected_recipients[0];
+        
+        // Use the name property that was set during selection, or construct from parts
+        recipientName = recipient.name;
+        if (!recipientName || recipientName.includes('undefined')) {
+          recipientName = `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() || 'Sample Recipient';
+        }
+      } else {
+        recipientName = `Multiple Recipients (${formData.selected_recipients.length})`;
+      }
+    } else if (formData.recipient_type === 'individual') {
+      recipientName = 'Sample Recipient';
+    }
+    
+    return createCustomEmailTemplate({
+      subject: formData.subject || 'Email Subject',
+      htmlContent: formData.body_html || '<p>Start typing your content to see the preview...</p>',
+      recipientName,
+      materials: selectedMaterials,
+      recipientType: formData.recipient_type || 'guardians'
+    });
   };
 
   const getMaterialIcon = (category) => {
@@ -933,12 +992,7 @@ const EmailComposer = ({ templates }) => {
                       <div 
                         className="p-4 email-preview-content"
                         dangerouslySetInnerHTML={{ 
-                          __html: createCustomEmailTemplate({
-                            subject: formData.subject || 'Email Subject',
-                            htmlContent: formData.body_html || '<p>Start typing your content to see the preview...</p>',
-                            recipientName: 'Sample Recipient',
-                            materials: selectedMaterials
-                          })
+                          __html: generatePreviewHtml()
                         }}
                         style={{
                           fontSize: '14px',

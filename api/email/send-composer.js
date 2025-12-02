@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchEmails, validateEmailConfig } from '../utils/emailProviders.js';
+import { createCustomEmailTemplate } from '../../src/utils/emailTemplates.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -174,13 +175,41 @@ export default async function handler(req, res) {
       });
     }
 
+    // Fetch materials if material_ids are provided
+    let materials = [];
+    if (material_ids && material_ids.length > 0) {
+      const { data: materialsData, error: materialsError } = await supabase
+        .from('materials')
+        .select(`
+          material_id,
+          title,
+          category,
+          file_url,
+          age_categories (category_name)
+        `)
+        .in('material_id', material_ids);
+
+      if (!materialsError && materialsData) {
+        materials = materialsData;
+      }
+    }
+
+    // Generate standardized HTML using the email template with greeting extraction
+    const standardizedHtml = createCustomEmailTemplate({
+      subject: subject,
+      htmlContent: body_html,
+      recipientName: null, // Will be personalized per recipient
+      materials: materials,
+      recipientType: recipient_type || 'guardians' // Pass recipient type for proper greeting selection
+    });
+
     // Prepare batch email data
     const emailData = {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
       recipients: recipients,
       subject: subject,
-      html: body_html, // Already standardized from EmailComposer
+      html: standardizedHtml, // Now properly processed through createCustomEmailTemplate
       text: null // Could extract text from HTML if needed
     };
 

@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipients, subject, html, text, templateId, materialIds } = req.body;
+    const { recipients, subject, html, text, templateId, materialIds, recipientType } = req.body;
 
     // Validate request
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -95,13 +95,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prepare batch email data with standardized template including materials
-    const standardizedHtml = createCustomEmailTemplate({
-      subject: subject,
-      htmlContent: html,
-      recipientName: null, // Will be personalized per recipient
-      materials: materials // Pass materials directly to the template
-    });
+    // Use the HTML as-is since it's now always a complete template from client
+    let standardizedHtml = html;
+    console.log('📧 Production API - Using pre-processed template from client for recipientType:', recipientType || 'guardians');
+    console.log('📎 Materials handled by client-side template processing');
 
     const emailData = {
       fromEmail: emailConfig.from_email,

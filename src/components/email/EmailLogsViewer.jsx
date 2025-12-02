@@ -16,6 +16,10 @@ const EmailLogsViewer = () => {
   });
   const [debouncedSearchEmail, setDebouncedSearchEmail] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const itemsPerPage = 15;
 
   // Debounce search email
   useEffect(() => {
@@ -34,47 +38,142 @@ const EmailLogsViewer = () => {
     return () => clearTimeout(timer);
   }, [filters.searchEmail]);
 
+  // Reset to first page when search/filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.status, filters.recipient_type, filters.startDate, filters.endDate, debouncedSearchEmail]);
+
   useEffect(() => {
     fetchLogs();
-  }, [filters.status, filters.recipient_type, filters.startDate, filters.endDate, debouncedSearchEmail]);
+  }, [filters.status, filters.recipient_type, filters.startDate, filters.endDate, debouncedSearchEmail, currentPage]);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('email_logs')
-        .select(`
-          *,
-          email_templates (template_name),
-          guardians (first_name, last_name),
-          staff (first_name, last_name, role)
-        `)
-        .order('sent_date', { ascending: false })
-        .limit(200);
+      // Base query for both count and data
+      let baseQuery = supabase.from('email_logs');
 
+      // Apply filters to base query
       if (filters.status !== 'all') {
-        query = query.eq('status', filters.status);
+        baseQuery = baseQuery.eq('status', filters.status);
       }
 
       if (filters.recipient_type === 'guardians') {
-        query = query.not('guardian_id', 'is', null);
-      } else if (filters.recipient_type === 'staff') {
-        query = query.not('staff_id', 'is', null);
+        baseQuery = baseQuery.not('guardian_id', 'is', null);
+      } else if (filters.recipient_type === 'direct') {
+        baseQuery = baseQuery.is('guardian_id', null);
       }
 
       if (filters.startDate) {
-        query = query.gte('sent_date', filters.startDate);
+        baseQuery = baseQuery.gte('sent_date', filters.startDate);
       }
 
       if (filters.endDate) {
-        query = query.lte('sent_date', filters.endDate);
+        baseQuery = baseQuery.lte('sent_date', filters.endDate);
       }
 
+      // Handle search - need to get all matching records first for proper pagination
+      let searchQuery = baseQuery;
       if (debouncedSearchEmail) {
-        query = query.ilike('recipient_email', `%${debouncedSearchEmail}%`);
+        const searchTerm = debouncedSearchEmail.trim();
+        
+        // Get all email logs with guardians to filter properly
+        const { data: allLogs, error: searchError } = await supabase
+          .from('email_logs')
+          .select(`
+            *,
+            guardians (first_name, last_name)
+          `);
+
+        if (searchError) throw searchError;
+
+        // Filter client-side for accurate search across email and guardian names
+        const filteredLogs = allLogs.filter(log => {
+          const searchLower = searchTerm.toLowerCase();
+          const emailMatch = log.recipient_email.toLowerCase().includes(searchLower);
+          const guardianMatch = log.guardians ? 
+            (log.guardians.first_name?.toLowerCase().includes(searchLower) ||
+             log.guardians.last_name?.toLowerCase().includes(searchLower)) : false;
+          
+          return emailMatch || guardianMatch;
+        });
+
+        // Apply other filters to the search results
+        let finalFiltered = filteredLogs;
+
+        if (filters.status !== 'all') {
+          finalFiltered = finalFiltered.filter(log => log.status === filters.status);
+        }
+
+        if (filters.recipient_type === 'guardians') {
+          finalFiltered = finalFiltered.filter(log => log.guardian_id !== null);
+        } else if (filters.recipient_type === 'direct') {
+          finalFiltered = finalFiltered.filter(log => log.guardian_id === null);
+        }
+
+        if (filters.startDate) {
+          finalFiltered = finalFiltered.filter(log => log.sent_date >= filters.startDate);
+        }
+
+        if (filters.endDate) {
+          finalFiltered = finalFiltered.filter(log => log.sent_date <= filters.endDate);
+        }
+
+        // Sort by date
+        finalFiltered.sort((a, b) => new Date(b.sent_date) - new Date(a.sent_date));
+
+        setTotalCount(finalFiltered.length);
+        setTotalPages(Math.ceil(finalFiltered.length / itemsPerPage));
+
+        // Apply pagination
+        const from = (currentPage - 1) * itemsPerPage;
+        const to = from + itemsPerPage;
+        const paginatedResults = finalFiltered.slice(from, to);
+
+        // Fetch templates for the paginated results
+        const logIds = paginatedResults.map(log => log.log_id);
+        const { data: enrichedLogs, error: enrichError } = await supabase
+          .from('email_logs')
+          .select(`
+            *,
+            email_templates (template_name),
+            guardians (first_name, last_name)
+          `)
+          .in('log_id', logIds);
+
+        if (enrichError) throw enrichError;
+
+        // Maintain the order from filtered results
+        const orderedLogs = paginatedResults.map(paginatedLog => 
+          enrichedLogs.find(enriched => enriched.log_id === paginatedLog.log_id)
+        );
+
+        setLogs(orderedLogs);
+        return;
       }
 
-      const { data, error } = await query;
+      // No search - use normal server-side pagination
+      const { count, error: countError } = await baseQuery
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) throw countError;
+
+      setTotalCount(count || 0);
+      setTotalPages(Math.ceil((count || 0) / itemsPerPage));
+
+      // Get paginated data
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+
+      const { data, error } = await baseQuery
+        .select(`
+          *,
+          email_templates (template_name),
+          guardians (first_name, last_name)
+        `)
+        .order('sent_date', { ascending: false })
+        .range(from, to);
+
       if (error) throw error;
       
       setLogs(data || []);
@@ -83,6 +182,101 @@ const EmailLogsViewer = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  // Modern pagination with ellipsis (shadcn style)
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const getVisiblePages = () => {
+      const delta = 2;
+      const range = [];
+      const rangeWithDots = [];
+
+      for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+        range.push(i);
+      }
+
+      if (currentPage - delta > 2) {
+        rangeWithDots.push(1, '...');
+      } else {
+        rangeWithDots.push(1);
+      }
+
+      rangeWithDots.push(...range);
+
+      if (currentPage + delta < totalPages - 1) {
+        rangeWithDots.push('...', totalPages);
+      } else {
+        rangeWithDots.push(totalPages);
+      }
+
+      // Remove duplicates and sort
+      return [...new Set(rangeWithDots)];
+    };
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+            <span className="font-medium">
+              {Math.min(currentPage * itemsPerPage, totalCount)}
+            </span>{' '}
+            of <span className="font-medium">{totalCount}</span> results
+          </p>
+        </div>
+        <div className="flex items-center space-x-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-2"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Button>
+          
+          {getVisiblePages().map((page, index) => (
+            page === '...' ? (
+              <span key={`ellipsis-${index}`} className="px-3 py-2 text-nextgen-blue-dark">
+                ...
+              </span>
+            ) : (
+              <Button
+                key={page}
+                variant={currentPage === page ? "primary" : "outline"}
+                size="sm"
+                onClick={() => handlePageChange(page)}
+                className="min-w-[40px] px-3 py-2"
+              >
+                {page}
+              </Button>
+            )
+          ))}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Button>
+        </div>
+      </div>
+    );
   };
 
   const columns = [
@@ -104,29 +298,19 @@ const EmailLogsViewer = () => {
       header: "Recipient",
       cell: (row) => {
         const isGuardian = row.guardian_id && row.guardians;
-        const isStaff = row.staff_id && row.staff;
         
         return (
           <div className="min-w-0">
             <div className="flex items-center space-x-1">
-              {isGuardian && (
+              {isGuardian ? (
                 <>
                   <Badge variant="info" size="xxs">G</Badge>
                   <span className="text-xs font-medium text-gray-900 truncate">
                     {row.guardians.first_name} {row.guardians.last_name}
                   </span>
                 </>
-              )}
-              {isStaff && (
-                <>
-                  <Badge variant="warning" size="xxs">S</Badge>
-                  <span className="text-xs font-medium text-gray-900 truncate">
-                    {row.staff.first_name} {row.staff.last_name}
-                  </span>
-                </>
-              )}
-              {!isGuardian && !isStaff && (
-                <span className="text-xs font-medium text-gray-900">Unknown</span>
+              ) : (
+                <span className="text-xs font-medium text-gray-900">Direct Email</span>
               )}
             </div>
             <div className="text-xs text-gray-500 truncate" title={row.recipient_email}>
@@ -212,7 +396,7 @@ const EmailLogsViewer = () => {
             </p>
           </div>
           <Badge variant="info" size="sm">
-            {logs.length} Log{logs.length !== 1 ? 's' : ''}
+            {totalCount} Log{totalCount !== 1 ? 's' : ''}
           </Badge>
         </div>
       </div>
@@ -224,7 +408,7 @@ const EmailLogsViewer = () => {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3">
           <Input
             type="select"
             label="Status"
@@ -238,6 +422,7 @@ const EmailLogsViewer = () => {
               { value: 'failed', label: 'Failed' }
             ]}
             size="sm"
+            style={{ height: '42px' }}
           />
 
           <Input
@@ -249,38 +434,42 @@ const EmailLogsViewer = () => {
             options={[
               { value: 'all', label: 'All' },
               { value: 'guardians', label: 'Guardians' },
-              { value: 'staff', label: 'Staff' }
+              { value: 'direct', label: 'Direct' }
             ]}
             size="sm"
+            style={{ height: '42px' }}
           />
 
           <Input
             type="date"
-            label="Start"
+            label="Start Date"
             name="startDate"
             value={filters.startDate}
             onChange={(e) => setFilters({...filters, startDate: e.target.value})}
             size="sm"
+            style={{ height: '42px' }}
           />
 
           <Input
             type="date"
-            label="End"
+            label="End Date"
             name="endDate"
             value={filters.endDate}
             onChange={(e) => setFilters({...filters, endDate: e.target.value})}
             size="sm"
+            style={{ height: '42px' }}
           />
 
-          <div className="col-span-2 lg:col-span-1">
+          <div className="col-span-2 lg:col-span-2">
             <Input
-              label="Search"
+              label="Search Email"
               name="searchEmail"
               type="text"
               value={filters.searchEmail}
               onChange={(e) => setFilters({...filters, searchEmail: e.target.value})}
-              placeholder="email..."
+              placeholder="Search by email or guardian name..."
               size="sm"
+              style={{ height: '42px' }}
               endIcon={isSearching ? (
                 <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
@@ -290,7 +479,8 @@ const EmailLogsViewer = () => {
             />
           </div>
 
-          <div className="lg:col-span-1 flex items-end">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Actions</label>
             <Button
               type="button"
               variant="outline"
@@ -302,7 +492,12 @@ const EmailLogsViewer = () => {
                 endDate: '',
                 searchEmail: ''
               })}
-              className="w-full"
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              }
+              style={{ height: '42px', paddingLeft: '12px', paddingRight: '12px' }}
             >
               Clear
             </Button>
@@ -311,7 +506,10 @@ const EmailLogsViewer = () => {
 
         <div className="mt-2 flex items-center justify-between">
           <p className="text-xs text-gray-500">
-            {logs.length} log{logs.length !== 1 ? 's' : ''}
+            {totalCount} log{totalCount !== 1 ? 's' : ''} total
+            {logs.length > 0 && totalPages > 1 && (
+              <span> • Page {currentPage} of {totalPages}</span>
+            )}
           </p>
         </div>
       </motion.div>
@@ -344,13 +542,24 @@ const EmailLogsViewer = () => {
           </div>
         ) : (
           <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
-            <Table
-              columns={columns}
-              data={logs}
-              loading={loading}
-            />
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Table
+                columns={columns}
+                data={logs}
+                loading={loading}
+              />
+            </motion.div>
           </div>
         )}
+        
+        {/* Pagination */}
+        {totalPages > 1 && renderPagination()}
       </div>
     </div>
   );
