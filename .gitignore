@@ -23,11 +23,59 @@ dist-ssr
 *.sln
 *.sw?
 
-# dotenv environment variables file
+# Environment variables and API keys
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging
 
-# Database files and migrations
-*.sql
+# Ministry-specific sensitive files
+*secret*.json
+*credentials*.json
+*config*.json
+firebase-adminsdk-*.json
+supabase-service-key.json
+
+# Database files and backups
+*.sql.backup
+*.dump
+database-backup/
+db-exports/
+
+# Ministry data files (should never be committed)
+ministry-data/
+child-photos/
+staff-photos/
+reports/
+exports/
+*.csv
+*.xlsx
+*.xls
+
+# Log files and debug output
+logs/
+debug/
+*.log.*
+console-*.txt
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+uploads/
+downloads/
+
+# Security and audit files
+security-audit.txt
+vulnerability-scan.json
+penetration-test-results/
+
+# Ministry-specific ignore patterns
+nxtgen-private/
+ccf-internal/
+ministry-confidential/
 db_nextgen.sql
 postgre_nextgen.sql
 Reset_DB.sql

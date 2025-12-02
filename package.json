@@ -1,8 +1,28 @@
 {
-  "name": "nextgen",
+  "name": "nextgen-ccf-ministry",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.10.0",
   "type": "module",
+  "description": "CCF NXTGen Children's Ministry Management System - Proprietary software for Christ's Commission Fellowship NXTGen Ministry",
+  "author": "Alfred Nodado <alfred@ccf.org.ph>",
+  "license": "PROPRIETARY",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Auguzcht/NextGen.git"
+  },
+  "homepage": "https://github.com/Auguzcht/NextGen",
+  "bugs": {
+    "url": "https://github.com/Auguzcht/NextGen/issues",
+    "email": "nextgen-support@ccf.org.ph"
+  },
+  "keywords": [
+    "children-ministry",
+    "church-management", 
+    "attendance-tracking",
+    "ccf",
+    "nxtgen",
+    "proprietary"
+  ],
   "scripts": {
     "dev": "vite",
     "dev:api": "node dev-server.cjs",

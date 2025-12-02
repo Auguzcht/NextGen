@@ -1,0 +1,54 @@
+# Code Owners for NextGen CCF NXTGen Ministry System
+# 
+# This file defines who is responsible for code review and approval
+# for different parts of the NextGen ministry management system.
+#
+# IMPORTANT: This is a PROPRIETARY repository for CCF NXTGen Ministry ONLY
+# All code owners must be authorized CCF NXTGen Ministry personnel.
+
+# Global Owners - These individuals are responsible for overall system integrity
+* @Auguzcht
+
+# Ministry Leadership - Must approve any changes affecting ministry workflows
+/src/pages/ @Auguzcht
+/src/components/children/ @Auguzcht  
+/src/components/guardians/ @Auguzcht
+/src/components/staff/ @Auguzcht
+
+# Database and Security - Critical infrastructure changes
+/public/postgre_nextgen.sql @Auguzcht
+/src/services/ @Auguzcht
+/.env* @Auguzcht
+/src/context/AuthContext.jsx @Auguzcht
+
+# Email and Communications - Parent/guardian communication system
+/src/components/email/ @Auguzcht
+/api/email/ @Auguzcht
+/src/utils/emailTemplates.js @Auguzcht
+
+# Reports and Analytics - Ministry metrics and reporting
+/src/components/reports/ @Auguzcht
+/src/pages/ReportsPage.jsx @Auguzcht
+/src/utils/changelog.js @Auguzcht
+
+# Configuration and Deployment
+/package.json @Auguzcht
+/vite.config.js @Auguzcht
+/vercel.json @Auguzcht
+/.github/ @Auguzcht
+/README.md @Auguzcht
+/LICENSE @Auguzcht
+
+# Ministry-specific business logic
+/src/utils/dateUtils.js @Auguzcht
+/src/utils/formatUtils.js @Auguzcht
+/src/utils/validationUtils.js @Auguzcht
+
+# Note: All code owners listed above must be:
+# 1. Authorized CCF NXTGen Ministry staff or volunteers
+# 2. Have signed confidentiality agreements
+# 3. Been approved by NXTGen Ministry leadership
+# 4. Understand the proprietary nature of this system
+#
+# For questions about code ownership or approval process, 
+# contact NXTGen Ministry leadership.
