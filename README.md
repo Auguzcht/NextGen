@@ -1,7 +1,10 @@
 # NextGen - CCF NXTGen Children's Ministry Management System
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Auguzcht/NextGen/main/.github/nextgen-logo.svg" alt="NextGen Logo" width="200" height="200">
+  <img src="public/NextGen-Logo.svg" alt="NextGen Logo" width="200" height="200">
+  
+  <h1>🎯 NextGen</h1>
+  <h3>CCF NXTGen Children's Ministry Management System</h3>
   
   <p><strong>A comprehensive management system designed exclusively for CCF NXTGen Children's Ministry</strong></p>
   
@@ -104,25 +107,30 @@ This system is exclusively designed and licensed for use by **Christ's Commissio
    ```
 
 3. **Environment Setup**
-   ```bash
-   cp .env.example .env.local
-   ```
+   Create a `.env.local` file in the root directory:
    
-   Configure your environment variables:
    ```env
-   VITE_SUPABASE_URL=your_supabase_url
+   # Supabase Configuration
+   VITE_SUPABASE_URL=your_supabase_project_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   VITE_FIREBASE_CONFIG=your_firebase_config
+   
+   # Firebase Configuration (for file storage)
+   VITE_FIREBASE_API_KEY=your_firebase_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   
+   # Email Service (Server-side)
    RESEND_API_KEY=your_resend_api_key
+   
+   # Google Drive Integration
+   GOOGLE_DRIVE_CLIENT_ID=your_google_client_id
+   GOOGLE_DRIVE_CLIENT_SECRET=your_google_client_secret
    ```
 
-4. **Database Setup**
-   ```bash
-   # Run the database schema
-   psql -f public/postgre_nextgen.sql
-   ```
-
-5. **Start Development Server**
+4. **Start Development Server**
    ```bash
    npm run dev
    ```
@@ -133,41 +141,84 @@ This system is exclusively designed and licensed for use by **Christ's Commissio
 # Build for production
 npm run build
 
-# Deploy to Vercel
-npm run deploy
+# Preview production build
+npm run preview
+
+# Deploy to Vercel (automatic via GitHub integration)
+# or manual deployment: vercel --prod
 ```
 
 ## 📱 System Architecture
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   React Client  │────│  Supabase API   │────│   PostgreSQL    │
-│                 │    │                 │    │    Database     │
-│  • Dashboard    │    │  • Auth         │    │                 │
-│  • Check-in     │    │  • Real-time    │    │  • Children     │
-│  • Reports      │    │  • RLS          │    │  • Attendance   │
-│  • Email        │    │                 │    │  • Analytics    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │
-         │              ┌─────────────────┐
-         └──────────────│  External APIs  │
-                        │                 │
-                        │  • Firebase     │
-                        │  • Google Drive │
-                        │  • Resend       │
-                        └─────────────────┘
-```
+<div align="center">
+  <img src="public/NextGen_Component Diagram.png" alt="NextGen Component Architecture" width="800">
+</div>
+
+### Architecture Overview
+
+**Frontend Layer (React Application)**
+- **Child Registration Component** - New child enrollment and family management
+- **Dashboard Component** - Ministry statistics and quick actions
+- **Reports Component** - Analytics and attendance reporting
+- **Login Component** - Authentication and authorization
+- **Attendance Component** - Check-in/check-out management
+- **Email Communication Component** - Guardian and staff notifications
+
+**State Management**
+- **Child Data Store** - Child and guardian information
+- **Attendance Store** - Check-in/out tracking
+- **Authentication Store** - User sessions and permissions
+- **UI State Store** - Component states and navigation
+
+**Services Layer**
+- **Validation Service** - Data integrity and form validation
+- **Cache Service** - Performance optimization
+- **QR Code Service** - Quick check-in functionality
+
+**Backend Layer (API Controllers)**
+- **Authentication Controller** - User login and session management
+- **Attendance Controller** - Check-in/out business logic
+- **Email Controller** - Communication workflows
+- **Report Controller** - Analytics generation
+- **Child Management Controller** - CRUD operations for children/guardians
+
+**Business Logic Layer**
+- **Authentication Service** - Login workflows and security
+- **Attendance Service** - Check-in/out processing
+- **Email Service** - Template processing and sending
+- **Report Service** - Analytics calculation
+- **Child Management Service** - Registration and updates
+
+**Data Access Layer**
+- **Attendance Repository** - Attendance data operations
+- **Email Repository** - Communication logs
+- **Staff Repository** - User and role management
+- **Child Repository** - Child and guardian data
+- **Guardian Repository** - Guardian information management
+
+**External Services**
+- **Resend Email API** - Professional email delivery
+- **Firebase Cloud Messaging** - Push notifications
+- **Supabase Authentication** - User management
+- **Firebase Storage** - Photo and file storage
+
+**Infrastructure**
+- **Supabase Realtime** - Live data synchronization
+- **Supabase Edge Functions** - Serverless backend logic
+- **Database Backup Service** - Data protection
+- **PostgreSQL Database** - Primary data store
 
 ## 🔧 Development
 
 ### Available Scripts
 
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production  
+npm run dev          # Start frontend development server (port 3002)
+npm run dev:api      # Start backend API server (port 3001)  
+npm run dev:all      # Start both frontend and API servers concurrently
+npm run build        # Build for production
 npm run preview      # Preview production build
-npm run lint         # Run ESLint
-npm run test         # Run test suite
+npm run lint         # Run ESLint code analysis
 ```
 
 ### Code Structure

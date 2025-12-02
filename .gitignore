@@ -39,10 +39,12 @@ firebase-adminsdk-*.json
 supabase-service-key.json
 
 # Database files and backups
+*.sql
 *.sql.backup
 *.dump
 database-backup/
 db-exports/
+postgre_nextgen.sql
 
 # Ministry data files (should never be committed)
 ministry-data/
