@@ -497,8 +497,8 @@ app.post('/api/email/send-batch', async (req, res) => {
       });
     }
 
-    console.log(`Sending batch emails to ${recipients.length} recipients...`);
-    console.log(`Subject: ${subject}`);
+    console.log(`📧 Smart Email Sending: ${recipients.length} recipients via ${emailConfig.provider} (${recipients.length >= 3 ? 'Batch API' : 'Individual API'})...`);
+    console.log(`📧 Subject: ${subject}`);
     if (materials.length > 0) {
       console.log(`📎 Including ${materials.length} material links:`, materials.map(m => m.title).join(', '));
     }
@@ -507,6 +507,7 @@ app.post('/api/email/send-batch', async (req, res) => {
     let standardizedHtml = html;
     console.log('📧 Using pre-processed template from client for recipientType:', recipientType || 'guardians');
     console.log('📎 Materials will be handled by client-side template processing');
+    console.log(`📧 Using ${emailConfig.provider} with batch size: ${emailConfig.batch_size}`);
 
     // Import email providers for real sending
     const { sendBatchEmails } = await import('./api/utils/emailProviders.js');
@@ -572,17 +573,17 @@ app.post('/api/email/send-batch', async (req, res) => {
       }
     }
 
-    console.log(`✅ Successfully sent ${results.success.length} emails, ${results.failed.length} failed (development mode with real sending)`);
+    console.log(`✅ Successfully sent ${results.success.length} emails, ${results.failed.length} failed using ${emailConfig.provider} ${recipients.length >= 3 ? 'Batch' : 'Individual'} API`);
 
     return res.status(200).json({
       success: true,
-      message: 'Batch email processing completed (development mode)',
+      message: `Email processing completed using ${emailConfig.provider} ${recipients.length >= 3 ? 'Batch' : 'Individual'} API`,
       data: {
         total: results.total,
         successful: results.success.length,
         failed: results.failed.length,
-        successRate: '100.0%',
-        failures: undefined
+        successRate: ((results.success.length / results.total) * 100).toFixed(1) + '%',
+        failures: results.failed.length > 0 ? results.failed : undefined
       }
     });
   } catch (error) {

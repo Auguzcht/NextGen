@@ -97,8 +97,10 @@ export default async function handler(req, res) {
 
     // Use the HTML as-is since it's now always a complete template from client
     let standardizedHtml = html;
-    console.log('📧 Production API - Using pre-processed template from client for recipientType:', recipientType || 'guardians');
+    console.log(`📧 Production API - Smart sending: ${recipients.length} recipients via ${emailConfig.provider} (${recipients.length >= 3 ? 'Batch API' : 'Individual API'})`);
+    console.log('📧 Using pre-processed template from client for recipientType:', recipientType || 'guardians');
     console.log('📎 Materials handled by client-side template processing');
+    console.log(`📧 Batch size: ${emailConfig.batch_size}`);
 
     const emailData = {
       fromEmail: emailConfig.from_email,
