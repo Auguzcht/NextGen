@@ -5,8 +5,8 @@
  * Stores bookings in Supabase for real-time updates
  */
 
-const crypto = require('crypto');
-const { createClient } = require('@supabase/supabase-js');
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client - Use non-VITE vars for production
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -38,7 +38,7 @@ const mapTimeToService = (startTime) => {
   return null;
 };
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,6 +50,7 @@ module.exports = async function handler(req, res) {
     res.status(200).end();
     return;
   }
+
   // Only accept POST requests
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -70,7 +71,6 @@ module.exports = async function handler(req, res) {
 
     const signature = req.headers['x-cal-signature-256'];
     const webhookSecret = process.env.CALCOM_WEBHOOK_SECRET || process.env.VITE_CALCOM_WEBHOOK_SECRET;
-    const webhookSecret = process.env.VITE_CALCOM_WEBHOOK_SECRET;
 
     // Verify webhook signature (Cal.com uses HMAC SHA256)
     if (webhookSecret && signature) {
@@ -80,6 +80,8 @@ module.exports = async function handler(req, res) {
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
         .update(body)
+        .digest('hex');
+
       if (signature !== expectedSignature) {
         console.error('❌ Invalid webhook signature');
         console.error('Note: Vercel auto-parses body. If signature fails, check Cal.com webhook configuration');
@@ -87,8 +89,6 @@ module.exports = async function handler(req, res) {
         return;
       }
       
-      console.log('✅ Webhook signature verified');
-    } 
       console.log('✅ Webhook signature verified');
     }
 
@@ -120,6 +120,9 @@ module.exports = async function handler(req, res) {
         break;
 
       default:
+        console.log('ℹ️  Unhandled webhook event:', triggerEvent);
+    }
+
     // Acknowledge webhook receipt
     res.status(200).json({ 
       received: true,
@@ -134,9 +137,6 @@ module.exports = async function handler(req, res) {
       message: error.message 
     });
     return;
-  }
-};     message: error.message 
-    });
   }
 }
 
