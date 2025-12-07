@@ -107,6 +107,9 @@ export default async function handler(req, res) {
       attendee: payload?.attendees?.[0]?.email,
       timestamp: new Date().toISOString()
     });
+    
+    // DEBUG: Log full payload to see Cal.com's actual structure
+    console.log('📦 Full webhook payload:', JSON.stringify(payload, null, 2));
 
     // Handle different webhook events
     switch (triggerEvent) {
@@ -153,9 +156,20 @@ async function handleBookingCreated(payload) {
   try {
     console.log('✅ Processing BOOKING_CREATED:', payload.uid);
     
+    // DEBUG: Log all time-related fields
+    console.log('🕐 Time fields in payload:', {
+      start: payload.start,
+      startTime: payload.startTime,
+      bookingStart: payload.booking?.start,
+      bookingStartTime: payload.booking?.startTime,
+      metadata: payload.metadata,
+      allKeys: Object.keys(payload)
+    });
+    
     const serviceName = mapTimeToService(payload.start);
     if (!serviceName) {
       console.warn('⚠️  Could not map time to service:', payload.start);
+      console.warn('⚠️  Payload structure:', JSON.stringify(payload, null, 2));
       return;
     }
     
