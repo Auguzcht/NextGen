@@ -246,7 +246,6 @@ async function handleBookingCreated(payload) {
       staff_id: staffId,
       service_id: serviceId,
       assignment_date: assignmentDate,
-      role_at_service: physicalRole,
       calcom_booking_id: payload.uid,
       calcom_event_type_id: payload.eventTypeId,
       physical_role: physicalRole,
