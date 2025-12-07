@@ -40,33 +40,40 @@ const mapTimeToService = (startTime) => {
 
 export default async function handler(req, res) {
   // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Cal-Signature-256');
 
   // Handle preflight
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
-  // Only accept POST requests
+  // Handle GET request (Cal.com ping test sometimes uses GET)
+  if (req.method === 'GET') {
+    console.log('🏓 Cal.com webhook GET ping received');
+    return res.status(200).json({ 
+      received: true,
+      message: 'Webhook endpoint is active!',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Only accept POST requests for actual webhooks
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Handle ping test from Cal.com
-    if (req.body.triggerEvent === 'PING' || !req.body.triggerEvent) {
-      console.log('🏓 Cal.com webhook ping test received');
-      res.status(200).json({ 
+    // Handle ping test from Cal.com (POST with PING event)
+    if (!req.body || req.body.triggerEvent === 'PING' || !req.body.triggerEvent) {
+      console.log('🏓 Cal.com webhook POST ping received');
+      return res.status(200).json({ 
         received: true,
         message: 'Webhook endpoint is working!',
         timestamp: new Date().toISOString()
       });
-      return;
     }
 
     const signature = req.headers['x-cal-signature-256'];
@@ -124,19 +131,17 @@ export default async function handler(req, res) {
     }
 
     // Acknowledge webhook receipt
-    res.status(200).json({ 
+    return res.status(200).json({ 
       received: true,
       event: triggerEvent,
       timestamp: new Date().toISOString()
     });
-    return;
   } catch (error) {
     console.error('❌ Webhook processing error:', error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       error: 'Webhook processing failed',
       message: error.message 
     });
-    return;
   }
 }
 
