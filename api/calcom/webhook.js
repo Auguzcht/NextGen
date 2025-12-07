@@ -8,9 +8,9 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY;
+// Initialize Supabase client - Use non-VITE vars for production
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Service name to service_id mapping
@@ -38,7 +38,7 @@ const mapTimeToService = (startTime) => {
   return null;
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,26 +47,29 @@ export default async function handler(req, res) {
 
   // Handle preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
-
   // Only accept POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
     // Handle ping test from Cal.com
     if (req.body.triggerEvent === 'PING' || !req.body.triggerEvent) {
       console.log('🏓 Cal.com webhook ping test received');
-      return res.status(200).json({ 
+      res.status(200).json({ 
         received: true,
         message: 'Webhook endpoint is working!',
         timestamp: new Date().toISOString()
       });
+      return;
     }
 
     const signature = req.headers['x-cal-signature-256'];
+    const webhookSecret = process.env.CALCOM_WEBHOOK_SECRET || process.env.VITE_CALCOM_WEBHOOK_SECRET;
     const webhookSecret = process.env.VITE_CALCOM_WEBHOOK_SECRET;
 
     // Verify webhook signature (Cal.com uses HMAC SHA256)
@@ -77,14 +80,15 @@ export default async function handler(req, res) {
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
         .update(body)
-        .digest('hex');
-
       if (signature !== expectedSignature) {
         console.error('❌ Invalid webhook signature');
         console.error('Note: Vercel auto-parses body. If signature fails, check Cal.com webhook configuration');
-        return res.status(401).json({ error: 'Invalid signature' });
+        res.status(401).json({ error: 'Invalid signature' });
+        return;
       }
       
+      console.log('✅ Webhook signature verified');
+    } 
       console.log('✅ Webhook signature verified');
     }
 
@@ -116,20 +120,22 @@ export default async function handler(req, res) {
         break;
 
       default:
-        console.log('ℹ️  Unhandled webhook event:', triggerEvent);
-    }
-
     // Acknowledge webhook receipt
-    return res.status(200).json({ 
+    res.status(200).json({ 
       received: true,
       event: triggerEvent,
       timestamp: new Date().toISOString()
     });
+    return;
   } catch (error) {
     console.error('❌ Webhook processing error:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Webhook processing failed',
       message: error.message 
+    });
+    return;
+  }
+};     message: error.message 
     });
   }
 }
