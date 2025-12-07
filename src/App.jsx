@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { NavigationProvider, useNavigation } from './context/NavigationContext.jsx';
@@ -6,14 +6,6 @@ import LoadingScreen from './components/common/LoadingScreen.jsx';
 import ChangelogModal from './components/common/ChangelogModal.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import ChildrenPage from './pages/ChildrenPage.jsx';
-import AttendancePage from './pages/AttendancePage.jsx';
-import GuardiansPage from './pages/GuardiansPage.jsx';
-import ReportsPage from './pages/ReportsPage.jsx';
-import SettingsPage from './pages/SettingsPage.jsx';
-import StaffManagementPage from './pages/StaffManagementPage.jsx';
-import StaffAssignmentsPage from './pages/StaffAssignmentsPage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
@@ -21,6 +13,36 @@ import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CURRENT_VERSION, shouldShowChangelog, markChangelogAsShown } from './utils/changelog.js';
 import './App.css';
+
+// Lazy load page components for better performance
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const ChildrenPage = lazy(() => import('./pages/ChildrenPage.jsx'));
+const AttendancePage = lazy(() => import('./pages/AttendancePage.jsx'));
+const GuardiansPage = lazy(() => import('./pages/GuardiansPage.jsx'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage.jsx'));
+const StaffAssignmentsPage = lazy(() => import('./pages/StaffAssignmentsPage.jsx'));
+
+// Loading fallback component
+const PageLoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-nextgen-blue-light border-t-nextgen-blue-dark rounded-full animate-spin"></div>
+      <p className="text-gray-600 text-sm">Loading...</p>
+    </div>
+  </div>
+);// Wrapper component to log page mounting
+const PageWrapper = ({ children, pageName }) => {
+  useEffect(() => {
+    console.log(`[App] ✅ ${pageName} component MOUNTED`);
+    return () => {
+      console.log(`[App] ❌ ${pageName} component UNMOUNTED`);
+    };
+  }, [pageName]);
+  
+  return children;
+};
 
 // AuthCheck component for route protection
 const AuthCheck = () => {
@@ -129,18 +151,17 @@ const MainLayoutContent = () => {
         
         {/* Main content with padding */} 
         <main className="flex-1 p-4 overflow-auto sm:p-6 lg:p-8 relative">
-          <AnimatePresence mode="wait">
+          <Suspense fallback={<PageLoadingFallback />}>
             <motion.div
-              key={location.pathname + location.search}
+              key={location.pathname}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
               className="w-full h-full"
             >
               <Outlet />
             </motion.div>
-          </AnimatePresence>
+          </Suspense>
         </main>
         
         {/* Footer at the bottom of the scrollable area */}

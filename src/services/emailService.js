@@ -64,11 +64,33 @@ export const sendBatchEmails = async (emailData) => {
 
 /**
  * Send weekly report
+ * @deprecated Use sendBatchEmails with staff recipients and weekly report template instead
+ * This function is kept for backwards compatibility but should not be used in new code
  */
-export const sendWeeklyReport = async () => {
+export const sendWeeklyReport = async (reportData, staffRecipients) => {
   try {
-    const response = await axios.post(`${API_BASE_URL}/email/send-weekly-report`);
-    return response.data;
+    // Redirect to batch email sending
+    const { createStaffWeeklyReportTemplate } = await import('../utils/emailTemplates.js');
+    
+    const emailHtml = createStaffWeeklyReportTemplate({
+      weekStartDate: reportData.week_start_date,
+      weekEndDate: reportData.week_end_date,
+      totalAttendance: reportData.total_attendance,
+      uniqueChildren: reportData.unique_children,
+      firstTimers: reportData.first_timers,
+      reportPdfUrl: reportData.report_pdf_url
+    });
+    
+    const subject = `Weekly Ministry Report: ${new Date(reportData.week_start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(reportData.week_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    
+    return await sendBatchEmails(
+      staffRecipients,
+      subject,
+      emailHtml,
+      null,
+      null,
+      'staff'
+    );
   } catch (error) {
     console.error('Error sending weekly report:', error);
     throw error;

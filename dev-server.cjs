@@ -14,6 +14,15 @@ const PORT = 3001;
 
 // Middleware
 app.use(cors());
+
+// Special handling for webhook - need raw body for signature verification
+app.use('/api/calcom/webhook', express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
+
+// Regular JSON parsing for other routes
 app.use(express.json());
 
 // Initialize Supabase client
@@ -21,6 +30,14 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.VITE_SUPABASE_ANON_KEY
 );
+
+// Cal.com Configuration
+const CALCOM_CONFIG = {
+  apiKey: process.env.VITE_CALCOM_API_KEY,
+  webhookSecret: process.env.VITE_CALCOM_WEBHOOK_SECRET,
+  apiBase: process.env.VITE_CALCOM_API_BASE || 'https://api.cal.com/v2',
+  apiVersion: '2024-08-13'
+};
 
 // Simple inline handlers for development
 // In production, Vercel uses the actual serverless functions
@@ -596,6 +613,364 @@ app.post('/api/email/send-batch', async (req, res) => {
   }
 });
 
+// Cal.com API endpoints
+app.post('/api/calcom/bookings', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'startDate and endDate are required'
+      });
+    }
+
+    console.log('📅 Fetching Cal.com bookings:', {
+      from: startDate,
+      to: endDate
+    });
+
+    // Cal.com API v2 - Get personal account bookings
+    // Filter: upcoming and past bookings (exclude cancelled)
+    const params = new URLSearchParams({
+      afterStart: new Date(startDate).toISOString(),
+      beforeEnd: new Date(endDate).toISOString(),
+      status: 'upcoming,past'
+    });
+
+    const apiUrl = `${CALCOM_CONFIG.apiBase}/bookings?${params.toString()}`;
+    
+    console.log('🔗 Fetching from:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${CALCOM_CONFIG.apiKey}`,
+        'cal-api-version': CALCOM_CONFIG.apiVersion,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Cal.com API Error:', errorText);
+      throw new Error(`Cal.com API error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Successfully fetched', data.data?.length || 0, 'bookings');
+    
+    if (data.data && data.data.length > 0) {
+      console.log('📅 Sample booking:', JSON.stringify(data.data[0], null, 2));
+    }
+
+    return res.status(200).json({
+      success: true,
+      bookings: data.data || [],
+      pagination: data.pagination || {}
+    });
+  } catch (error) {
+    console.error('❌ Cal.com bookings fetch error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch Cal.com bookings'
+    });
+  }
+});
+
+// Cal.com Webhook Handler (POST and GET for testing)
+app.all('/api/calcom/webhook', async (req, res) => {
+  // Handle GET requests (for browser testing)
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      status: 'ok',
+      message: 'Cal.com webhook endpoint is ready',
+      methods: ['POST'],
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  try {
+    // Handle ping test from Cal.com
+    if (req.body.triggerEvent === 'PING' || !req.body.triggerEvent) {
+      console.log('🏓 Cal.com webhook ping test received');
+      return res.status(200).json({ 
+        received: true,
+        message: 'Webhook endpoint is working!',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const signature = req.headers['x-cal-signature-256'];
+    const webhookSecret = CALCOM_CONFIG.webhookSecret;
+
+    // Verify webhook signature (Cal.com uses HMAC SHA256)
+    if (webhookSecret && signature) {
+      const crypto = require('crypto');
+      // Use raw body for signature verification
+      const body = req.rawBody || JSON.stringify(req.body);
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(body)
+        .digest('hex');
+
+      if (signature !== expectedSignature) {
+        console.error('❌ Invalid webhook signature');
+        console.error('Expected:', expectedSignature);
+        console.error('Received:', signature);
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+      
+      console.log('✅ Webhook signature verified');
+    }
+
+    const { triggerEvent, payload } = req.body;
+
+    console.log('🔔 Cal.com Webhook received:', {
+      event: triggerEvent,
+      bookingId: payload?.uid,
+      attendee: payload?.attendees?.[0]?.email,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log full payload for debugging
+    console.log('📦 Full payload:', JSON.stringify(payload, null, 2));
+
+    // Service mapping
+    const SERVICE_MAP = {
+      'First Service': 1,
+      'Second Service': 2,
+      'Third Service': 3
+    };
+
+    const mapTimeToService = (startTime) => {
+      const time = new Date(startTime).toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Manila'
+      });
+      
+      if (time === '10:00') return 'First Service';
+      if (time === '13:00') return 'Second Service';
+      if (time === '15:30') return 'Third Service';
+      
+      return null;
+    };
+
+    // Initialize Supabase admin client with service key
+    const supabaseAdmin = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // Handle different webhook events
+    switch (triggerEvent) {
+      case 'BOOKING_CREATED':
+        console.log('✅ Processing BOOKING_CREATED:', payload.uid);
+        console.log('📅 Payload start time:', payload.start);
+        console.log('📅 Payload startTime:', payload.startTime);
+        
+        // Try both start and startTime fields
+        const startTime = payload.start || payload.startTime;
+        
+        if (!startTime) {
+          console.error('❌ No start time found in payload');
+          break;
+        }
+        
+        const serviceName = mapTimeToService(startTime);
+        if (!serviceName) {
+          console.warn('⚠️  Could not map time to service:', startTime);
+          break;
+        }
+        
+        const serviceId = SERVICE_MAP[serviceName];
+        const attendee = payload.attendees?.[0];
+        const attendeeEmail = attendee?.email;
+        const organizerEmail = payload.hosts?.[0]?.email;
+        
+        // Skip organizer bookings
+        if (attendeeEmail === organizerEmail || attendeeEmail === 'info@nextgen-ccf.org') {
+          console.log('ℹ️  Skipping organizer booking');
+          break;
+        }
+        
+        // Extract physical role from Cal.com's userFieldsResponses structure
+        let physicalRole = 'Volunteer';
+        
+        // Primary location: payload.userFieldsResponses.physical_role.value
+        if (payload.userFieldsResponses?.physical_role?.value) {
+          physicalRole = payload.userFieldsResponses.physical_role.value;
+        } 
+        // Fallback: payload.responses.physical_role.value
+        else if (payload.responses?.physical_role?.value) {
+          physicalRole = payload.responses.physical_role.value;
+        }
+        // Legacy fallback
+        else if (attendee?.responses?.physical_role?.value) {
+          physicalRole = attendee.responses.physical_role.value;
+        }
+        
+        console.log('✅ Extracted physical role:', physicalRole);
+        const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+        
+        // Lookup staff by email
+        const { data: staffData } = await supabaseAdmin
+          .from('staff')
+          .select('staff_id')
+          .eq('email', attendeeEmail.toLowerCase())
+          .eq('is_active', true)
+          .single();
+        
+        const staffId = staffData?.staff_id || null;
+        if (!staffId) {
+          console.warn('⚠️  Staff member not found for email:', attendeeEmail);
+        }
+        
+        // Calculate duration in minutes - Cal.com uses 'length' field
+        let durationMinutes = payload.length || payload.duration;
+        if (!durationMinutes && startTime && (payload.endTime || payload.end)) {
+          const start = new Date(startTime);
+          const end = new Date(payload.endTime || payload.end);
+          durationMinutes = Math.round((end - start) / 60000);
+        }
+        
+        console.log('⏱️  Duration:', durationMinutes, 'minutes');
+        
+        // Insert or update assignment
+        const assignmentData = {
+          staff_id: staffId,
+          service_id: serviceId,
+          assignment_date: assignmentDate,
+          calcom_booking_id: payload.uid,
+          calcom_event_type_id: payload.eventTypeId,
+          physical_role: physicalRole,
+          booking_status: (payload.status || 'accepted').toLowerCase(), // Convert to lowercase!
+          attendee_email: attendeeEmail,
+          attendee_name: attendee?.name,
+          start_time: startTime,
+          end_time: payload.endTime || payload.end,
+          duration_minutes: durationMinutes,
+          location: payload.location,
+          notes: payload.additionalNotes || null,
+          updated_at: new Date().toISOString()
+        };
+        
+        const { data: insertData, error: insertError } = await supabaseAdmin
+          .from('staff_assignments')
+          .upsert(assignmentData, { 
+            onConflict: 'calcom_booking_id',
+            ignoreDuplicates: false 
+          })
+          .select();
+        
+        if (insertError) {
+          console.error('❌ Error saving booking to Supabase:', insertError);
+        } else {
+          console.log('✅ Booking saved to Supabase:', {
+            bookingId: payload.uid,
+            staffId,
+            serviceName,
+            attendee: attendeeEmail,
+            role: physicalRole
+          });
+        }
+        break;
+
+      case 'BOOKING_RESCHEDULED':
+        console.log('🔄 Processing BOOKING_RESCHEDULED:', payload.uid);
+        
+        const newServiceName = mapTimeToService(payload.start);
+        if (!newServiceName) {
+          console.warn('⚠️  Could not map time to service:', payload.start);
+          break;
+        }
+        
+        const newServiceId = SERVICE_MAP[newServiceName];
+        const newAssignmentDate = new Date(payload.start).toISOString().split('T')[0];
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('staff_assignments')
+          .update({
+            service_id: newServiceId,
+            assignment_date: newAssignmentDate,
+            start_time: payload.start,
+            end_time: payload.end,
+            duration_minutes: payload.duration,
+            booking_status: payload.status || 'accepted',
+            updated_at: new Date().toISOString()
+          })
+          .eq('calcom_booking_id', payload.uid);
+        
+        if (updateError) {
+          console.error('❌ Error updating booking:', updateError);
+        } else {
+          console.log('✅ Booking rescheduled in Supabase:', payload.uid);
+        }
+        break;
+
+      case 'BOOKING_CANCELLED':
+        console.log('❌ Processing BOOKING_CANCELLED:', payload.uid);
+        
+        const { error: cancelError } = await supabaseAdmin
+          .from('staff_assignments')
+          .delete()
+          .eq('calcom_booking_id', payload.uid);
+        
+        if (cancelError) {
+          console.error('❌ Error deleting cancelled booking:', cancelError);
+        } else {
+          console.log('✅ Booking deleted from Supabase:', payload.uid);
+        }
+        break;
+
+      case 'BOOKING_REJECTED':
+        console.log('⛔ Processing BOOKING_REJECTED:', payload.uid);
+        
+        const { error: rejectError } = await supabaseAdmin
+          .from('staff_assignments')
+          .update({
+            booking_status: 'rejected',
+            updated_at: new Date().toISOString()
+          })
+          .eq('calcom_booking_id', payload.uid);
+        
+        if (rejectError) {
+          console.error('❌ Error rejecting booking:', rejectError);
+        } else {
+          console.log('✅ Booking rejected in Supabase:', payload.uid);
+        }
+        break;
+
+      default:
+        console.log('ℹ️  Unhandled webhook event:', triggerEvent);
+    }
+
+    // Acknowledge webhook receipt
+    return res.status(200).json({ 
+      received: true,
+      event: triggerEvent,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+    return res.status(500).json({ 
+      error: 'Webhook processing failed',
+      message: error.message 
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Development API server is running' });
@@ -619,5 +994,8 @@ app.listen(PORT, () => {
   console.log(`   - POST /api/email/send-test`);
   console.log(`   - POST /api/email/send-batch`);
   console.log(`   - POST /api/email/send-credentials`);
-  console.log(`   - GET/POST /api/email/config\n`);
+  console.log(`   - GET/POST /api/email/config`);
+  console.log(`📅 Cal.com API endpoints available at http://localhost:${PORT}/api/calcom/*`);
+  console.log(`   - POST /api/calcom/bookings`);
+  console.log(`   - POST /api/calcom/webhook\n`);
 });

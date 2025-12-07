@@ -1,9 +1,212 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.10.0';
+export const CURRENT_VERSION = '1.11.0';
 
 export const CHANGELOG = [
+  {
+    version: '1.11.0',
+    date: '2025-12-08',
+    title: 'Major Update: PDF Reports, Cal.com Integration & Performance Optimization',
+    type: 'major',
+    changes: [
+      {
+        category: 'Reports & PDF Generation',
+        icon: '📄',
+        updates: [
+          'Implemented comprehensive Weekly Reports PDF generation with Chart.js integration',
+          'Added chart screenshot functionality using temporary canvas rendering at 1200x800 resolution',
+          'Created three professional charts: Attendance Pattern (doughnut), Age Distribution (pie), and Service Comparison (bar + line combo)',
+          'Optimized PDF chart display with proper sizing (100-120mm heights) for professional appearance',
+          'Fixed chart quality issues - charts now render at full scale without vertical shrinking',
+          'Added missing Service Comparison chart showing attendance and growth rate with dual Y-axis',
+          'Integrated jsPDF v3.0.3 for high-quality PDF generation with custom page layouts',
+          'Implemented Firebase Storage integration for PDF file hosting and retrieval',
+          'Added timestamp-based unique filename generation for PDF storage organization',
+          'Enhanced PDF layout with proper section spacing and professional formatting',
+          'Implemented automatic chart-to-PNG conversion for PDF embedding',
+          'Added comprehensive weekly report data compilation from analytics'
+        ]
+      },
+      {
+        category: 'Chart System',
+        icon: '📊',
+        updates: [
+          'Standardized all chart colors to match NextGen palette (blue #30cee4, orange #fb7610, and variants)',
+          'Applied consistent color scheme across PDF charts and dashboard components',
+          'Enhanced chart rendering with 0.7 opacity and proper border styling',
+          'Implemented 6-color palette for visual consistency (blue, orange, light variants, dark variants)',
+          'Fixed chart capture to use off-screen canvas rendering for accurate screenshots',
+          'Added 500ms delay after Chart.js rendering to ensure complete chart generation',
+          'Converted charts to PNG format with high-quality toDataURL() conversion',
+          'Proper chart cleanup and DOM node removal after capture to prevent memory leaks',
+          'Created dual Y-axis system for combined bar and line charts',
+          'Enhanced chart legends and labels for better readability in PDFs'
+        ]
+      },
+      {
+        category: 'Database Integration',
+        icon: '🗄️',
+        updates: [
+          'Fixed database schema errors - removed non-existent created_at column from INSERT statements',
+          'Changed from INSERT to UPDATE operations to prevent duplicate weekly report entries',
+          'Resolved duplicate entry issue where both analytics function and PDF generator created separate records',
+          'Implemented report_id-based UPDATE logic to modify existing weekly_reports entries',
+          'Added proper error handling for database operations during PDF generation',
+          'Enhanced weekly_reports table integration with Firebase Storage paths',
+          'Fixed "Could not find the \'created_at\' column" error in weekly_reports table operations',
+          'Added calcom_booking_id (INTEGER) and calcom_booking_uid (TEXT) to staff_assignments table',
+          'Created migration script add_calcom_booking_fields.sql for Cal.com integration',
+          'Enhanced database queries for weekly analytics aggregation',
+          'Improved error messages for database constraint violations'
+        ]
+      },
+      {
+        category: 'Firebase Storage',
+        icon: '🔥',
+        updates: [
+          'Integrated Firebase Storage SDK (ref, uploadBytes, getDownloadURL) for PDF hosting',
+          'Implemented storage path to download URL conversion in ReportsPage',
+          'Added comprehensive logging for Firebase URL conversion debugging',
+          'Created on-demand URL conversion system that fetches Firebase URLs at click time',
+          'Fixed localhost redirect issue by forcing Firebase download URL retrieval on button click',
+          'Implemented storage path detection (checks if URL starts with http or not)',
+          'Enhanced error handling for Firebase Storage operations with user-friendly alerts',
+          'Added missing Firebase Storage imports to ReportsPage component',
+          'Stored Firebase storage paths in database instead of full URLs for better portability',
+          'Implemented async onClick handler for "View PDF" buttons to fetch URLs on-demand',
+          'Added try-catch blocks for Firebase operations with detailed error logging',
+          'Prevented browser from interpreting storage paths as relative URLs'
+        ]
+      },
+      {
+        category: 'Cal.com Integration',
+        icon: '📅',
+        updates: [
+          'Implemented Cal.com webhook integration for staff assignment synchronization',
+          'Created /api/calcom/webhook.js endpoint for receiving booking events',
+          'Added calcom_booking_id tracking in staff_assignments table',
+          'Implemented calcom_booking_uid for unique booking identification',
+          'Enhanced staff assignments page with Cal.com booking information display',
+          'Added automatic booking status synchronization with Cal.com events',
+          'Implemented webhook security validation for Cal.com requests',
+          'Enhanced staff scheduling workflow with Cal.com booking data',
+          'Added booking metadata storage for future reporting capabilities',
+          'Improved staff assignment creation flow with Cal.com integration',
+          'Enhanced error handling for webhook processing failures'
+        ]
+      },
+      {
+        category: 'Performance Optimization',
+        icon: '⚡',
+        updates: [
+          'Fixed repetitive page unmounting/mounting caused by AnimatePresence',
+          'Resolved "loads 2, does not load 2, then loads next 2" pattern in page navigation',
+          'Optimized useEffect dependencies to prevent unnecessary re-renders',
+          'Enhanced AnimatePresence timing to prevent component lifecycle conflicts',
+          'Improved page transition performance across Dashboard, Reports, Children, and Guardians pages',
+          'Reduced unnecessary state updates in navigation context',
+          'Optimized chart generation with proper canvas size allocation (1200x800)',
+          'Implemented efficient PDF blob creation and Firebase upload pipeline',
+          'Enhanced memory management with proper chart destruction after capture',
+          'Added retry logic and error recovery for PDF generation failures',
+          'Improved database query efficiency for weekly report operations',
+          'Optimized Firebase Storage operations with proper error handling',
+          'Reduced unnecessary state updates in URL conversion logic',
+          'Enhanced async/await patterns for better error handling and flow control',
+          'Minimized DOM manipulation during chart capture process',
+          'Improved component mounting sequence to prevent cascading re-renders'
+        ]
+      },
+      {
+        category: 'Staff Management',
+        icon: '👥',
+        updates: [
+          'Enhanced staff assignments page with Cal.com booking integration',
+          'Added booking ID and UID display in staff assignment details',
+          'Implemented automatic booking status updates from Cal.com webhooks',
+          'Enhanced staff assignment creation with Cal.com metadata',
+          'Improved staff scheduling visualization with booking information',
+          'Added booking conflict detection and resolution',
+          'Enhanced staff availability tracking with Cal.com sync',
+          'Improved staff assignment filtering with booking status',
+          'Added booking history tracking for staff members'
+        ]
+      },
+      {
+        category: 'User Interface',
+        icon: '🎨',
+        updates: [
+          'Enhanced "View PDF" button with async onClick handler for dynamic URL fetching',
+          'Added loading feedback during PDF URL conversion and opening',
+          'Improved error messages for PDF access failures with actionable guidance',
+          'Implemented proper event handling (preventDefault, stopPropagation) for button clicks',
+          'Enhanced console logging for debugging PDF link functionality',
+          'Added visual feedback during PDF generation process',
+          'Improved success notifications with detailed PDF generation status',
+          'Changed from anchor tags to buttons for better click event control',
+          'Enhanced staff assignment UI with Cal.com booking indicators',
+          'Improved page transition smoothness with AnimatePresence fixes',
+          'Added better loading states during component transitions'
+        ]
+      },
+      {
+        category: 'Bug Fixes',
+        icon: '🐛',
+        updates: [
+          'Fixed PDF links redirecting to localhost instead of Firebase URLs',
+          'Resolved chart vertical shrinking issue in generated PDFs',
+          'Fixed missing growth/trend chart in PDF reports',
+          'Corrected color inconsistencies between dashboard and PDF charts',
+          'Fixed database duplicate entry errors during report generation',
+          'Resolved "created_at column not found" schema errors',
+          'Fixed "Why did it make 2 entries" issue with proper UPDATE logic',
+          'Corrected localhost URL pattern (http://localhost:3002/nextgen/NextGen/...) redirection',
+          'Fixed state not updating with converted Firebase URLs',
+          'Resolved browser interpreting storage paths as relative URLs',
+          'Fixed AnimatePresence causing repetitive component unmounting',
+          'Resolved page loading pattern of "2 loads, 2 no-loads, then continues"',
+          'Fixed component lifecycle conflicts during navigation',
+          'Corrected Cal.com webhook validation errors',
+          'Fixed staff assignment duplication from Cal.com events'
+        ]
+      },
+      {
+        category: 'API & Webhooks',
+        icon: '🔌',
+        updates: [
+          'Created Cal.com webhook endpoint at /api/calcom/webhook.js',
+          'Implemented webhook signature verification for security',
+          'Added booking event processing (created, updated, cancelled)',
+          'Enhanced error handling for webhook failures with detailed logging',
+          'Implemented retry logic for failed webhook processing',
+          'Added webhook payload validation and sanitization',
+          'Enhanced API response formatting for webhook consumers',
+          'Improved webhook debugging with comprehensive request logging',
+          'Added webhook health monitoring capabilities',
+          'Implemented rate limiting for webhook endpoints'
+        ]
+      },
+      {
+        category: 'Code Quality',
+        icon: '💻',
+        updates: [
+          'Added comprehensive error logging throughout PDF generation pipeline',
+          'Implemented proper TypeScript-style async function declarations',
+          'Enhanced code documentation with inline comments explaining complex logic',
+          'Improved function separation and single responsibility principle',
+          'Added detailed console logs for debugging (development only)',
+          'Implemented proper cleanup patterns for temporary DOM elements',
+          'Enhanced error messages with context-specific information',
+          'Improved code maintainability with clear variable naming and structure',
+          'Added JSDoc comments for webhook functions',
+          'Enhanced code organization in Cal.com integration modules',
+          'Improved error handling patterns across async operations',
+          'Added better separation of concerns in component structure'
+        ]
+      }
+    ]
+  },
   {
     version: '1.10.0',
     date: '2025-12-03',

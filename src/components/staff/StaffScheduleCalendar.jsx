@@ -1,82 +1,154 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import supabase from '../../services/supabase.js';
 import { Card, Badge, Button } from '../ui';
 import Swal from 'sweetalert2';
 import StaffScheduleDetailModal from './StaffScheduleDetailModal.jsx';
+import { fetchStaffAssignments, transformAssignmentsToEvents } from '../../services/staffAssignmentService.js';
+import { downloadCalendarCSV, exportCalendarAsImage } from '../../services/calcomApi.js';
+
+// Constants
+const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const StaffScheduleCalendar = () => {
-  const [assignments, setAssignments] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
-  const [dateAssignments, setDateAssignments] = useState({});
+  const [dateEvents, setDateEvents] = useState({});
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [direction, setDirection] = useState(0); // Track swipe direction
+  const calendarRef = useRef(null); // Reference to calendar for image export
 
   useEffect(() => {
-    fetchAssignments();
+    fetchZohoEvents();
   }, [currentMonth]);
 
-  const fetchAssignments = async () => {
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      handleRefresh();
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(intervalId);
+  }, [currentMonth]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchZohoEvents();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const fetchZohoEvents = async () => {
     setLoading(true);
     try {
-      // Get assignments for current month and next 2 months
+      // Get first Sunday of current month
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      while (startDate.getDay() !== 0) { // 0 = Sunday
+        startDate.setDate(startDate.getDate() - 1);
+      }
+
+      // Get last Saturday covering next 2 months
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 3, 0);
+      while (endDate.getDay() !== 6) { // 6 = Saturday
+        endDate.setDate(endDate.getDate() + 1);
+      }
 
-      const { data, error } = await supabase
-        .from('staff_assignments')
-        .select(`
-          *,
-          staff(staff_id, first_name, last_name, role, profile_image_url, profile_image_path),
-          services(service_id, service_name, day_of_week, start_time)
-        `)
-        .gte('assignment_date', startDate.toISOString().split('T')[0])
-        .lte('assignment_date', endDate.toISOString().split('T')[0])
-        .order('assignment_date', { ascending: true });
+      // Fetch events from Supabase (populated by webhooks) - instant!
+      console.log('📊 Fetching from Supabase (webhook-driven data)...');
+      const assignments = await fetchStaffAssignments(startDate, endDate);
+      const allEvents = transformAssignmentsToEvents(assignments);
 
-      if (error) throw error;
-
-      // Group assignments by staff + date + role + notes (created at same time)
-      const groupedByStaff = {};
-      data?.forEach(assignment => {
-        const key = `${assignment.staff_id}-${assignment.assignment_date}-${assignment.role}-${assignment.notes || ''}`;
-        if (!groupedByStaff[key]) {
-          groupedByStaff[key] = {
-            ...assignment,
-            services: [assignment.services],
-            assignment_ids: [assignment.assignment_id]
-          };
-        } else {
-          groupedByStaff[key].services.push(assignment.services);
-          groupedByStaff[key].assignment_ids.push(assignment.assignment_id);
-        }
-      });
-      
-      const groupedData = Object.values(groupedByStaff);
-
-      // Group by date for calendar display
+      // Group events by date for calendar display (Philippine timezone)
       const grouped = {};
-      groupedData.forEach(assignment => {
-        const date = assignment.assignment_date;
-        if (!grouped[date]) {
-          grouped[date] = [];
+      allEvents.forEach(event => {
+        // Convert UTC date to Philippine timezone date string (YYYY-MM-DD)
+        const eventDate = new Date(event.start);
+        const manilaDateStr = eventDate.toLocaleDateString('en-CA', { 
+          timeZone: 'Asia/Manila'
+        }); // en-CA gives YYYY-MM-DD format
+        if (!grouped[manilaDateStr]) {
+          grouped[manilaDateStr] = [];
         }
-        grouped[date].push(assignment);
+        grouped[manilaDateStr].push(event);
       });
 
-      setDateAssignments(grouped);
-      setAssignments(groupedData);
+      setDateEvents(grouped);
+      setEvents(allEvents);
     } catch (error) {
-      console.error('Error fetching assignments:', error);
+      console.error('Error fetching staff assignments:', error);
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: 'Failed to load assignments'
+        text: 'Failed to load volunteer schedule. Please refresh the page.'
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportSchedule = () => {
+    try {
+      downloadCalendarCSV(events, currentMonth);
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Exported!',
+        text: 'Schedule has been downloaded as CSV',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Export Failed',
+        text: 'Could not export schedule'
+      });
+    }
+  };
+
+  const handleExportImage = async () => {
+    try {
+      if (!events || events.length === 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'No Data',
+          text: 'No bookings to export'
+        });
+        return;
+      }
+
+      // Show loading
+      Swal.fire({
+        title: 'Generating styled schedule...',
+        text: 'Please wait while we create the image',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      await exportCalendarAsImage(events, currentMonth);
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Exported!',
+        text: 'Styled schedule has been downloaded as PNG',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Image export error:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Export Failed',
+        text: error.message || 'Could not export schedule as image'
+      });
     }
   };
 
@@ -98,14 +170,26 @@ const StaffScheduleCalendar = () => {
     // Add all days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(year, month, day);
-      const dateStr = currentDate.toISOString().split('T')[0];
+      // Create date string in Philippine timezone (YYYY-MM-DD)
+      const dateStr = currentDate.toLocaleDateString('en-CA');
+      
+      // Get today's date in Philippine timezone
+      const now = new Date();
+      const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      
+      // Compare for past dates
+      const isPast = dateStr < todayStr;
+      const isToday = dateStr === todayStr;
+      
       days.push({
         date: currentDate,
         dateStr,
         day,
-        assignments: dateAssignments[dateStr] || [],
-        isToday: dateStr === new Date().toISOString().split('T')[0],
-        isPast: currentDate < new Date(new Date().setHours(0, 0, 0, 0))
+        events: dateEvents[dateStr] || [],
+        isToday,
+        isPast,
+        // Only show Sundays as they have services
+        isSunday: currentDate.getDay() === 0
       });
     }
     
@@ -128,28 +212,38 @@ const StaffScheduleCalendar = () => {
   };
 
   const handleDateClick = (day) => {
-    if (day && day.assignments.length > 0) {
+    if (day && day.events.length > 0) {
       setSelectedDate(day);
       setModalOpen(true);
     }
   };
 
-  const groupAssignmentsByService = (assignments) => {
+  const groupEventsByService = (events) => {
+    const grouped = {
+      'First Service': [],
+      'Second Service': [],
+      'Third Service': []
+    };
+    
+    events.forEach(event => {
+      if (event.serviceName && grouped[event.serviceName]) {
+        grouped[event.serviceName].push(event);
+      }
+    });
+
+    return grouped;
+  };
+
+  const groupAssignmentsByService = (events) => {
     const grouped = {};
-    assignments.forEach(assignment => {
-      // Handle both single service and array of services
-      const services = Array.isArray(assignment.services) ? assignment.services : [assignment.services];
-      services.forEach(service => {
-        const serviceName = service?.service_name || 'Unknown Service';
-        if (!grouped[serviceName]) {
-          grouped[serviceName] = [];
-        }
-        // Create a copy with single service for display
-        grouped[serviceName].push({
-          ...assignment,
-          services: service,
-          allServices: assignment.services // Keep original for reference
-        });
+    events.forEach(event => {
+      const serviceName = event.serviceName || 'Unknown Service';
+      if (!grouped[serviceName]) {
+        grouped[serviceName] = [];
+      }
+      grouped[serviceName].push({
+        ...event,
+        services: { service_name: event.serviceName } // Compatibility with modal
       });
     });
     return grouped;
@@ -168,8 +262,6 @@ const StaffScheduleCalendar = () => {
     }
   };
 
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const days = getDaysInMonth(currentMonth);
 
   // Animation variants for month transitions
@@ -250,7 +342,7 @@ const StaffScheduleCalendar = () => {
 
   return (
     <>
-      <Card variant="minimal" className="mb-6">
+      <Card variant="minimal" className="mb-6" ref={calendarRef}>
         {/* Calendar Header */}
         <motion.div 
           className="flex items-center justify-between mb-6"
@@ -277,11 +369,21 @@ const StaffScheduleCalendar = () => {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              {assignments.length} {assignments.length === 1 ? 'assignment' : 'assignments'} this period
+              {events.length} {events.length === 1 ? 'volunteer' : 'volunteers'} scheduled
             </motion.p>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 rounded-lg text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors disabled:opacity-50"
+              title={refreshing ? 'Refreshing...' : 'Refresh schedule'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
             <Button
               variant="outline"
               size="sm"
@@ -315,6 +417,46 @@ const StaffScheduleCalendar = () => {
           </div>
         </motion.div>
 
+        {/* Export Actions */}
+        <motion.div 
+          className="mb-6"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.3 }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Export volunteer schedule for {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleExportSchedule}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                }
+              >
+                Export as CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={handleExportImage}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                }
+              >
+                Export as Image
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+
         {/* Legend */}
         <motion.div 
           className="flex items-center gap-4 mb-4 text-xs text-gray-600"
@@ -324,11 +466,15 @@ const StaffScheduleCalendar = () => {
         >
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-nextgen-blue"></div>
-            <span>Has Assignments</span>
+            <span>Has Volunteers</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full border-2 border-nextgen-orange"></div>
             <span>Today</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            <span>Sunday (Service Day)</span>
           </div>
         </motion.div>
 
@@ -390,9 +536,11 @@ const StaffScheduleCalendar = () => {
                       variants={cellVariants}
                       className={`min-h-[120px] border-r border-b border-gray-200 p-2 ${
                         day ? 'bg-white hover:bg-gray-50 cursor-pointer' : 'bg-gray-50'
-                      } ${day?.isPast && !day?.isToday ? 'opacity-60' : ''} transition-colors`}
+                      } ${day?.isPast && !day?.isToday ? 'opacity-60' : ''} ${
+                        day?.isSunday ? 'bg-green-50' : ''
+                      } transition-colors`}
                       onClick={() => day && handleDateClick(day)}
-                      whileHover={day && day.assignments.length > 0 ? { 
+                      whileHover={day && day.events.length > 0 ? { 
                         backgroundColor: 'rgba(48, 206, 228, 0.05)'
                       } : {}}
                     >
@@ -411,54 +559,36 @@ const StaffScheduleCalendar = () => {
                             >
                               {day.day}
                             </span>
-                            {day.assignments.length > 0 && (
+                            {day.events.length > 0 && (
                               <Badge variant="primary" size="xs">
-                                {day.assignments.length}
+                                {day.events.length}
                               </Badge>
                             )}
                           </div>
 
-                          {/* Assignment tags */}
+                          {/* Event tags */}
                           <div className="flex-1 space-y-1 overflow-y-auto">
-                            {day.assignments.slice(0, 3).map((assignment, idx) => (
+                            {day.events.slice(0, 3).map((event, idx) => (
                               <motion.div
                                 key={idx}
                                 initial={{ opacity: 0, x: -5 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: idx * 0.05 }}
-                                className="flex items-center gap-1 p-1 bg-nextgen-blue/10 rounded text-xs text-nextgen-blue-dark truncate hover:bg-nextgen-blue/20 transition-colors"
+                                className={`flex items-center gap-1 p-1 rounded text-xs truncate hover:opacity-80 transition-colors ${
+                                  event.serviceName === 'First Service' ? 'bg-purple-100 text-purple-700' :
+                                  event.serviceName === 'Second Service' ? 'bg-blue-100 text-blue-700' :
+                                  event.serviceName === 'Third Service' ? 'bg-green-100 text-green-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}
                               >
-                                {/* Staff Avatar - small version */}
-                                <div className="flex-shrink-0 w-5 h-5 rounded-full overflow-hidden">
-                                  {assignment.staff?.profile_image_url ? (
-                                    <img 
-                                      src={assignment.staff.profile_image_url}
-                                      alt={`${assignment.staff?.first_name}`}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        e.target.onerror = null;
-                                        e.target.style.display = 'none';
-                                        e.target.parentNode.innerHTML = `
-                                          <div class="w-full h-full rounded-full ${getStaffGradient(assignment.staff?.staff_id)} flex items-center justify-center text-white text-[10px] font-medium">
-                                            ${assignment.staff?.first_name?.charAt(0) || '?'}
-                                          </div>
-                                        `;
-                                      }}
-                                    />
-                                  ) : (
-                                    <div className={`w-full h-full rounded-full ${getStaffGradient(assignment.staff?.staff_id)} flex items-center justify-center text-white text-[10px] font-medium`}>
-                                      {assignment.staff?.first_name?.charAt(0) || '?'}
-                                    </div>
-                                  )}
-                                </div>
-                                <span className="truncate font-medium">
-                                  {assignment.staff?.first_name}
+                                <span className="font-medium truncate">
+                                  {event.volunteerName}
                                 </span>
                               </motion.div>
                             ))}
-                            {day.assignments.length > 3 && (
+                            {day.events.length > 3 && (
                               <div className="text-[10px] text-gray-500 text-center py-1">
-                                +{day.assignments.length - 3} more
+                                +{day.events.length - 3} more
                               </div>
                             )}
                           </div>
@@ -473,7 +603,7 @@ const StaffScheduleCalendar = () => {
         )}
       </Card>
 
-      {/* Assignment Details Modal */}
+      {/* Event Details Modal */}
       <StaffScheduleDetailModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

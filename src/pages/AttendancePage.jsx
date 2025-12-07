@@ -689,11 +689,70 @@ const AttendancePage = () => {
 
             {/* Currently Checked In List */}
             <div>
-              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4 flex justify-between">
+              <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4 flex justify-between items-center">
                 <span>Currently Checked In</span>
-                <span className="text-sm text-gray-500 mt-1">
-                  {checkedInList.length} {checkedInList.length === 1 ? 'Child' : 'Children'}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">
+                    {checkedInList.length} {checkedInList.length === 1 ? 'Child' : 'Children'}
+                  </span>
+                  {checkedInList.filter(item => !item.check_out_time).length > 0 && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={async () => {
+                        const result = await Swal.fire({
+                          title: 'Check Out All Children?',
+                          text: `This will check out ${checkedInList.filter(item => !item.check_out_time).length} children.`,
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonColor: '#e66300',
+                          cancelButtonColor: '#6b7280',
+                          confirmButtonText: 'Yes, check out all',
+                          cancelButtonText: 'Cancel'
+                        });
+                        
+                        if (result.isConfirmed) {
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const staffEmail = session?.user?.email || 'Unknown Staff';
+                            const now = new Date();
+                            const localTime = now.toTimeString().split(' ')[0];
+                            
+                            const childrenToCheckOut = checkedInList.filter(item => !item.check_out_time);
+                            
+                            for (const item of childrenToCheckOut) {
+                              await supabase
+                                .from('attendance')
+                                .update({ 
+                                  check_out_time: localTime,
+                                  checked_out_by: staffEmail
+                                })
+                                .eq('attendance_id', item.attendance_id);
+                            }
+                            
+                            setCheckInSuccess(prev => !prev);
+                            
+                            Swal.fire({
+                              icon: 'success',
+                              title: 'All Children Checked Out',
+                              toast: true,
+                              position: 'top-end',
+                              showConfirmButton: false,
+                              timer: 2000,
+                              timerProgressBar: true,
+                              iconColor: '#1ca7bc'
+                            });
+                          } catch (error) {
+                            console.error('Error checking out all children:', error);
+                            setError('Failed to check out all children');
+                          }
+                        }
+                      }}
+                    >
+                      Check Out All
+                    </Button>
+                  )}
+                </div>
               </h3>
               <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                 <Table

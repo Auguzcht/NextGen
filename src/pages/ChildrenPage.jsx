@@ -518,7 +518,7 @@ const ChildrenPage = () => {
           </motion.div>
         </div>
         
-        {totalPages > 1 && renderPagination()}
+        {renderPagination()}
       </Card>
       
       {/* Add Child Modal */}

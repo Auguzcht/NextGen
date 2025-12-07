@@ -287,6 +287,80 @@ export const createConfirmationEmailTemplate = () => {
 };
 
 /**
+ * Weekly Report Email Template for Staff (Coordinators, Admin, Team Leaders)
+ */
+export const createStaffWeeklyReportTemplate = ({
+  weekStartDate,
+  weekEndDate,
+  totalAttendance,
+  uniqueChildren,
+  firstTimers,
+  reportPdfUrl
+}) => {
+  const content = `
+    <h2 style="color: #1a202c; margin: 0 0 24px 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em;">Weekly Ministry Report</h2>
+    
+    <p style="color: #4a5568; line-height: 1.6; margin: 0 0 24px 0; font-size: 16px;">
+      Here's your weekly attendance and ministry summary for ${formatDate(new Date(weekStartDate), { month: 'long', day: 'numeric' })} - ${formatDate(new Date(weekEndDate), { month: 'long', day: 'numeric', year: 'numeric' })}.
+    </p>
+    
+    <div style="background: linear-gradient(135deg, ${NXTGEN_COLORS.primary} 0%, ${NXTGEN_COLORS.primaryDark} 100%); border-radius: 12px; padding: 32px; margin: 24px 0;">
+      <h3 style="color: #ffffff; margin: 0 0 24px 0; font-size: 18px; font-weight: 600;">Week at a Glance</h3>
+      <table cellpadding="0" cellspacing="0" style="width: 100%;">
+        <tr>
+          <td style="padding: 12px 0;">
+            <div style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 4px;">Total Attendance</div>
+            <div style="color: #ffffff; font-size: 32px; font-weight: 700;">${totalAttendance}</div>
+          </td>
+          <td style="padding: 12px 0;">
+            <div style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 4px;">Unique Children</div>
+            <div style="color: #ffffff; font-size: 32px; font-weight: 700;">${uniqueChildren}</div>
+          </td>
+          <td style="padding: 12px 0;">
+            <div style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 4px;">First-Timers</div>
+            <div style="color: #ffffff; font-size: 32px; font-weight: 700;">${firstTimers}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    
+    ${reportPdfUrl ? `
+    <div style="background-color: #f0fff4; border-left: 4px solid ${NXTGEN_COLORS.success}; padding: 20px; margin: 24px 0; border-radius: 8px;">
+      <p style="margin: 0 0 16px 0; color: #2f855a; font-size: 14px;">
+        <strong>📄 Full Report Available</strong>
+      </p>
+      <p style="margin: 0; color: #4a5568; font-size: 14px;">
+        Click the button below to view the complete detailed report with charts and analytics.
+      </p>
+    </div>
+    
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${reportPdfUrl}" 
+         style="display: inline-block; background-color: ${NXTGEN_COLORS.primary}; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">
+        View Full Report (PDF)
+      </a>
+    </div>
+    ` : ''}
+    
+    <p style="color: #4a5568; line-height: 1.6; margin: 24px 0 0 0; font-size: 14px;">
+      Thank you for your dedication to NXTGen Ministry. Your service makes a difference in the lives of these children!
+    </p>
+  `;
+  
+  return createEmailTemplate({
+    title: 'Weekly Ministry Report',
+    subtitle: `${formatDate(new Date(weekStartDate), { month: 'short', day: 'numeric' })} - ${formatDate(new Date(weekEndDate), { month: 'short', day: 'numeric', year: 'numeric' })}`,
+    content
+  });
+};
+
+// Helper function for date formatting in email templates
+const formatDate = (date, options = {}) => {
+  const defaults = { year: 'numeric', month: 'long', day: 'numeric' };
+  return new Date(date).toLocaleDateString('en-US', { ...defaults, ...options });
+};
+
+/**
  * Weekly Report Email Template
  */
 export const createWeeklyReportTemplate = (reportData) => {

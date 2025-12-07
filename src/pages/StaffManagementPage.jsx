@@ -4,6 +4,7 @@ import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
 import SendCredentialsModal from '../components/staff/SendCredentialsModal.jsx';
 import { Card, Button, Badge, Table, Input } from '../components/ui';
+import { motion } from 'framer-motion';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -14,6 +15,9 @@ const StaffManagementPage = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const itemsPerPage = 10;
   const [isSearching, setIsSearching] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -36,9 +40,14 @@ const StaffManagementPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Reset to first page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
   useEffect(() => {
     fetchStaffMembers();
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, currentPage]);
 
   const fetchStaffMembers = async () => {
     setLoading(true);
@@ -51,6 +60,23 @@ const StaffManagementPage = () => {
       if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
         query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%,role.ilike.%${debouncedSearchQuery}%`);
       }
+
+      // Get total count for pagination
+      let countQuery = supabase
+        .from('staff')
+        .select('*', { count: 'exact', head: true });
+      
+      if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
+        countQuery = countQuery.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%,role.ilike.%${debouncedSearchQuery}%`);
+      }
+      
+      const { count: totalCount, error: countError } = await countQuery;
+
+      if (countError) throw countError;
+      setTotalPages(Math.ceil(totalCount / itemsPerPage));
+      
+      // Apply pagination
+      query = query.range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1);
       
       const { data, error } = await query;
 
@@ -111,29 +137,29 @@ const StaffManagementPage = () => {
       const uniqueServices = new Set();
       servicesResult.data?.forEach(item => uniqueServices.add(item.service_id));
 
-      // Group recent assignments by date + role + notes
-      const grouped = {};
-      assignmentsResult.data?.forEach(assignment => {
-        const key = `${assignment.assignment_date}-${assignment.role}-${assignment.notes || ''}`;
-        if (!grouped[key]) {
-          grouped[key] = {
-            ...assignment,
-            services: [assignment.services],
-            assignment_ids: [assignment.assignment_id]
-          };
-        } else {
-          grouped[key].services.push(assignment.services);
-          grouped[key].assignment_ids.push(assignment.assignment_id);
-        }
-      });
-
-      const groupedAssignments = Object.values(grouped);
+      // Get the most recent assignment (single service with latest time on the most recent date)
+      let mostRecentAssignment = null;
+      
+      if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+        // Sort by date desc, then by start_time desc to get the absolute most recent
+        const sortedAssignments = [...assignmentsResult.data].sort((a, b) => {
+          const dateCompare = new Date(b.assignment_date) - new Date(a.assignment_date);
+          if (dateCompare !== 0) return dateCompare;
+          
+          // If same date, compare by service start time
+          const timeA = a.services?.start_time || '00:00:00';
+          const timeB = b.services?.start_time || '00:00:00';
+          return timeB.localeCompare(timeA);
+        });
+        
+        mostRecentAssignment = sortedAssignments[0];
+      }
 
       return {
         totalAssignments: totalResult.count || 0,
         upcomingAssignments: upcomingResult.count || 0,
         servicesWorked: uniqueServices.size,
-        recentAssignment: groupedAssignments[0] || null
+        recentAssignment: mostRecentAssignment
       };
     } catch (error) {
       console.error('Error fetching staff stats:', error);
@@ -228,6 +254,13 @@ const StaffManagementPage = () => {
       text: 'Staff information has been updated.',
       timer: 1500
     });
+  };
+
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Define table columns
@@ -375,6 +408,102 @@ const StaffManagementPage = () => {
     return `bg-gradient-to-br ${colors[index]}`;
   };
 
+  // Modern pagination with ellipsis (shadcn style)
+  const renderPagination = () => {
+    const getVisiblePages = () => {
+      const delta = 2; // Number of pages to show on each side of current page
+      const range = [];
+      const rangeWithDots = [];
+
+      // Always show first page
+      range.push(1);
+
+      // Add pages around current page
+      for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+        range.push(i);
+      }
+
+      // Always show last page if more than 1 page
+      if (totalPages > 1) {
+        range.push(totalPages);
+      }
+
+      // Remove duplicates and sort
+      const uniqueRange = [...new Set(range)].sort((a, b) => a - b);
+
+      // Add ellipsis where needed
+      let prev = 0;
+      for (const page of uniqueRange) {
+        if (page - prev === 2) {
+          rangeWithDots.push(prev + 1);
+        } else if (page - prev !== 1) {
+          rangeWithDots.push('...');
+        }
+        rangeWithDots.push(page);
+        prev = page;
+      }
+
+      return rangeWithDots;
+    };
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+            <span className="font-medium">
+              {Math.min(currentPage * itemsPerPage, (totalPages * itemsPerPage))}
+            </span>{' '}
+            of <span className="font-medium">{totalPages * itemsPerPage}</span> results
+          </p>
+        </div>
+        <div className="flex items-center space-x-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-2"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Button>
+          
+          {getVisiblePages().map((page, index) => (
+            page === '...' ? (
+              <span key={`ellipsis-${index}`} className="px-3 py-2 text-nextgen-blue-dark">
+                ...
+              </span>
+            ) : (
+              <Button
+                key={page}
+                variant={currentPage === page ? "primary" : "outline"}
+                size="sm"
+                onClick={() => handlePageChange(page)}
+                className="min-w-[40px] px-3 py-2"
+              >
+                {page}
+              </Button>
+            )
+          ))}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page-container">
       <Card
@@ -441,7 +570,13 @@ const StaffManagementPage = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+        <motion.div
+          key={currentPage}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden"
+        >
           <Table
             data={staffMembers}
             columns={columns}
@@ -452,7 +587,9 @@ const StaffManagementPage = () => {
             stickyHeader={true}
             onRowClick={(row) => handleViewStaff(row)}
           />
-        </div>
+        </motion.div>
+        
+        {renderPagination()}
       </Card>
 
       {/* Add Staff Modal */}

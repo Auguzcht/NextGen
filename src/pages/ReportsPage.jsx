@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../services/supabase.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import ReportChart from '../components/reports/ReportChart.jsx';
 import AttendancePatternChart from '../components/reports/AttendancePatternChart.jsx';
 import ServiceComparisonChart from '../components/reports/ServiceComparisonChart.jsx';
@@ -8,12 +9,12 @@ import WeeklyReportsList from '../components/reports/WeeklyReportsList.jsx';
 import { Card, Button, Input, Badge, NextGenChart } from '../components/ui';
 import { formatDate, getMonthDateRange, getWeekDateRange } from '../utils/dateUtils.js';
 import Swal from 'sweetalert2';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { generateWeeklyReportPDF } from '../utils/pdfGenerator.js';
 import { storage } from '../services/firebase.js';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 const ReportsPage = () => {
+  const { user, staffProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [reportType, setReportType] = useState('dashboard');
   const [timeRange, setTimeRange] = useState('weekly');
@@ -95,17 +96,14 @@ const ReportsPage = () => {
         lastStartDate: startDate,
         lastEndDate: endDate
       });
-      console.log('Cache cleared due to date range change');
     }
     
     const cachedItem = dataCache[cacheKey];
     
     if (cachedItem && (Date.now() - cachedItem.timestamp) < CACHE_DURATION) {
-      console.log(`Using cached data for ${key}`);
       return cachedItem.data;
     }
     
-    console.log(`Fetching fresh data for ${key}`);
     // Always fetch fresh data when filters change
     const data = await fetchFn();
     
@@ -127,7 +125,6 @@ const ReportsPage = () => {
     // Instead, keep the old data visible while loading new data in background
     
     try {
-      console.log(`Fetching data from ${startDate} to ${endDate}`);
       
       // Generate analytics for the current date range to ensure data availability
       await generateAnalyticsForCurrentRange(startDate, endDate);
@@ -142,11 +139,6 @@ const ReportsPage = () => {
         fetchWithCache('totalStats', () => fetchTotalStats(startDate, endDate)),
       ]);
       
-      console.log('Attendance data count:', attendanceData?.length);
-      console.log('Growth data count:', growthData?.length);
-      console.log('Age data count:', ageData?.length);
-      console.log('Raw data count:', rawData?.length);
-      console.log('Registered children count:', registeredCount);
       
       // Now set data for each report type all at once
       setReportData({
@@ -174,7 +166,6 @@ const ReportsPage = () => {
 
   // Fix 3: Update the useEffect to use the memoized fetchReportData
   useEffect(() => {
-    console.log('Date range changed, fetching new data...');
     
     // Set a short loading state only on initial load
     if (reportData.attendance.length === 0 && reportData.growth.length === 0) {
@@ -199,7 +190,6 @@ const ReportsPage = () => {
 
   // Function to generate analytics for the current date range
   const generateAnalyticsForCurrentRange = async (start, end) => {
-    console.log(`Generating analytics for date range ${start} to ${end}`);
     
     try {
       const { data, error } = await supabase.rpc('generate_analytics_for_date_range', {
@@ -212,7 +202,6 @@ const ReportsPage = () => {
         throw error;
       }
       
-      console.log('Analytics generation result:', data);
       return data;
     } catch (error) {
       console.error('Failed to generate analytics:', error);
@@ -222,7 +211,6 @@ const ReportsPage = () => {
 
   // Fix 4: Update API functions to accept date parameters directly
   const fetchAttendanceData = async (start, end) => {
-    console.log(`Fetching attendance data from ${start} to ${end}`);
     
     // Query from attendance_analytics table
     const { data, error } = await supabase
@@ -243,8 +231,6 @@ const ReportsPage = () => {
       throw error;
     }
     
-    console.log(`Attendance analytics records found: ${data?.length || 0}`);
-    console.log('Raw analytics data:', data);
     
     // Transform to match expected format
     const result = (data || []).map(record => ({
@@ -254,13 +240,10 @@ const ReportsPage = () => {
       first_timers: record.first_timers
     }));
     
-    console.log('Transformed attendance data:', result);
-    console.log(`Attendance summary records: ${result.length}`);
     return result;
   };
 
   const fetchRawAttendanceData = async (start, end) => {
-    console.log(`Fetching raw attendance data from ${start} to ${end}`);
     const { data, error } = await supabase
       .from('attendance')
       .select(`
@@ -286,7 +269,6 @@ const ReportsPage = () => {
   };
 
   const fetchGrowthData = async (start, end) => {
-    console.log(`Fetching growth data from ${start} to ${end}`);
     
     // Query from attendance_analytics table grouped by month
     const { data, error } = await supabase
@@ -304,30 +286,10 @@ const ReportsPage = () => {
       throw error;
     }
     
-    console.log(`Growth analytics records found: ${data?.length || 0}`);
-    console.log('Raw growth data:', data);
     
     if (data && data.length > 0) {
-      console.log('First record keys:', Object.keys(data[0]));
-      console.log('First record full:', data[0]);
-      
-      // Test direct access to attendance_growth_percent
-      console.log('Direct access test:', {
-        attendance_growth_percent: data[0].attendance_growth_percent,
-        attendance_growth_percent_type: typeof data[0].attendance_growth_percent,
-        all_growth_values: data.map(r => r.attendance_growth_percent)
-      });
+      // Data validation successful
     }
-    
-    // Debug: Check the attendance_growth_percent values
-    (data || []).forEach((record, index) => {
-      console.log(`Record ${index}:`, {
-        attendance_growth_percent: record.attendance_growth_percent,
-        type: typeof record.attendance_growth_percent,
-        hasField: record.hasOwnProperty('attendance_growth_percent'),
-        fullRecord: record
-      });
-    });
     
     // Use individual records instead of grouping to preserve growth percentages
     const result = (data || []).map(record => {
@@ -342,13 +304,6 @@ const ReportsPage = () => {
           parsedGrowth = growthValue;
         }
       }
-      
-      // Log if growth is still 0 to help debug
-      if (parsedGrowth === 0) {
-        console.log(`Warning: Growth percentage is 0 for service ${record.service_id} on ${record.report_date}`);
-      }
-      
-      console.log(`Parsing growth: "${growthValue}" (${typeof growthValue}) -> ${parsedGrowth}`);
       
       return {
         month: record.report_date.substring(0, 7), // YYYY-MM
@@ -365,13 +320,10 @@ const ReportsPage = () => {
       return a.service_name.localeCompare(b.service_name);
     });
     
-    console.log(`Growth summary records: ${result.length}`);
-    console.log('Growth data with database percentages:', result);
     return result;
   };
 
   const fetchAgeDistributionData = async (start, end) => {
-    console.log(`Fetching age data from ${start} to ${end}`);
     
     // Query from attendance_analytics table
     const { data, error } = await supabase
@@ -393,7 +345,6 @@ const ReportsPage = () => {
       throw error;
     }
     
-    console.log(`Age analytics records found: ${data?.length || 0}`);
     
     // Transform to expected format
     const ageData = [];
@@ -437,12 +388,10 @@ const ReportsPage = () => {
       }
     });
     
-    console.log(`Age summary records: ${ageData.length}`);
     return ageData;
   };
 
   const fetchRegisteredChildrenCount = async (start, end) => {
-    console.log(`Fetching registered children from ${start} to ${end}`);
     
     try {
       // Use the same approach as Dashboard.jsx - filter by registration_date
@@ -454,7 +403,6 @@ const ReportsPage = () => {
       
       if (error) throw error;
       
-      console.log(`Children registered between ${start} and ${end}: ${data?.length || 0}`);
       return data?.length || 0;
     } catch (err) {
       console.error('Error fetching registered children count:', err);
@@ -464,7 +412,6 @@ const ReportsPage = () => {
 
   // Add this function to fetch total counts based on date range
   const fetchTotalStats = async (start = null, end = null) => {
-    console.log(`Fetching total stats for date range: ${start || 'all'} to ${end || 'all'}`);
     
     try {
       // Get total children count (filtered by registration date if date range provided)
@@ -518,14 +465,51 @@ const ReportsPage = () => {
   };
 
   const fetchWeeklyReports = async () => {
-    const { data, error } = await supabase
-      .from('weekly_reports')
-      .select('*')
-      .order('week_start_date', { ascending: false })
-      .limit(10);
+    try {
+      const { data, error } = await supabase
+        .from('weekly_reports')
+        .select('*')
+        .order('week_start_date', { ascending: false })
+        .limit(10);
+        
+      if (error) throw error;
       
-    if (error) throw error;
-    setWeeklyReports(data || []);
+      console.log('Fetched weekly reports from Supabase:', data);
+      
+      // Convert Firebase storage paths to download URLs
+      if (data && data.length > 0) {
+        const reportsWithUrls = await Promise.all(
+          data.map(async (report) => {
+            if (report.report_pdf_url) {
+              console.log('Processing report:', report.report_id, 'URL:', report.report_pdf_url);
+              
+              // Check if it's a Firebase storage path (not already a full URL)
+              if (report.report_pdf_url.startsWith('NextGen/')) {
+                try {
+                  console.log('Converting storage path to download URL:', report.report_pdf_url);
+                  const storageRef = ref(storage, report.report_pdf_url);
+                  const downloadUrl = await getDownloadURL(storageRef);
+                  console.log('Download URL obtained:', downloadUrl);
+                  return { ...report, report_pdf_url: downloadUrl };
+                } catch (err) {
+                  console.error('Error getting download URL for report:', report.report_id, err);
+                  return report; // Return original if error
+                }
+              }
+            }
+            return report;
+          })
+        );
+        console.log('Reports with converted URLs:', reportsWithUrls);
+        setWeeklyReports(reportsWithUrls);
+        console.log('State updated. First report URL:', reportsWithUrls[0]?.report_pdf_url);
+      } else {
+        setWeeklyReports(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching weekly reports:', err);
+      setWeeklyReports([]);
+    }
   };
 
   // Add a new state to track report refresh triggers
@@ -536,15 +520,22 @@ const ReportsPage = () => {
     try {
       setLoading(true);
       
+      // Get current staff_id from staffProfile
+      const currentStaffId = staffProfile?.staff_id;
+      
+      if (!currentStaffId) {
+        throw new Error('Unable to identify current staff member');
+      }
+      
       // Generate the weekly analytics in the database
       const { data, error } = await supabase.rpc('generate_weekly_analytics');
       
       if (error) throw error;
       
-      // Get the most recently created report
+      // Get the most recently created report and update with current staff_id
       const { data: reportData, error: reportError } = await supabase
         .from('weekly_reports')
-        .select('report_id, week_start_date, week_end_date')
+        .select('report_id, week_start_date, week_end_date, report_generated_by')
         .order('report_id', { ascending: false })
         .limit(1);
         
@@ -553,15 +544,31 @@ const ReportsPage = () => {
       if (reportData && reportData.length > 0) {
         const report = reportData[0];
         
+        // Update the report with the current user's staff_id
+        await supabase
+          .from('weekly_reports')
+          .update({ report_generated_by: currentStaffId })
+          .eq('report_id', report.report_id);
+        
         // Get the start/end dates from the newly created report
         const startDate = report.week_start_date;
         const endDate = report.week_end_date;
         
-        // Generate and upload PDF for the report
-        await generateReportPDF(
+        // Generate and upload PDF for the report with chart screenshots
+        // Charts will be captured from canvas if available on the page
+        await generateWeeklyReportPDF(
           report.report_id, 
           startDate, 
-          endDate
+          endDate,
+          storage,
+          supabase,
+          fetchAttendanceData,
+          fetchAgeDistributionData,
+          fetchRegisteredChildrenCount,
+          fetchRawAttendanceData,
+          fetchGrowthData,
+          fetchWithCache,
+          true  // Always attempt to capture charts from canvas
         );
       }
       
@@ -577,9 +584,7 @@ const ReportsPage = () => {
         text: 'Weekly report generated and PDF created successfully',
         confirmButtonColor: '#30cee4'
       });
-    } catch (error) {
-      console.error('Error generating report:', error);
-      
+    } catch (error) {      
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -588,761 +593,6 @@ const ReportsPage = () => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Update this function to generate and upload the PDF report
-  const generateReportPDF = async (reportId, startDate, endDate) => {
-    try {
-      // Fetch all the data needed for the report
-      const [attendanceData, ageData, registeredCount, rawData, growthData] = await Promise.all([
-        fetchWithCache('attendance_pdf', () => fetchAttendanceData(startDate, endDate)),
-        fetchWithCache('age_pdf', () => fetchAgeDistributionData(startDate, endDate)),
-        fetchWithCache('registered_pdf', () => fetchRegisteredChildrenCount(startDate, endDate)),
-        fetchWithCache('raw_pdf', () => fetchRawAttendanceData(startDate, endDate)),
-        fetchWithCache('growth_pdf', () => fetchGrowthData(startDate, endDate)),
-      ]);
-      
-      // Initialize jsPDF with better quality settings
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: false // Don't compress for better quality
-      });
-      
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      const contentWidth = pageWidth - (margin * 2);
-      let yPosition = margin;
-      
-      // Helper function to add a new page if needed
-      const checkPageBreak = (requiredSpace) => {
-        if (yPosition + requiredSpace > pageHeight - margin) {
-          pdf.addPage();
-          yPosition = margin;
-          return true;
-        }
-        return false;
-      };
-      
-      // Helper function to add text with proper formatting
-      const addText = (text, fontSize, style = 'normal', color = [0, 0, 0]) => {
-        pdf.setFontSize(fontSize);
-        pdf.setFont('helvetica', style);
-        pdf.setTextColor(...color);
-        pdf.text(text, margin, yPosition);
-        yPosition += fontSize * 0.5;
-      };
-      
-      // ===== PAGE 1: COVER & SUMMARY =====
-      
-      // Header with NextGen branding
-      pdf.setFillColor(48, 206, 228); // NextGen blue
-      pdf.rect(0, 0, pageWidth, 40, 'F');
-      
-      pdf.setFontSize(32);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(255, 255, 255);
-      pdf.text('NextGen Ministry', pageWidth / 2, 20, { align: 'center' });
-      
-      pdf.setFontSize(18);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text('Weekly Report', pageWidth / 2, 30, { align: 'center' });
-      
-      yPosition = 60;
-      
-      // Report period
-      pdf.setFontSize(14);
-      pdf.setTextColor(28, 167, 188); // NextGen blue dark
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`Week of ${formatDate(startDate, { month: 'long', day: 'numeric' })} - ${formatDate(endDate, { month: 'long', day: 'numeric', year: 'numeric' })}`, pageWidth / 2, yPosition, { align: 'center' });
-      
-      yPosition += 10;
-      pdf.setFontSize(10);
-      pdf.setTextColor(128, 128, 128);
-      pdf.setFont('helvetica', 'italic');
-      pdf.text(`Generated on ${formatDate(new Date().toISOString().split('T')[0], { month: 'long', day: 'numeric', year: 'numeric' })}`, pageWidth / 2, yPosition, { align: 'center' });
-      
-      yPosition += 20;
-      
-      // Generate service data summary
-      const serviceData = {};
-      let totalAttendance = 0;
-      let uniqueChildren = new Set();
-      
-      if (rawData) {
-        rawData.forEach(item => {
-          const serviceName = item.services?.service_name || 'Unknown';
-          if (!serviceData[serviceName]) {
-            serviceData[serviceName] = { 
-              attendance: 0, 
-              firstTimers: 0,
-              age4_5: 0,
-              age6_7: 0,
-              age8_9: 0,
-              age10_12: 0
-            };
-          }
-          
-          serviceData[serviceName].attendance++;
-          totalAttendance++;
-          uniqueChildren.add(item.child_id);
-          
-          // Count first timers
-          if (item.children?.registration_date >= startDate && item.children?.registration_date <= endDate) {
-            serviceData[serviceName].firstTimers++;
-          }
-          
-          // Count by age category
-          const ageCategory = item.children?.age_categories?.category_name;
-          if (ageCategory?.includes('4-5')) serviceData[serviceName].age4_5++;
-          else if (ageCategory?.includes('6-7')) serviceData[serviceName].age6_7++;
-          else if (ageCategory?.includes('8-9')) serviceData[serviceName].age8_9++;
-          else if (ageCategory?.includes('10-12')) serviceData[serviceName].age10_12++;
-        });
-      }
-      
-      // Executive Summary Box
-      pdf.setFillColor(240, 248, 255); // Light blue background
-      pdf.roundedRect(margin, yPosition, contentWidth, 45, 3, 3, 'F');
-      
-      yPosition += 8;
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(28, 167, 188);
-      pdf.text('Executive Summary', margin + 5, yPosition);
-      
-      yPosition += 10;
-      
-      // Summary stats in a grid
-      const statBoxWidth = contentWidth / 3;
-      const statStartY = yPosition;
-      
-      // Total Attendance
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('Total Attendance', margin + 5, statStartY);
-      pdf.setFontSize(24);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(48, 206, 228);
-      pdf.text(totalAttendance.toString(), margin + 5, statStartY + 8);
-      
-      // Unique Children
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('Unique Children', margin + statBoxWidth + 5, statStartY);
-      pdf.setFontSize(24);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(48, 206, 228);
-      pdf.text(uniqueChildren.size.toString(), margin + statBoxWidth + 5, statStartY + 8);
-      
-      // First Timers
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('First Timers', margin + (statBoxWidth * 2) + 5, statStartY);
-      pdf.setFontSize(24);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(251, 118, 16); // NextGen orange
-      pdf.text((registeredCount || 0).toString(), margin + (statBoxWidth * 2) + 5, statStartY + 8);
-      
-      yPosition += 50;
-      
-      // Service Breakdown Table
-      checkPageBreak(60);
-      
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(28, 167, 188);
-      pdf.text('Service Breakdown', margin, yPosition);
-      yPosition += 8;
-      
-      // Table header
-      pdf.setFillColor(48, 206, 228);
-      pdf.rect(margin, yPosition, contentWidth, 8, 'F');
-      
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(255, 255, 255);
-      
-      const colWidths = [45, 25, 25, 20, 20, 20, 20];
-      let xPos = margin + 2;
-      
-      pdf.text('Service', xPos, yPosition + 6);
-      xPos += colWidths[0];
-      pdf.text('Attendance', xPos, yPosition + 6);
-      xPos += colWidths[1];
-      pdf.text('First Timers', xPos, yPosition + 6);
-      xPos += colWidths[2];
-      pdf.text('4-5 yrs', xPos, yPosition + 6);
-      xPos += colWidths[3];
-      pdf.text('6-7 yrs', xPos, yPosition + 6);
-      xPos += colWidths[4];
-      pdf.text('8-9 yrs', xPos, yPosition + 6);
-      xPos += colWidths[5];
-      pdf.text('10-12 yrs', xPos, yPosition + 6);
-      
-      yPosition += 10;
-      
-      // Table rows
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      let rowIndex = 0;
-      
-      Object.entries(serviceData).forEach(([service, data]) => {
-        checkPageBreak(8);
-        
-        // Alternate row colors
-        if (rowIndex % 2 === 0) {
-          pdf.setFillColor(250, 250, 250);
-          pdf.rect(margin, yPosition - 1, contentWidth, 7, 'F');
-        }
-        
-        xPos = margin + 2;
-        pdf.text(service, xPos, yPosition + 4);
-        xPos += colWidths[0];
-        pdf.text(data.attendance.toString(), xPos, yPosition + 4);
-        xPos += colWidths[1];
-        pdf.text(data.firstTimers.toString(), xPos, yPosition + 4);
-        xPos += colWidths[2];
-        pdf.text(data.age4_5.toString(), xPos, yPosition + 4);
-        xPos += colWidths[3];
-        pdf.text(data.age6_7.toString(), xPos, yPosition + 4);
-        xPos += colWidths[4];
-        pdf.text(data.age8_9.toString(), xPos, yPosition + 4);
-        xPos += colWidths[5];
-        pdf.text(data.age10_12.toString(), xPos, yPosition + 4);
-        
-        yPosition += 7;
-        rowIndex++;
-      });
-      
-      // Totals row
-      pdf.setFillColor(48, 206, 228);
-      pdf.rect(margin, yPosition, contentWidth, 8, 'F');
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(255, 255, 255);
-      
-      xPos = margin + 2;
-      pdf.text('Totals', xPos, yPosition + 6);
-      xPos += colWidths[0];
-      pdf.text(totalAttendance.toString(), xPos, yPosition + 6);
-      xPos += colWidths[1];
-      pdf.text((registeredCount || 0).toString(), xPos, yPosition + 6);
-      xPos += colWidths[2];
-      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age4_5, 0).toString(), xPos, yPosition + 6);
-      xPos += colWidths[3];
-      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age6_7, 0).toString(), xPos, yPosition + 6);
-      xPos += colWidths[4];
-      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age8_9, 0).toString(), xPos, yPosition + 6);
-      xPos += colWidths[5];
-      pdf.text(Object.values(serviceData).reduce((sum, data) => sum + data.age10_12, 0).toString(), xPos, yPosition + 6);
-      
-      // ===== PAGE 2: ATTENDANCE PATTERNS CHART =====
-      pdf.addPage();
-      yPosition = margin;
-      
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(28, 167, 188);
-      pdf.text('Attendance Patterns', margin, yPosition);
-      yPosition += 8;
-      
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('Distribution of children by attendance frequency', margin, yPosition);
-      yPosition += 10;
-      
-      // Generate attendance pattern chart
-      const attendancePatternData = generateAttendancePatternData(rawData);
-      
-      if (attendancePatternData.labels && attendancePatternData.labels.length > 0) {
-        // Create a temporary canvas for the chart
-        const chartCanvas = document.createElement('canvas');
-        chartCanvas.width = 800;
-        chartCanvas.height = 400;
-        document.body.appendChild(chartCanvas);
-        chartCanvas.style.position = 'absolute';
-        chartCanvas.style.left = '-9999px';
-        
-        // Import Chart.js dynamically
-        const { Chart } = await import('chart.js/auto');
-        
-        const attendanceChart = new Chart(chartCanvas, {
-          type: 'doughnut',
-          data: attendancePatternData,
-          options: {
-            responsive: false,
-            animation: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: {
-                  padding: 20,
-                  font: { size: 14 }
-                }
-              }
-            }
-          }
-        });
-        
-        // Wait for chart to render
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const chartImage = chartCanvas.toDataURL('image/png');
-        pdf.addImage(chartImage, 'PNG', margin, yPosition, contentWidth, 100);
-        
-        // Clean up
-        attendanceChart.destroy();
-        document.body.removeChild(chartCanvas);
-        
-        yPosition += 110;
-      }
-      
-      // Attendance pattern legend
-      const patterns = [
-        { label: 'One-time', description: 'Attended only once', color: [48, 206, 228] },
-        { label: 'Occasional (2-3)', description: 'Attended 2-3 times', color: [251, 118, 16] },
-        { label: 'Regular (4-7)', description: 'Attended 4-7 times', color: [92, 215, 233] },
-        { label: 'Frequent (8+)', description: 'Attended 8 or more times', color: [230, 99, 0] }
-      ];
-      
-      checkPageBreak(40);
-      
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('Pattern Definitions:', margin, yPosition);
-      yPosition += 8;
-      
-      patterns.forEach(pattern => {
-        pdf.setFillColor(...pattern.color);
-        pdf.circle(margin + 2, yPosition - 1, 2, 'F');
-        
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(pattern.label + ':', margin + 8, yPosition);
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(80, 80, 80);
-        pdf.text(pattern.description, margin + 40, yPosition);
-        
-        yPosition += 6;
-      });
-      
-      // ===== PAGE 3: AGE DISTRIBUTION =====
-      pdf.addPage();
-      yPosition = margin;
-      
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(28, 167, 188);
-      pdf.text('Age Distribution', margin, yPosition);
-      yPosition += 8;
-      
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('Breakdown of attendance by age group', margin, yPosition);
-      yPosition += 10;
-      
-      // Age distribution data
-      if (ageData && ageData.length > 0) {
-        const ageGroups = {};
-        ageData.forEach(item => {
-          if (!ageGroups[item.age_category]) {
-            ageGroups[item.age_category] = 0;
-          }
-          ageGroups[item.age_category] += item.attendance_count;
-        });
-        
-        const chartCanvas = document.createElement('canvas');
-        chartCanvas.width = 600;
-        chartCanvas.height = 400;
-        document.body.appendChild(chartCanvas);
-        chartCanvas.style.position = 'absolute';
-        chartCanvas.style.left = '-9999px';
-        
-        const { Chart } = await import('chart.js/auto');
-        
-        const ageChart = new Chart(chartCanvas, {
-          type: 'pie',
-          data: {
-            labels: Object.keys(ageGroups),
-            datasets: [{
-              data: Object.values(ageGroups),
-              backgroundColor: [
-                'rgba(48, 206, 228, 0.8)',
-                'rgba(251, 118, 16, 0.8)',
-                'rgba(92, 215, 233, 0.8)',
-                'rgba(230, 99, 0, 0.8)',
-                'rgba(28, 167, 188, 0.8)'
-              ]
-            }]
-          },
-          options: {
-            responsive: false,
-            animation: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: {
-                  padding: 15,
-                  font: { size: 12 }
-                }
-              }
-            }
-          }
-        });
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const chartImage = chartCanvas.toDataURL('image/png');
-        pdf.addImage(chartImage, 'PNG', margin + 20, yPosition, contentWidth - 40, 100);
-        
-        ageChart.destroy();
-        document.body.removeChild(chartCanvas);
-        
-        yPosition += 110;
-        
-        // Age group statistics table
-        checkPageBreak(50);
-        
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(0, 0, 0);
-        pdf.text('Age Group Statistics:', margin, yPosition);
-        yPosition += 8;
-        
-        const totalAge = Object.values(ageGroups).reduce((sum, val) => sum + val, 0);
-        
-        Object.entries(ageGroups).forEach(([category, count]) => {
-          const percentage = totalAge > 0 ? ((count / totalAge) * 100).toFixed(1) : 0;
-          
-          pdf.setFontSize(10);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(`${category}:`, margin + 5, yPosition);
-          
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(`${count} children (${percentage}%)`, margin + 50, yPosition);
-          
-          yPosition += 6;
-        });
-      }
-      
-      // ===== NEW PAGE: NEW REGISTRATIONS & ACTIVITY =====
-      pdf.addPage();
-      yPosition = margin;
-      
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(28, 167, 188);
-      pdf.text('New Registrations & Activity', margin, yPosition);
-      yPosition += 10;
-      
-      // Fetch new registrations with staff who registered them
-      const { data: newRegistrations, error: regError } = await supabase
-        .from('children')
-        .select(`
-          child_id,
-          formal_id,
-          first_name,
-          last_name,
-          birthdate,
-          registration_date,
-          age_categories (category_name)
-        `)
-        .gte('registration_date', startDate)
-        .lte('registration_date', endDate)
-        .order('registration_date', { ascending: false });
-      
-      if (!regError && newRegistrations && newRegistrations.length > 0) {
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(48, 206, 228);
-        pdf.text(`New Children Registered (${newRegistrations.length})`, margin, yPosition);
-        yPosition += 8;
-        
-        // Table header
-        pdf.setFillColor(48, 206, 228);
-        pdf.rect(margin, yPosition, contentWidth, 7, 'F');
-        
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(255, 255, 255);
-        
-        let xPos = margin + 2;
-        pdf.text('ID', xPos, yPosition + 5);
-        pdf.text('Name', xPos + 25, yPosition + 5);
-        pdf.text('Age Group', xPos + 80, yPosition + 5);
-        pdf.text('Date', xPos + 130, yPosition + 5);
-        
-        yPosition += 9;
-        
-        // Table rows
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(0, 0, 0);
-        let regRowIndex = 0;
-        
-        newRegistrations.forEach(child => {
-          checkPageBreak(7);
-          
-          if (regRowIndex % 2 === 0) {
-            pdf.setFillColor(250, 250, 250);
-            pdf.rect(margin, yPosition - 1, contentWidth, 6, 'F');
-          }
-          
-          xPos = margin + 2;
-          pdf.setFontSize(8);
-          pdf.text(child.formal_id || 'N/A', xPos, yPosition + 4);
-          pdf.text(`${child.first_name} ${child.last_name}`, xPos + 25, yPosition + 4);
-          pdf.text(child.age_categories?.category_name || 'N/A', xPos + 80, yPosition + 4);
-          pdf.text(formatDate(child.registration_date, { month: 'short', day: 'numeric', year: 'numeric' }), xPos + 130, yPosition + 4);
-          
-          yPosition += 6;
-          regRowIndex++;
-        });
-        
-        yPosition += 10;
-      } else {
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('No new registrations during this period', margin, yPosition);
-        yPosition += 15;
-      }
-      
-      // Fetch new guardians added
-      const { data: newGuardians, error: guardError } = await supabase
-        .from('child_guardian')
-        .select(`
-          id,
-          child_id,
-          guardians (
-            guardian_id,
-            first_name,
-            last_name,
-            email,
-            phone_number,
-            relationship
-          ),
-          children (
-            first_name,
-            last_name,
-            registration_date
-          )
-        `)
-        .gte('children.registration_date', startDate)
-        .lte('children.registration_date', endDate);
-      
-      if (!guardError && newGuardians && newGuardians.length > 0) {
-        checkPageBreak(40);
-        
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(48, 206, 228);
-        pdf.text(`New Guardians Added (${newGuardians.length})`, margin, yPosition);
-        yPosition += 8;
-        
-        // Table header
-        pdf.setFillColor(48, 206, 228);
-        pdf.rect(margin, yPosition, contentWidth, 7, 'F');
-        
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(255, 255, 255);
-        
-        let xPos = margin + 2;
-        pdf.text('Guardian Name', xPos, yPosition + 5);
-        pdf.text('Child', xPos + 50, yPosition + 5);
-        pdf.text('Relationship', xPos + 90, yPosition + 5);
-        pdf.text('Contact', xPos + 120, yPosition + 5);
-        
-        yPosition += 9;
-        
-        // Table rows
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(0, 0, 0);
-        let guardRowIndex = 0;
-        
-        newGuardians.forEach(item => {
-          checkPageBreak(7);
-          
-          if (guardRowIndex % 2 === 0) {
-            pdf.setFillColor(250, 250, 250);
-            pdf.rect(margin, yPosition - 1, contentWidth, 6, 'F');
-          }
-          
-          xPos = margin + 2;
-          pdf.setFontSize(8);
-          pdf.text(`${item.guardians?.first_name || ''} ${item.guardians?.last_name || ''}`, xPos, yPosition + 4);
-          pdf.text(`${item.children?.first_name || ''} ${item.children?.last_name || ''}`, xPos + 50, yPosition + 4);
-          pdf.text(item.guardians?.relationship || 'N/A', xPos + 90, yPosition + 4);
-          pdf.text(item.guardians?.phone_number || item.guardians?.email || 'N/A', xPos + 120, yPosition + 4);
-          
-          yPosition += 6;
-          guardRowIndex++;
-        });
-        
-        yPosition += 10;
-      } else {
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('No new guardians added during this period', margin, yPosition);
-        yPosition += 15;
-      }
-      
-      // ===== PAGE 4: GROWTH TRENDS =====
-      if (growthData && growthData.length > 0) {
-        pdf.addPage();
-        yPosition = margin;
-        
-        pdf.setFontSize(16);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(28, 167, 188);
-        pdf.text('Growth Trends', margin, yPosition);
-        yPosition += 8;
-        
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('Service attendance growth over time', margin, yPosition);
-        yPosition += 10;
-        
-        // Service comparison data
-        const serviceComparisonData = generateServiceComparisonData(growthData);
-        
-        if (serviceComparisonData.labels && serviceComparisonData.labels.length > 0) {
-          const chartCanvas = document.createElement('canvas');
-          chartCanvas.width = 800;
-          chartCanvas.height = 400;
-          document.body.appendChild(chartCanvas);
-          chartCanvas.style.position = 'absolute';
-          chartCanvas.style.left = '-9999px';
-          
-          const { Chart } = await import('chart.js/auto');
-          
-          const growthChart = new Chart(chartCanvas, {
-            type: 'bar',
-            data: serviceComparisonData,
-            options: {
-              responsive: false,
-              animation: false,
-              plugins: {
-                legend: {
-                  position: 'bottom',
-                  labels: {
-                    padding: 15,
-                    font: { size: 12 }
-                  }
-                }
-              },
-              scales: {
-                y: {
-                  beginAtZero: true
-                }
-              }
-            }
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const chartImage = chartCanvas.toDataURL('image/png');
-          pdf.addImage(chartImage, 'PNG', margin, yPosition, contentWidth, 100);
-          
-          growthChart.destroy();
-          document.body.removeChild(chartCanvas);
-          
-          yPosition += 110;
-        }
-        
-        // Service growth insights
-        checkPageBreak(40);
-        
-        const serviceStats = generateServiceStats(growthData);
-        
-        if (serviceStats.topService && serviceStats.fastestGrowing) {
-          pdf.setFontSize(12);
-          pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(0, 0, 0);
-          pdf.text('Key Insights:', margin, yPosition);
-          yPosition += 8;
-          
-          pdf.setFillColor(240, 248, 255);
-          pdf.roundedRect(margin, yPosition, contentWidth, 25, 3, 3, 'F');
-          
-          yPosition += 8;
-          
-          pdf.setFontSize(10);
-          pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(48, 206, 228);
-          pdf.text('Highest Average Attendance:', margin + 5, yPosition);
-          pdf.setFont('helvetica', 'normal');
-          pdf.setTextColor(0, 0, 0);
-          pdf.text(`${serviceStats.topService.service} (${Math.round(serviceStats.topService.average)} avg)`, margin + 65, yPosition);
-          
-          yPosition += 8;
-          
-          pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(251, 118, 16);
-          pdf.text('Fastest Growing Service:', margin + 5, yPosition);
-          pdf.setFont('helvetica', 'normal');
-          pdf.setTextColor(0, 0, 0);
-          pdf.text(`${serviceStats.fastestGrowing.service} (${serviceStats.fastestGrowing.growth}% growth)`, margin + 65, yPosition);
-        }
-      }
-      
-      // ===== FOOTER ON ALL PAGES =====
-      const totalPages = pdf.internal.getNumberOfPages();
-      
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        
-        // Footer line
-        pdf.setDrawColor(200, 200, 200);
-        pdf.setLineWidth(0.5);
-        pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
-        
-        // Footer text
-        pdf.setFontSize(8);
-        pdf.setFont('helvetica', 'italic');
-        pdf.setTextColor(150, 150, 150);
-        pdf.text('NextGen Ministry Weekly Report', margin, pageHeight - 10);
-        pdf.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
-      }
-      
-      // Generate filename from the week start date
-      const filename = `weekly_${startDate.replace(/-/g, '')}.pdf`;
-      
-      // Upload to Firebase Storage
-      const pdfBlob = pdf.output('blob');
-      const storageRef = ref(storage, `NextGen/weekly-reports-pdf/${filename}`);
-      
-      await uploadBytes(storageRef, pdfBlob);
-      const pdfUrl = await getDownloadURL(storageRef);
-      
-      console.log('PDF generated and uploaded:', pdfUrl);
-      
-      // Update the weekly_reports table with the PDF URL in Supabase format
-      await supabase
-        .from('weekly_reports')
-        .update({
-          report_pdf_url: `reports/weekly_${startDate.replace(/-/g, '')}.pdf`
-        })
-        .eq('report_id', reportId);
-      
-      return pdfUrl;
-      
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      throw error;
     }
   };
 
@@ -1463,14 +713,9 @@ const ReportsPage = () => {
 
   // Add this function to your ReportsPage component
   const updateChartData = useCallback((type, attendanceData, growthData, ageData) => {
-    console.log('Updating chart data for:', type);
-    console.log('Attendance data for chart:', attendanceData);
-    console.log('Growth data for chart:', growthData);
-    console.log('Age data for chart:', ageData);
     
     if (type === 'attendance') {
       const groupedData = groupDataByTimeRange(attendanceData, 'attendance_date', 'total_children');
-      console.log('Grouped data for attendance chart:', groupedData);
       
       setChartData({
         labels: groupedData.map(item => item.label),
@@ -1530,7 +775,6 @@ const ReportsPage = () => {
       // For age distribution chart
       const ageGroups = {};
       
-      console.log('Age data for chart:', ageData);
       
       ageData.forEach(item => {
         if (!ageGroups[item.age_category]) {
@@ -1539,7 +783,6 @@ const ReportsPage = () => {
         ageGroups[item.age_category] += item.count; // Fixed: was item.attendance_count
       });
       
-      console.log('Processed age groups:', ageGroups);
       
       // NextGen theme colors for age groups
       const backgroundColors = [
@@ -1663,16 +906,13 @@ const ReportsPage = () => {
 
   // Generate data and stats for service comparison chart
   const generateServiceStats = (serviceData) => {
-    console.log('generateServiceStats called with:', serviceData);
     
     if (!serviceData || serviceData.length === 0) {
-      console.log('No service data available');
       return { topService: null, fastestGrowing: null };
     }
     
     // Get unique services
     const services = [...new Set(serviceData.map(item => item.service_name))];
-    console.log('Unique services found:', services);
     
     // Aggregate data by service
     const serviceStats = services.map(service => {
@@ -1685,7 +925,6 @@ const ReportsPage = () => {
         ? serviceItems[serviceItems.length - 1].growth_percent || 0
         : 0;
       
-      console.log(`Service ${service}: growth = ${latestGrowth}% from ${serviceItems.length} records`);
       
       return {
         service,
@@ -1751,7 +990,6 @@ const ReportsPage = () => {
         ? serviceItems[serviceItems.length - 1].growth_percent || 0
         : 0;
       
-      console.log(`Service comparison - ${service}: growth = ${latestGrowth}%`);
       
       return {
         service,
@@ -2271,35 +1509,37 @@ const ReportsPage = () => {
                           </div>
                         ) : (
                           <>
-                            <NextGenChart
-                              type="doughnut"
-                              height="240px"
-                              data={generateAttendancePatternData(reportData.raw)}
-                              options={{
-                                cutout: '65%',
-                                plugins: {
-                                  tooltip: {
-                                    callbacks: {
-                                      label: function(context) {
-                                        const value = context.raw;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                        return `${context.label}: ${value} (${percentage}%)`;
+                            <div data-chart-type="attendance-pattern">
+                              <NextGenChart
+                                type="doughnut"
+                                height="240px"
+                                data={generateAttendancePatternData(reportData.raw)}
+                                options={{
+                                  cutout: '65%',
+                                  plugins: {
+                                    tooltip: {
+                                      callbacks: {
+                                        label: function(context) {
+                                          const value = context.raw;
+                                          const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                          const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                          return `${context.label}: ${value} (${percentage}%)`;
+                                        }
+                                      }
+                                    },
+                                    legend: {
+                                      position: 'bottom',
+                                      labels: {
+                                        padding: 20,
+                                        usePointStyle: true,
                                       }
                                     }
-                                  },
-                                  legend: {
-                                    position: 'bottom',
-                                    labels: {
-                                      padding: 20,
-                                      usePointStyle: true,
-                                    }
                                   }
-                                }
-                              }}
-                              enableDownload
-                              downloadFilename="attendance-patterns"
-                            />
+                                }}
+                                enableDownload
+                                downloadFilename="attendance-patterns"
+                              />
+                            </div>
                             
                             <div className="mt-4 pt-4 border-t border-gray-100">
                               <div className="text-xs text-gray-500">
@@ -2374,56 +1614,58 @@ const ReportsPage = () => {
                               </div>
                             )}
                             
-                            <NextGenChart
-                              type="bar"
-                              height="240px"
-                              data={generateServiceComparisonData(reportData.growth)}
-                              options={{
-                                responsive: true,
-                                interaction: {
-                                  mode: 'index',
-                                  intersect: false,
-                                },
-                                scales: {
-                                  y: {
-                                    position: 'left',
-                                    beginAtZero: true,
-                                    title: {
-                                      display: true,
-                                      text: 'Average Attendance',
-                                      color: '#30cee4'
-                                    },
-                                    ticks: {
-                                      font: {
-                                        family: "system-ui, Avenir, Helvetica, Arial, sans-serif"
-                                      }
-                                    },
-                                    grid: {
-                                      color: 'rgba(0, 0, 0, 0.05)'
-                                    }
+                            <div data-chart-type="service-comparison">
+                              <NextGenChart
+                                type="bar"
+                                height="240px"
+                                data={generateServiceComparisonData(reportData.growth)}
+                                options={{
+                                  responsive: true,
+                                  interaction: {
+                                    mode: 'index',
+                                    intersect: false,
                                   },
-                                  y1: {
-                                    position: 'right',
-                                    beginAtZero: true,
-                                    title: {
-                                      display: true,
-                                      text: 'Growth Rate (%)',
-                                      color: '#fb7610'
-                                    },
-                                    ticks: {
-                                      callback: function(value) {
-                                        return value + '%';
+                                  scales: {
+                                    y: {
+                                      position: 'left',
+                                      beginAtZero: true,
+                                      title: {
+                                        display: true,
+                                        text: 'Average Attendance',
+                                        color: '#30cee4'
+                                      },
+                                      ticks: {
+                                        font: {
+                                          family: "system-ui, Avenir, Helvetica, Arial, sans-serif"
+                                        }
+                                      },
+                                      grid: {
+                                        color: 'rgba(0, 0, 0, 0.05)'
                                       }
                                     },
-                                    grid: {
-                                      drawOnChartArea: false
+                                    y1: {
+                                      position: 'right',
+                                      beginAtZero: true,
+                                      title: {
+                                        display: true,
+                                        text: 'Growth Rate (%)',
+                                        color: '#fb7610'
+                                      },
+                                      ticks: {
+                                        callback: function(value) {
+                                          return value + '%';
+                                        }
+                                      },
+                                      grid: {
+                                        drawOnChartArea: false
+                                      }
                                     }
                                   }
-                                }
-                              }}
-                              enableDownload
-                              downloadFilename="service-comparison"
-                            />
+                                }}
+                                enableDownload
+                                downloadFilename="service-comparison"
+                              />
+                            </div>
                           </>
                         )}
                       </div>
@@ -2488,17 +1730,37 @@ const ReportsPage = () => {
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     {report.report_pdf_url ? (
-                                      <a 
-                                        href={report.report_pdf_url} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-nextgen-blue hover:text-nextgen-blue-dark flex items-center"
+                                      <button
+                                        onClick={async (e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          
+                                          try {
+                                            let urlToOpen = report.report_pdf_url;
+                                            
+                                            // If it's a storage path, convert it NOW
+                                            if (!urlToOpen.startsWith('http')) {
+                                              console.log('Converting storage path on click:', urlToOpen);
+                                              const storageRef = ref(storage, urlToOpen);
+                                              urlToOpen = await getDownloadURL(storageRef);
+                                              console.log('Got Firebase URL on click:', urlToOpen);
+                                            }
+                                            
+                                            // Force open with full URL
+                                            console.log('Opening URL:', urlToOpen);
+                                            window.open(urlToOpen, '_blank', 'noopener,noreferrer');
+                                          } catch (error) {
+                                            console.error('Error opening PDF:', error);
+                                            alert('Error opening PDF. Please try again.');
+                                          }
+                                        }}
+                                        className="text-nextgen-blue hover:text-nextgen-blue-dark flex items-center cursor-pointer"
                                       >
                                         <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                         </svg>
                                         View PDF
-                                      </a>
+                                      </button>
                                     ) : (
                                       <span className="text-gray-400 flex items-center">
                                         <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

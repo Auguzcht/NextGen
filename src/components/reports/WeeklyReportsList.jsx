@@ -58,10 +58,8 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
 
       if (error) throw error;
       
-      console.log('Fetched reports with staff profiles:', data);
       setReports(data || []);
     } catch (error) {
-      console.error('Error fetching weekly reports:', error);
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -87,13 +85,61 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
         }
       });
       
-      // Call the API endpoint to send weekly report
-      const response = await fetch('/api/email/send-weekly-report', {
+      // Get the report data
+      const report = reports.find(r => r.report_id === reportId);
+      if (!report) {
+        throw new Error('Report not found');
+      }
+      
+      // Fetch staff members with appropriate roles
+      const { data: staffMembers, error: staffError } = await supabase
+        .from('staff')
+        .select('staff_id, first_name, last_name, email, role')
+        .eq('is_active', true)
+        .in('role', ['Coordinator', 'Administrator', 'Team Leader']);
+      
+      if (staffError) throw staffError;
+      
+      if (!staffMembers || staffMembers.length === 0) {
+        throw new Error('No eligible staff members found to send report to');
+      }
+      
+      // Prepare recipients
+      const recipients = staffMembers.map(staff => ({
+        email: staff.email,
+        name: `${staff.first_name} ${staff.last_name}`,
+        staffId: staff.staff_id
+      }));
+      
+      // Import template function
+      const { createStaffWeeklyReportTemplate } = await import('../../utils/emailTemplates.js');
+      
+      // Generate email HTML
+      const emailHtml = createStaffWeeklyReportTemplate({
+        weekStartDate: report.week_start_date,
+        weekEndDate: report.week_end_date,
+        totalAttendance: report.total_attendance,
+        uniqueChildren: report.unique_children,
+        firstTimers: report.first_timers,
+        reportPdfUrl: report.report_pdf_url
+      });
+      
+      const subject = `Weekly Ministry Report: ${new Date(report.week_start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(report.week_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      
+      // Call the batch email API endpoint
+      const response = await fetch('/api/email/send-batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ reportId }),
+        body: JSON.stringify({
+          recipients,
+          subject,
+          html: emailHtml,
+          text: `Weekly Ministry Report for ${new Date(report.week_start_date).toLocaleDateString()} - ${new Date(report.week_end_date).toLocaleDateString()}. Total Attendance: ${report.total_attendance}, Unique Children: ${report.unique_children}, First-Timers: ${report.first_timers}. ${report.report_pdf_url ? `View full report: ${report.report_pdf_url}` : ''}`,
+          templateId: null,
+          recipientType: 'staff'
+        }),
       });
       
       const data = await response.json();
@@ -102,20 +148,37 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
         throw new Error(data.error || `API responded with status: ${response.status}`);
       }
       
+      // Only update report with email sent date if at least one email was successful
+      if (data.data?.successful > 0) {
+        await supabase
+          .from('weekly_reports')
+          .update({ email_sent_date: new Date().toISOString() })
+          .eq('report_id', reportId);
+      }
+      
       Swal.fire({
-        icon: 'success',
-        title: 'Email Sent!',
+        icon: data.data?.successful > 0 ? 'success' : 'error',
+        title: data.data?.successful > 0 ? 'Email Sent!' : 'Email Failed',
         html: `
           <div class="text-left">
             <p class="mb-2"><strong>Successfully sent:</strong> ${data.data?.successful || 0} email(s)</p>
             ${data.data?.failed > 0 ? `
               <p class="mb-2 text-red-600"><strong>Failed:</strong> ${data.data.failed} email(s)</p>
             ` : ''}
-            <p class="text-sm text-gray-600"><strong>Success Rate:</strong> ${data.data?.successRate || '100%'}</p>
+            <p class="text-sm text-gray-600"><strong>Success Rate:</strong> ${data.data?.successRate || '0%'}</p>
+            ${data.data?.failures && data.data.failures.length > 0 ? `
+              <div class="mt-3 text-xs text-gray-500">
+                <p><strong>Failures:</strong></p>
+                <ul class="list-disc list-inside">
+                  ${data.data.failures.slice(0, 3).map(f => `<li>${f.email}: ${f.error}</li>`).join('')}
+                  ${data.data.failures.length > 3 ? `<li>... and ${data.data.failures.length - 3} more</li>` : ''}
+                </ul>
+              </div>
+            ` : ''}
           </div>
         `,
         confirmButtonColor: '#30cee4',
-        timer: 5000
+        timer: data.data?.successful > 0 ? 5000 : undefined
       });
       
       fetchReports();
@@ -268,7 +331,7 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
     {
       header: "Actions",
       cell: (row) => (
-        <div className="flex justify-end items-center space-x-2">
+        <div className="flex justify-end items-end space-x-2">
           {row.report_pdf_url ? (
             <Button
               variant="ghost"

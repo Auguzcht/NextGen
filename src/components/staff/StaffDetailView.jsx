@@ -30,21 +30,14 @@ const StaffDetailView = ({ staff: initialStaff, staffId, isOpen, onClose }) => {
     return `bg-gradient-to-br ${colors[index]}`;
   }, [staff?.staff_id]);
 
-  // Get role badge variant based on assignment role
+  // Get role badge variant based on Cal.com physical role
   const getRoleBadgeVariant = (role) => {
     const roleLower = role?.toLowerCase() || '';
-    switch (roleLower) {
-      case 'leader':
-        return 'purple';
-      case 'teacher':
-        return 'success';
-      case 'helper':
-        return 'info';
-      case 'check-in':
-        return 'warning';
-      default:
-        return 'secondary';
-    }
+    if (roleLower.includes('team leader')) return 'purple';
+    if (roleLower.includes('lead teacher')) return 'success';
+    if (roleLower.includes('teacher')) return 'info';
+    if (roleLower.includes('gate keeper')) return 'warning';
+    return 'secondary';
   };
 
   const formatDate = (dateStr) => {
@@ -241,42 +234,21 @@ const StaffDetailView = ({ staff: initialStaff, staffId, isOpen, onClose }) => {
                             year: 'numeric'
                           })}
                         </p>
-                        <Badge variant={getRoleBadgeVariant(recentAssignment.role)} size="xs" className="capitalize">
-                          {recentAssignment.role}
+                        <Badge variant={getRoleBadgeVariant(recentAssignment.physical_role)} size="xs" className="capitalize">
+                          {recentAssignment.physical_role}
                         </Badge>
                       </div>
 
                       <div>
-                        {Array.isArray(recentAssignment.services) ? (
-                          <div>
-                            <p className="font-semibold text-gray-900 text-sm mb-1">
-                              {recentAssignment.services.map(s => s.service_name).join(', ')}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs text-gray-600">
-                                {recentAssignment.services[0].day_of_week}
-                                {recentAssignment.services[0].start_time && ` • ${formatTime(recentAssignment.services[0].start_time)}`}
-                              </p>
-                              {recentAssignment.services.length > 1 && (
-                                <Badge variant="info" size="xs">
-                                  {recentAssignment.services.length} services
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="font-semibold text-gray-900 text-sm mb-1">
-                              {recentAssignment.services.service_name}
-                            </p>
-                            <div className="space-y-0.5">
-                              <p className="text-xs text-gray-600">
-                                {recentAssignment.services.day_of_week}
-                                {recentAssignment.services.start_time && ` • ${formatTime(recentAssignment.services.start_time)}`}
-                              </p>
-                            </div>
-                          </>
-                        )}
+                        <p className="font-semibold text-gray-900 text-sm mb-1">
+                          {recentAssignment.services?.service_name || 'No service'}
+                        </p>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-gray-600">
+                            {recentAssignment.services?.day_of_week}
+                            {recentAssignment.services?.start_time && ` • ${formatTime(recentAssignment.services.start_time)}`}
+                          </p>
+                        </div>
                       </div>
 
                       {recentAssignment.notes && (

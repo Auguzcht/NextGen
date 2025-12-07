@@ -482,7 +482,7 @@ const GuardiansPage = () => {
           />
         </motion.div>
         
-        {totalPages > 1 && renderPagination()}
+        {renderPagination()}
       </Card>
       
       {/* Add Guardian Modal */}

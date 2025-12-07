@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useNavigation } from '../../context/NavigationContext.jsx';
+import PreloadLink from '../common/PreloadLink.jsx';
 
 // Use the base URL from Vite to handle both development and production paths
 const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
@@ -254,7 +255,7 @@ const Sidebar = () => {
               }}
             />
             
-            <NavLink to="/dashboard" className="flex flex-col items-center justify-center relative z-10">
+            <PreloadLink to="/dashboard" className="flex flex-col items-center justify-center relative z-10">
               {logoError ? (
                 <motion.span 
                   className="h-16 w-16 flex items-center justify-center bg-nextgen-blue rounded-full mb-2 shadow-lg shadow-nextgen-blue/20"
@@ -288,9 +289,9 @@ const Sidebar = () => {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.7 }}
               >
-                Children's Ministry Management
+                Children Management System
               </motion.p>
-            </NavLink>
+            </PreloadLink>
           </motion.div>
           
           {/* Navigation links with animations */}
@@ -402,7 +403,7 @@ const Sidebar = () => {
                                 key={subpage.path}
                                 variants={subMenuItemVariants}
                               >
-                                <NavLink
+                                <PreloadLink
                                   to={subpage.path}
                                   className={({ isActive }) => `
                                     sidebar-subpage-link
@@ -433,7 +434,7 @@ const Sidebar = () => {
                                     } : {}}
                                   />
                                   {subpage.name}
-                                </NavLink>
+                                </PreloadLink>
                               </motion.div>
                             ))}
                           </motion.div>
@@ -441,7 +442,7 @@ const Sidebar = () => {
                       </AnimatePresence>
                     </div>
                   ) : (
-                    <NavLink
+                    <PreloadLink
                       to={link.path}
                       className={({ isActive }) => `
                         sidebar-nav-link
@@ -467,7 +468,7 @@ const Sidebar = () => {
                         </svg>
                       </motion.span>
                       {link.name}
-                    </NavLink>
+                    </PreloadLink>
                   )}
                 </motion.div>
               ))}
