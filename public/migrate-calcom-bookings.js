@@ -81,9 +81,21 @@ async function fetchCalcomBookings() {
  */
 async function migrateBooking(booking) {
   try {
-    const serviceName = mapTimeToService(booking.start);
+    // Try multiple possible locations for start time (matching webhook logic)
+    const startTime = booking.start || 
+                     booking.startTime || 
+                     booking.booking?.start || 
+                     booking.booking?.startTime ||
+                     booking.metadata?.startTime;
+    
+    if (!startTime) {
+      console.warn(`⚠️  No start time found for booking: ${booking.uid}`);
+      return { success: false, reason: 'No start time' };
+    }
+    
+    const serviceName = mapTimeToService(startTime);
     if (!serviceName) {
-      console.warn(`⚠️  Could not map time to service: ${booking.start}`);
+      console.warn(`⚠️  Could not map time to service: ${startTime}`);
       return { success: false, reason: 'No service mapping' };
     }
     
@@ -97,11 +109,27 @@ async function migrateBooking(booking) {
       return { success: false, reason: 'Organizer booking' };
     }
     
-    // Get physical role
-    const physicalRole = attendee?.bookingFieldsResponses?.physical_role || 'Volunteer';
+    // Extract physical role with multiple fallbacks (matching webhook logic)
+    let physicalRole = 'Volunteer';
+    if (booking.userFieldsResponses?.physical_role?.value) {
+      physicalRole = booking.userFieldsResponses.physical_role.value;
+    } else if (booking.responses?.physical_role?.value) {
+      physicalRole = booking.responses.physical_role.value;
+    } else if (attendee?.responses?.physical_role?.value) {
+      physicalRole = attendee.responses.physical_role.value;
+    } else if (attendee?.bookingFieldsResponses?.physical_role) {
+      physicalRole = attendee.bookingFieldsResponses.physical_role;
+    }
     
     // Get assignment date
-    const assignmentDate = new Date(booking.start).toISOString().split('T')[0];
+    const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+    
+    // Try multiple possible locations for end time
+    const endTime = booking.end || 
+                   booking.endTime || 
+                   booking.booking?.end || 
+                   booking.booking?.endTime ||
+                   booking.metadata?.endTime;
     
     // Lookup staff by email
     const { data: staffData } = await supabase
@@ -113,6 +141,14 @@ async function migrateBooking(booking) {
     
     const staffId = staffData?.staff_id || null;
     
+    // Calculate duration
+    let durationMinutes = booking.length || booking.duration;
+    if (!durationMinutes && startTime && endTime) {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      durationMinutes = Math.round((end - start) / 60000);
+    }
+    
     // Prepare assignment data
     const assignmentData = {
       staff_id: staffId,
@@ -121,14 +157,14 @@ async function migrateBooking(booking) {
       calcom_booking_id: booking.uid,
       calcom_event_type_id: booking.eventTypeId,
       physical_role: physicalRole,
-      booking_status: booking.status || 'accepted',
+      booking_status: (booking.status || 'accepted').toLowerCase(),
       attendee_email: attendeeEmail,
       attendee_name: attendee?.name,
-      start_time: booking.start,
-      end_time: booking.end,
-      duration_minutes: booking.duration,
+      start_time: startTime,
+      end_time: endTime,
+      duration_minutes: durationMinutes,
       location: booking.location,
-      notes: booking.description,
+      notes: booking.description || booking.additionalNotes || null,
       updated_at: new Date().toISOString()
     };
     
