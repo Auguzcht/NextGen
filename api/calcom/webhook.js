@@ -166,9 +166,23 @@ async function handleBookingCreated(payload) {
       allKeys: Object.keys(payload)
     });
     
-    const serviceName = mapTimeToService(payload.start);
+    // Try multiple possible locations for start time
+    const startTime = payload.start || 
+                     payload.startTime || 
+                     payload.booking?.start || 
+                     payload.booking?.startTime ||
+                     payload.metadata?.startTime;
+    
+    if (!startTime) {
+      console.error('❌ No start time found in payload');
+      console.error('❌ Full payload:', JSON.stringify(payload, null, 2));
+      return;
+    }
+    
+    console.log('🕐 Using startTime:', startTime);
+    const serviceName = mapTimeToService(startTime);
     if (!serviceName) {
-      console.warn('⚠️  Could not map time to service:', payload.start);
+      console.warn('⚠️  Could not map time to service:', startTime);
       console.warn('⚠️  Payload structure:', JSON.stringify(payload, null, 2));
       return;
     }
@@ -195,13 +209,20 @@ async function handleBookingCreated(payload) {
     }
     
     // Get assignment date (date only, no time)
-    const assignmentDate = new Date(payload.start || payload.startTime).toISOString().split('T')[0];
+    const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+    
+    // Try multiple possible locations for end time
+    const endTime = payload.end || 
+                   payload.endTime || 
+                   payload.booking?.end || 
+                   payload.booking?.endTime ||
+                   payload.metadata?.endTime;
     
     // Calculate duration - Cal.com uses 'length' field
     let durationMinutes = payload.length || payload.duration;
-    if (!durationMinutes && (payload.start || payload.startTime) && (payload.end || payload.endTime)) {
-      const start = new Date(payload.start || payload.startTime);
-      const end = new Date(payload.end || payload.endTime);
+    if (!durationMinutes && startTime && endTime) {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
       durationMinutes = Math.round((end - start) / 60000);
     }
     
@@ -232,8 +253,8 @@ async function handleBookingCreated(payload) {
       booking_status: (payload.status || 'accepted').toLowerCase(),
       attendee_email: attendeeEmail,
       attendee_name: attendee?.name,
-      start_time: payload.start || payload.startTime,
-      end_time: payload.end || payload.endTime,
+      start_time: startTime,
+      end_time: endTime,
       duration_minutes: durationMinutes,
       location: payload.location,
       notes: payload.additionalNotes || null,
@@ -274,14 +295,33 @@ async function handleBookingRescheduled(payload) {
   try {
     console.log('🔄 Processing BOOKING_RESCHEDULED:', payload.uid);
     
-    const serviceName = mapTimeToService(payload.start);
+    // Try multiple possible locations for start time
+    const startTime = payload.start || 
+                     payload.startTime || 
+                     payload.booking?.start || 
+                     payload.booking?.startTime ||
+                     payload.metadata?.startTime;
+    
+    if (!startTime) {
+      console.error('❌ No start time found in reschedule payload');
+      return;
+    }
+    
+    const serviceName = mapTimeToService(startTime);
     if (!serviceName) {
-      console.warn('⚠️  Could not map time to service:', payload.start);
+      console.warn('⚠️  Could not map time to service:', startTime);
       return;
     }
     
     const serviceId = SERVICE_MAP[serviceName];
-    const assignmentDate = new Date(payload.start).toISOString().split('T')[0];
+    const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+    
+    // Try multiple possible locations for end time
+    const endTime = payload.end || 
+                   payload.endTime || 
+                   payload.booking?.end || 
+                   payload.booking?.endTime ||
+                   payload.metadata?.endTime;
     
     // Update existing assignment
     const { data, error } = await supabase
@@ -289,9 +329,9 @@ async function handleBookingRescheduled(payload) {
       .update({
         service_id: serviceId,
         assignment_date: assignmentDate,
-        start_time: payload.start,
-        end_time: payload.end,
-        duration_minutes: payload.duration,
+        start_time: startTime,
+        end_time: endTime,
+        duration_minutes: payload.duration || payload.length,
         booking_status: payload.status || 'accepted',
         updated_at: new Date().toISOString()
       })
