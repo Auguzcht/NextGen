@@ -36,24 +36,81 @@ async function sendViaResend(apiKey, emailData) {
 }
 
 /**
+ * Validate email address
+ */
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  
+  // Basic email format check
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return false;
+  
+  // Block common placeholder/test domains
+  const invalidDomains = [
+    'example.com',
+    'example.org',
+    'test.com',
+    'testing.com',
+    'fake.com',
+    'placeholder.com',
+    'dummy.com',
+    'sample.com',
+    'temp.com',
+    'tempmail.com'
+  ];
+  
+  const domain = email.split('@')[1]?.toLowerCase();
+  return !invalidDomains.includes(domain);
+}
+
+/**
  * Send batch emails via Resend (using batch endpoint with proper limits and idempotency)
  */
 async function sendBatchViaResend(apiKey, emailData, batchId) {
   const results = {
     success: [],
     failed: [],
+    skipped: [],
     total: emailData.recipients.length
   };
+
+  // Filter out invalid emails first
+  const validRecipients = [];
+  const invalidRecipients = [];
+  
+  emailData.recipients.forEach(recipient => {
+    if (isValidEmail(recipient.email)) {
+      validRecipients.push(recipient);
+    } else {
+      invalidRecipients.push(recipient);
+      results.skipped.push({
+        email: recipient.email,
+        reason: 'Invalid or placeholder email address',
+        guardianId: recipient.guardianId
+      });
+    }
+  });
+
+  console.log(`📧 Email validation: ${validRecipients.length} valid, ${invalidRecipients.length} invalid/placeholder`);
+  if (invalidRecipients.length > 0) {
+    console.warn(`⚠️ Skipping invalid emails:`, invalidRecipients.map(r => r.email).join(', '));
+  }
+
+  // If no valid recipients, return early
+  if (validRecipients.length === 0) {
+    console.error('❌ No valid recipients after filtering');
+    return results;
+  }
 
   // Resend batch API can handle up to 50 emails per request (not 100!)
   const maxBatchSize = 50;
   const batches = [];
   
-  for (let i = 0; i < emailData.recipients.length; i += maxBatchSize) {
-    batches.push(emailData.recipients.slice(i, i + maxBatchSize));
+  for (let i = 0; i < validRecipients.length; i += maxBatchSize) {
+    batches.push(validRecipients.slice(i, i + maxBatchSize));
   }
 
-  console.log(`📧 Resend Batch: Processing ${batches.length} batch(es) of max ${maxBatchSize} emails each`);
+  console.log(`📧 Resend Batch: Processing ${batches.length} batch(es) of max ${maxBatchSize} emails each (${validRecipients.length} valid recipients)`);
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
@@ -232,10 +289,34 @@ export async function sendBatchEmails(provider, apiKey, emailData, batchSize = 5
   const results = {
     success: [],
     failed: [],
+    skipped: [],
     total: emailData.recipients.length
   };
 
-  const recipientCount = emailData.recipients.length;
+  // Filter out invalid emails for all providers
+  const validRecipients = emailData.recipients.filter(recipient => {
+    const isValid = isValidEmail(recipient.email);
+    if (!isValid) {
+      results.skipped.push({
+        email: recipient.email,
+        reason: 'Invalid or placeholder email address',
+        guardianId: recipient.guardianId
+      });
+      console.warn(`⚠️ Skipping invalid email: ${recipient.email}`);
+    }
+    return isValid;
+  });
+
+  console.log(`📧 Pre-send validation: ${validRecipients.length}/${emailData.recipients.length} valid emails`);
+  
+  if (validRecipients.length === 0) {
+    console.error('❌ No valid recipients to send to');
+    return results;
+  }
+
+  // Update emailData with filtered recipients
+  const filteredEmailData = { ...emailData, recipients: validRecipients };
+  const recipientCount = validRecipients.length;
   
   // Decision logic: Use batch API for 3+ recipients, individual API for 1-2 recipients
   const useBatchAPI = recipientCount >= 3;
@@ -251,21 +332,24 @@ export async function sendBatchEmails(provider, apiKey, emailData, batchSize = 5
       // Generate unique batch ID for idempotency
       const batchId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      const batchResult = await sendBatchViaResend(apiKey, emailData, batchId);
+      const batchResult = await sendBatchViaResend(apiKey, filteredEmailData, batchId);
       
       // Merge results
       results.success.push(...batchResult.success);
       results.failed.push(...batchResult.failed);
+      if (batchResult.skipped) {
+        results.skipped.push(...batchResult.skipped);
+      }
       
-      console.log(`✅ Batch API (/emails/batch) completed: ${batchResult.success.length} sent, ${batchResult.failed.length} failed`);
+      console.log(`✅ Batch API (/emails/batch) completed: ${batchResult.success.length} sent, ${batchResult.failed.length} failed, ${batchResult.skipped?.length || 0} skipped`);
       
     } else {
       // Use Individual API for 1-2 recipients
       console.log(`📧 Using Resend Individual API (/emails) for ${recipientCount} recipient(s)`);
       console.log('🔄 Will make individual API calls due to small recipient count (< 3)');
       
-      for (let i = 0; i < emailData.recipients.length; i++) {
-        const recipient = emailData.recipients[i];
+      for (let i = 0; i < filteredEmailData.recipients.length; i++) {
+        const recipient = filteredEmailData.recipients[i];
         
         try {
           const singleEmailData = {
@@ -298,7 +382,7 @@ export async function sendBatchEmails(provider, apiKey, emailData, batchSize = 5
         }
 
         // Add delay between individual emails to respect rate limits (500ms)
-        if (i < emailData.recipients.length - 1) {
+        if (i < filteredEmailData.recipients.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }

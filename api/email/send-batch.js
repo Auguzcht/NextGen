@@ -154,6 +154,25 @@ export default async function handler(req, res) {
         .insert(failedLogs);
     }
 
+    // Log skipped emails (invalid/placeholder addresses)
+    if (results.skipped && results.skipped.length > 0) {
+      const skippedLogs = results.skipped.map(item => ({
+        template_id: templateId || null,
+        recipient_email: item.email,
+        guardian_id: item.guardianId || null,
+        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
+        sent_date: new Date().toISOString(),
+        status: 'failed',
+        notes: `Skipped: ${item.reason}`
+      }));
+
+      await supabase
+        .from('email_logs')
+        .insert(skippedLogs);
+      
+      console.log(`⚠️ ${results.skipped.length} emails skipped due to invalid addresses`);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Batch email processing completed',
@@ -161,8 +180,10 @@ export default async function handler(req, res) {
         total: results.total,
         successful: results.success.length,
         failed: results.failed.length,
+        skipped: results.skipped?.length || 0,
         successRate: ((results.success.length / results.total) * 100).toFixed(2) + '%',
-        failures: results.failed.length > 0 ? results.failed : undefined
+        failures: results.failed.length > 0 ? results.failed : undefined,
+        skippedEmails: results.skipped && results.skipped.length > 0 ? results.skipped : undefined
       }
     });
   } catch (error) {
