@@ -19,16 +19,29 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  console.log('🔔 Cron endpoint hit:', {
+    method: req.method,
+    timestamp: new Date().toISOString(),
+    userAgent: req.headers['user-agent'],
+    authorization: req.headers['authorization'] ? 'Present' : 'Missing'
+  });
+
   try {
     // Security: Verify request is from Vercel Cron or authorized source
     const authHeader = req.headers['authorization'];
-    const cronSecret = process.env.CRON_SECRET || 'your-cron-secret-here';
+    const cronSecret = process.env.CRON_SECRET;
     
     // Check if request is from Vercel Cron (has specific header)
     const isVercelCron = req.headers['user-agent']?.includes('vercel-cron');
     
     // Check if request has valid authorization
     const isAuthorized = authHeader === `Bearer ${cronSecret}`;
+    
+    console.log('🔐 Authorization check:', {
+      isVercelCron,
+      isAuthorized,
+      hasSecret: !!cronSecret
+    });
     
     if (!isVercelCron && !isAuthorized) {
       console.warn('⚠️  Unauthorized cron request attempt');
@@ -38,12 +51,7 @@ export default async function handler(req, res) {
       });
     }
     
-    console.log('🕐 Cron job triggered:', {
-      method: req.method,
-      timestamp: new Date().toISOString(),
-      isVercelCron,
-      userAgent: req.headers['user-agent']
-    });
+    console.log('🕐 Starting Cal.com sync...');
     
     // Run the sync
     const result = await syncCalcomBookings();
@@ -58,10 +66,12 @@ export default async function handler(req, res) {
     
   } catch (error) {
     console.error('❌ Cron job failed:', error);
+    console.error('Stack trace:', error.stack);
     
     return res.status(500).json({
       success: false,
       error: error.message || 'Sync failed',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       timestamp: new Date().toISOString()
     });
   }
