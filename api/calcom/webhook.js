@@ -151,20 +151,11 @@ export default async function handler(req, res) {
 /**
  * Handle BOOKING_CREATED event
  * Creates a new staff assignment in Supabase
+ * FIXED: Now handles multiple attendees per booking
  */
 async function handleBookingCreated(payload) {
   try {
     console.log('✅ Processing BOOKING_CREATED:', payload.uid);
-    
-    // DEBUG: Log all time-related fields
-    console.log('🕐 Time fields in payload:', {
-      start: payload.start,
-      startTime: payload.startTime,
-      bookingStart: payload.booking?.start,
-      bookingStartTime: payload.booking?.startTime,
-      metadata: payload.metadata,
-      allKeys: Object.keys(payload)
-    });
     
     // Try multiple possible locations for start time
     const startTime = payload.start || 
@@ -188,28 +179,8 @@ async function handleBookingCreated(payload) {
     }
     
     const serviceId = SERVICE_MAP[serviceName];
-    const attendee = payload.attendees?.[0];
-    const attendeeEmail = attendee?.email;
-    const organizerEmail = payload.hosts?.[0]?.email;
-    
-    // Skip if attendee is the organizer
-    if (attendeeEmail === organizerEmail || attendeeEmail === 'info@nextgen-ccf.org') {
-      console.log('ℹ️  Skipping organizer booking');
-      return;
-    }
-    
-    // Extract physical role from Cal.com's userFieldsResponses structure
-    let physicalRole = 'Volunteer';
-    if (payload.userFieldsResponses?.physical_role?.value) {
-      physicalRole = payload.userFieldsResponses.physical_role.value;
-    } else if (payload.responses?.physical_role?.value) {
-      physicalRole = payload.responses.physical_role.value;
-    } else if (attendee?.responses?.physical_role?.value) {
-      physicalRole = attendee.responses.physical_role.value;
-    }
-    
-    // Get assignment date (date only, no time)
     const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+    const organizerEmail = payload.hosts?.[0]?.email;
     
     // Try multiple possible locations for end time
     const endTime = payload.end || 
@@ -226,60 +197,107 @@ async function handleBookingCreated(payload) {
       durationMinutes = Math.round((end - start) / 60000);
     }
     
-    // Lookup staff member by email
-    const { data: staffData, error: staffError } = await supabase
-      .from('staff')
-      .select('staff_id')
-      .eq('email', attendeeEmail.toLowerCase())
-      .eq('is_active', true)
-      .single();
+    // 🔧 FIX: Process ALL attendees, not just the first one
+    const attendees = payload.attendees || [];
     
-    if (staffError || !staffData) {
-      console.warn('⚠️  Staff member not found for email:', attendeeEmail);
-      // Continue anyway - store with null staff_id
+    if (attendees.length === 0) {
+      console.warn('⚠️  No attendees found in booking:', payload.uid);
+      return;
     }
     
-    const staffId = staffData?.staff_id || null;
+    console.log(`📋 Processing ${attendees.length} attendee(s) for booking ${payload.uid}`);
     
-    // Insert or update staff assignment
-    const assignmentData = {
-      staff_id: staffId,
-      service_id: serviceId,
-      assignment_date: assignmentDate,
-      calcom_booking_id: payload.uid,
-      calcom_event_type_id: payload.eventTypeId,
-      physical_role: physicalRole,
-      booking_status: (payload.status || 'accepted').toLowerCase(),
-      attendee_email: attendeeEmail,
-      attendee_name: attendee?.name,
-      start_time: startTime,
-      end_time: endTime,
-      duration_minutes: durationMinutes,
-      location: payload.location,
-      notes: payload.additionalNotes || null,
-      updated_at: new Date().toISOString()
-    };
+    const assignments = [];
+    const errors = [];
     
-    const { data, error } = await supabase
-      .from('staff_assignments')
-      .upsert(assignmentData, { 
-        onConflict: 'calcom_booking_id',
-        ignoreDuplicates: false 
-      })
-      .select();
-    
-    if (error) {
-      console.error('❌ Error saving booking to Supabase:', error);
-      throw error;
+    for (const attendee of attendees) {
+      const attendeeEmail = attendee?.email;
+      
+      if (!attendeeEmail) {
+        console.warn('⚠️  Attendee without email found, skipping');
+        continue;
+      }
+      
+      // Skip if attendee is the organizer
+      if (attendeeEmail === organizerEmail || attendeeEmail === 'info@nextgen-ccf.org') {
+        console.log('ℹ️  Skipping organizer booking:', attendeeEmail);
+        continue;
+      }
+      
+      // Extract physical role from attendee's bookingFieldsResponses
+      let physicalRole = 'Volunteer';
+      if (attendee?.bookingFieldsResponses?.physical_role) {
+        physicalRole = attendee.bookingFieldsResponses.physical_role;
+      } else if (payload.userFieldsResponses?.physical_role?.value) {
+        physicalRole = payload.userFieldsResponses.physical_role.value;
+      } else if (payload.responses?.physical_role?.value) {
+        physicalRole = payload.responses.physical_role.value;
+      }
+      
+      // Lookup staff member by email
+      const { data: staffData, error: staffError } = await supabase
+        .from('staff')
+        .select('staff_id')
+        .eq('email', attendeeEmail.toLowerCase())
+        .eq('is_active', true)
+        .single();
+      
+      if (staffError || !staffData) {
+        console.warn('⚠️  Staff member not found for email:', attendeeEmail);
+        // Continue anyway - store with null staff_id
+      }
+      
+      const staffId = staffData?.staff_id || null;
+      
+      // Prepare assignment data for this attendee
+      const assignmentData = {
+        staff_id: staffId,
+        service_id: serviceId,
+        assignment_date: assignmentDate,
+        calcom_booking_id: payload.uid, // Same booking ID for all attendees
+        calcom_event_type_id: payload.eventTypeId,
+        physical_role: physicalRole,
+        booking_status: (payload.status || 'accepted').toLowerCase(),
+        attendee_email: attendeeEmail, // 🔑 Unique per attendee
+        attendee_name: attendee?.name,
+        start_time: startTime,
+        end_time: endTime,
+        duration_minutes: durationMinutes,
+        location: payload.location,
+        notes: payload.additionalNotes || null,
+        updated_at: new Date().toISOString()
+      };
+      
+      assignments.push(assignmentData);
+      
+      console.log(`  ✓ Prepared assignment for ${attendee.name} (${attendeeEmail}) as ${physicalRole}`);
     }
     
-    console.log('✅ Booking saved to Supabase:', {
-      bookingId: payload.uid,
-      staffId,
-      serviceName,
-      attendee: attendeeEmail,
-      role: physicalRole
-    });
+    // 🔧 FIX: Batch insert all assignments for this booking
+    if (assignments.length > 0) {
+      const { data, error } = await supabase
+        .from('staff_assignments')
+        .upsert(assignments, { 
+          onConflict: 'calcom_booking_id,attendee_email', // Composite unique key
+          ignoreDuplicates: false 
+        })
+        .select();
+      
+      if (error) {
+        console.error('❌ Error saving bookings to Supabase:', error);
+        throw error;
+      }
+      
+      console.log(`✅ Saved ${assignments.length} assignment(s) for booking ${payload.uid}`);
+      
+      // Log summary
+      data?.forEach((assignment, index) => {
+        console.log(`  ${index + 1}. ${assignment.attendee_name} - ${assignment.physical_role}`);
+      });
+    } else {
+      console.log('ℹ️  No valid attendees to process for booking:', payload.uid);
+    }
+    
   } catch (error) {
     console.error('❌ Error in handleBookingCreated:', error);
     throw error;
@@ -288,7 +306,8 @@ async function handleBookingCreated(payload) {
 
 /**
  * Handle BOOKING_RESCHEDULED event
- * Updates existing staff assignment with new time/service
+ * Updates existing staff assignments with new time/service
+ * FIXED: Now updates all attendees for this booking
  */
 async function handleBookingRescheduled(payload) {
   try {
@@ -322,7 +341,7 @@ async function handleBookingRescheduled(payload) {
                    payload.booking?.endTime ||
                    payload.metadata?.endTime;
     
-    // Update existing assignment
+    // Update ALL assignments for this booking (all attendees)
     const { data, error } = await supabase
       .from('staff_assignments')
       .update({
@@ -331,7 +350,7 @@ async function handleBookingRescheduled(payload) {
         start_time: startTime,
         end_time: endTime,
         duration_minutes: payload.duration || payload.length,
-        booking_status: payload.status || 'accepted',
+        booking_status: (payload.status || 'accepted').toLowerCase(),
         updated_at: new Date().toISOString()
       })
       .eq('calcom_booking_id', payload.uid)
@@ -342,7 +361,7 @@ async function handleBookingRescheduled(payload) {
       throw error;
     }
     
-    console.log('✅ Booking rescheduled in Supabase:', payload.uid);
+    console.log(`✅ Rescheduled ${data?.length || 0} assignment(s) for booking ${payload.uid}`);
   } catch (error) {
     console.error('❌ Error in handleBookingRescheduled:', error);
     throw error;
@@ -351,7 +370,8 @@ async function handleBookingRescheduled(payload) {
 
 /**
  * Handle BOOKING_CANCELLED event
- * Deletes the staff assignment record
+ * Deletes all staff assignment records for this booking
+ * FIXED: Now deletes all attendees for this booking
  */
 async function handleBookingCancelled(payload) {
   try {
@@ -368,7 +388,7 @@ async function handleBookingCancelled(payload) {
       throw error;
     }
     
-    console.log('✅ Booking deleted from Supabase:', payload.uid);
+    console.log(`✅ Deleted ${data?.length || 0} assignment(s) for cancelled booking ${payload.uid}`);
   } catch (error) {
     console.error('❌ Error in handleBookingCancelled:', error);
     throw error;
