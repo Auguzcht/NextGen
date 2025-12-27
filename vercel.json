@@ -14,7 +14,13 @@
   "crons": [
     {
       "path": "/api/cron/sync-calcom",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 1 * * *",
+      "comment": "Daily at 9:00 AM Manila time (1:00 AM UTC)"
+    },
+    {
+      "path": "/api/cron/sync-calcom",
+      "schedule": "0 9 * * *",
+      "comment": "Daily at 5:00 PM Manila time (9:00 AM UTC)"
     }
   ]
 }
