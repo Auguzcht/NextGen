@@ -19,7 +19,7 @@ const SERVICE_MAP = {
 };
 
 /**
- * Maps Cal.com time to service name
+ * Maps Cal.com time to service name (Manila timezone)
  */
 const mapTimeToService = (startTime) => {
   const time = new Date(startTime).toLocaleTimeString('en-US', { 
@@ -34,6 +34,18 @@ const mapTimeToService = (startTime) => {
   if (time === '15:30') return 'Third Service';
   
   return null;
+};
+
+/**
+ * Get date in Manila timezone (YYYY-MM-DD format)
+ */
+const getManilaDate = (dateTime) => {
+  return new Date(dateTime).toLocaleDateString('en-CA', { 
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
 };
 
 /**
@@ -89,7 +101,7 @@ function transformBooking(booking, attendee) {
   }
   
   const serviceId = SERVICE_MAP[serviceName];
-  const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+  const assignmentDate = getManilaDate(startTime); // Use Manila timezone
   const organizerEmail = booking.hosts?.[0]?.email;
   
   // Skip if attendee is the organizer
@@ -137,11 +149,11 @@ export async function syncCalcomBookings() {
   try {
     console.log('🔄 Starting Cal.com sync...');
     
-    // Fetch bookings from last 7 days and next 30 days
+    // Fetch bookings from last 7 days and next 365 days (entire year)
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
+    endDate.setDate(endDate.getDate() + 365);
     
     console.log(`📅 Syncing bookings from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
     
