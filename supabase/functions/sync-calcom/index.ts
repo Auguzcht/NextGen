@@ -32,6 +32,15 @@ function mapTimeToService(startTime: string): string | null {
   return null;
 }
 
+function getManilaDate(dateTime: string): string {
+  return new Date(dateTime).toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+}
+
 async function fetchCalcomBookings(apiKey: string, startDate: Date, endDate: Date) {
   const params = new URLSearchParams({
     afterStart: startDate.toISOString(),
@@ -65,7 +74,7 @@ function transformBooking(booking: any, attendee: any) {
   if (!serviceName) return null;
 
   const serviceId = SERVICE_MAP[serviceName];
-  const assignmentDate = new Date(startTime).toISOString().split('T')[0];
+  const assignmentDate = getManilaDate(startTime); // Use Manila timezone
   const organizerEmail = booking.hosts?.[0]?.email;
 
   // Skip organizer
@@ -126,11 +135,24 @@ Deno.serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch bookings from last 7 days and next 30 days
+    // ONE-TIME CLEANUP: Delete all existing Cal.com assignments to fix timezone issues
+    console.log('🧹 Cleaning up existing Cal.com assignments...');
+    const { error: cleanupError } = await supabase
+      .from('staff_assignments')
+      .delete()
+      .not('calcom_booking_id', 'is', null);
+    
+    if (cleanupError) {
+      console.error('⚠️ Cleanup error:', cleanupError);
+    } else {
+      console.log('✅ Cleanup complete - all Cal.com assignments deleted');
+    }
+
+    // Fetch bookings from last 7 days and next 365 days (entire year)
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
+    endDate.setDate(endDate.getDate() + 365);
 
     console.log(`📅 Fetching bookings from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
 
