@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { NavigationProvider, useNavigation } from './context/NavigationContext.jsx';
 import LoadingScreen from './components/common/LoadingScreen.jsx';
 import ChangelogModal from './components/common/ChangelogModal.jsx';
+import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import Header from './components/layout/Header.jsx';
@@ -242,22 +243,58 @@ function AppContent() {
       {/* Protected routes with persistent layout */}
       <Route element={<AuthCheck />}>
         <Route element={<MainLayout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/children" element={<ChildrenPage />} />
+          {/* Volunteer+ (access_level: 1+) */}
+          <Route path="/dashboard" element={
+            <ProtectedRoute requiredLevel={1}>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
           
-          {/* Attendance routes */}
-          <Route path="/attendance" element={<AttendancePage />} />
+          {/* Staff Assignments - Volunteer+ */}
+          <Route path="/staff/assignments" element={
+            <ProtectedRoute requiredLevel={1}>
+              <StaffAssignmentsPage />
+            </ProtectedRoute>
+          } />
           
-          <Route path="/guardians" element={<GuardiansPage />} />
+          {/* Team Leader+ (access_level: 3+) */}
+          <Route path="/children" element={
+            <ProtectedRoute requiredLevel={3}>
+              <ChildrenPage />
+            </ProtectedRoute>
+          } />
           
-          {/* Staff routes */}
-          <Route path="/staff" element={<StaffManagementPage />} />
-          <Route path="/staff/assignments" element={<StaffAssignmentsPage />} />
+          <Route path="/attendance" element={
+            <ProtectedRoute requiredLevel={3}>
+              <AttendancePage />
+            </ProtectedRoute>
+          } />
           
-          {/* Reports routes */}
-          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/guardians" element={
+            <ProtectedRoute requiredLevel={3}>
+              <GuardiansPage />
+            </ProtectedRoute>
+          } />
           
-          <Route path="/settings" element={<SettingsPage />} />
+          {/* Coordinator+ (access_level: 5+) */}
+          <Route path="/reports" element={
+            <ProtectedRoute requiredLevel={5}>
+              <ReportsPage />
+            </ProtectedRoute>
+          } />
+          
+          {/* Admin Only (access_level: 10) */}
+          <Route path="/staff" element={
+            <ProtectedRoute requiredLevel={10}>
+              <StaffManagementPage />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/settings" element={
+            <ProtectedRoute requiredLevel={10}>
+              <SettingsPage />
+            </ProtectedRoute>
+          } />
         </Route>
       </Route>
       

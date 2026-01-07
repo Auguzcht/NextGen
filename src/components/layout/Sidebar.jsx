@@ -10,7 +10,7 @@ const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const Sidebar = () => {
   const { sidebarOpen } = useNavigation();
-  const { staffProfile, user } = useAuth(); // Get both staffProfile and user
+  const { staffProfile, user, hasPermission, canView } = useAuth(); // Get RBAC functions
   const location = useLocation();
   const [logoError, setLogoError] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState(null);
@@ -24,40 +24,50 @@ const Sidebar = () => {
     setLogoError(false);
   }, [sidebarOpen]);
 
-  // Helper function to check if user has a specific role (case-insensitive)
-  const hasRole = (...roles) => {
-    if (!profile?.role) return false;
-    const userRole = profile.role.toLowerCase().trim();
-    return roles.some(role => role.toLowerCase().trim() === userRole);
-  };
-
-  // Define navigation items with role-based access
-  const navLinks = [
-    // Team Leader, Coordinator, Administrator can access these
-    { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true },
-    { name: 'Children', path: '/children', icon: 'child' },
-    { name: 'Attendance', path: '/attendance', icon: 'clipboard-check' },
-    { name: 'Guardians', path: '/guardians', icon: 'users' },
+  // Define ALL navigation items with their required access levels
+  const allNavItems = [
+    // Volunteer+ (access_level: 1+)
+    { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', exact: true, minLevel: 1 },
     
-    // Coordinator and Administrator can access Staff and Reports
-    ...(hasRole('Administrator', 'Coordinator') ? [
-      { 
-        name: 'Staff', 
-        path: '/staff', 
-        icon: 'staff',
-        subpages: [
-          { name: 'Staff List', path: '/staff' },
-          { name: 'Assignments', path: '/staff/assignments' }
-        ]
-      },
-      { name: 'Reports', path: '/reports', icon: 'document-report' }
-    ] : []),
+    // Team Leader+ (access_level: 3+)
+    { name: 'Children', path: '/children', icon: 'child', minLevel: 3 },
+    { name: 'Attendance', path: '/attendance', icon: 'clipboard-check', minLevel: 3 },
+    { name: 'Guardians', path: '/guardians', icon: 'users', minLevel: 3 },
     
-    // Settings - Administrator has full access, Coordinator has limited access
-    ...(hasRole('Administrator', 'Coordinator') ? [
-      { name: 'Settings', path: '/settings', icon: 'cog' }
-    ] : [])
+    // Staff menu (visible to all for Assignments, Staff List is admin-only)
+    { 
+      name: 'Staff', 
+      path: '/staff', 
+      icon: 'staff',
+      minLevel: 1,
+      subpages: [
+        { name: 'Assignments', path: '/staff/assignments', minLevel: 1 },
+        { name: 'Staff List', path: '/staff', minLevel: 10 }
+      ]
+    },
+    
+    // Coordinator+ (access_level: 5+)
+    { name: 'Reports', path: '/reports', icon: 'document-report', minLevel: 5 },
+    
+    // Administrator (access_level: 10)
+    { name: 'Settings', path: '/settings', icon: 'cog', minLevel: 10 }
   ];
+
+  // Filter navigation items based on user's access level
+  const navLinks = allNavItems
+    .filter(item => hasPermission(item.minLevel))
+    .map(item => {
+      // Filter subpages based on permission
+      if (item.subpages) {
+        return {
+          ...item,
+          subpages: item.subpages.filter(subpage => 
+            hasPermission(subpage.minLevel || item.minLevel)
+          )
+        };
+      }
+      return item;
+    });
 
   // Check if a menu item is active
   const isMenuActive = (item) => {

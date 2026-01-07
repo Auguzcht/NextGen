@@ -67,6 +67,54 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
     password: '',
     confirmPassword: ''
   });
+
+  // Generate secure random password
+  const generatePassword = () => {
+    const length = 12;
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let password = '';
+    
+    // Ensure at least one of each type
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
+    password += '0123456789'[Math.floor(Math.random() * 10)]; // number
+    password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // special char
+    
+    // Fill rest with random characters
+    for (let i = password.length; i < length; i++) {
+      password += charset[Math.floor(Math.random() * charset.length)];
+    }
+    
+    // Shuffle the password
+    password = password.split('').sort(() => Math.random() - 0.5).join('');
+    
+    return password;
+  };
+
+  const handleGeneratePassword = () => {
+    const newPassword = generatePassword();
+    setPasswordData({
+      password: newPassword,
+      confirmPassword: newPassword
+    });
+    
+    // Clear any password errors
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors.password;
+      delete newErrors.confirmPassword;
+      return newErrors;
+    });
+
+    // Show success notification
+    Swal.fire({
+      icon: 'success',
+      title: 'Password Generated',
+      text: 'A secure password has been generated and filled in both fields.',
+      timer: 2000,
+      showConfirmButton: false
+    });
+  };
   const [imageUrl, setImageUrl] = useState(() => {
     // Check if we have a cached image URL
     if (!isEdit) {
@@ -205,11 +253,9 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
       }
     }
     
-    // Password validation if creating credentials
-    if (showPasswordFields && !isEdit) {
-      if (!passwordData.password) {
-        newErrors.password = 'Password is required when creating login credentials';
-      } else if (passwordData.password.length < 8) {
+    // Password validation - only validate if password is provided
+    if (showPasswordFields && passwordData.password) {
+      if (passwordData.password.length < 8) {
         newErrors.password = 'Password must be at least 8 characters long';
       }
       
@@ -350,8 +396,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 text: 'Staff member and password updated successfully.',
                 timer: 2000
               });
-            } else {
-              // User doesn't have auth account - create one
+            } else if (passwordData.password) {
+              // User doesn't have auth account - create one with manual password
               const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: formData.email.trim(),
                 password: passwordData.password,
@@ -359,16 +405,22 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 user_metadata: {
                   first_name: formData.first_name.trim(),
                   last_name: formData.last_name.trim(),
-                  role: formData.role
+                  role: formData.role,
+                  staff_id: initialData.staff_id,
+                  access_level: formData.access_level
                 }
               });
 
               if (authError) throw authError;
 
-              // Link staff record to new auth user
+              // Link staff record to auth user
               const { error: linkError } = await supabase
                 .from('staff')
-                .update({ user_id: authData.user.id })
+                .update({ 
+                  user_id: authData.user.id,
+                  credentials_sent_at: new Date().toISOString(),
+                  credentials_sent_count: (initialData.credentials_sent_count || 0) + 1
+                })
                 .eq('staff_id', initialData.staff_id);
 
               if (linkError) throw linkError;
@@ -376,8 +428,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               await Swal.fire({
                 icon: 'success',
                 title: 'Updated!',
-                text: 'Staff member updated and login credentials created successfully.',
-                timer: 2000
+                text: 'Staff member updated and login credentials created.',
+                confirmButtonColor: '#30cee4'
               });
             }
           } catch (credentialError) {
@@ -435,9 +487,10 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
         
         if (insertError) throw insertError;
 
-        // If password fields were filled, create auth user
+        // Handle credential creation - only if password provided
         if (showPasswordFields && passwordData.password) {
           try {
+            // Manual password provided - create auth account directly
             const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
               email: formData.email.trim(),
               password: passwordData.password,
@@ -445,7 +498,9 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               user_metadata: {
                 first_name: formData.first_name.trim(),
                 last_name: formData.last_name.trim(),
-                role: formData.role
+                role: formData.role,
+                staff_id: newStaff.staff_id,
+                access_level: formData.access_level
               }
             });
 
@@ -454,7 +509,11 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
             // Link staff record to auth user
             const { error: updateError } = await supabase
               .from('staff')
-              .update({ user_id: authData.user.id })
+              .update({ 
+                user_id: authData.user.id,
+                credentials_sent_at: new Date().toISOString(),
+                credentials_sent_count: 1
+              })
               .eq('staff_id', newStaff.staff_id);
 
             if (updateError) throw updateError;
@@ -462,15 +521,15 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
             await Swal.fire({
               icon: 'success',
               title: 'Success!',
-              text: 'Staff member added with login credentials created.',
-              timer: 2000
+              text: 'Staff member added with login credentials.',
+              confirmButtonColor: '#30cee4'
             });
           } catch (authError) {
             console.error('Auth error:', authError);
             await Swal.fire({
               icon: 'warning',
               title: 'Partial Success',
-              text: 'Staff member added but login credentials could not be created. You can create them later.',
+              text: 'Staff member added but login credentials could not be created. You can create them later using "Generate Credentials".',
               timer: 3000
             });
           }
@@ -766,15 +825,13 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 </div>
               </motion.div>
 
-              {/* Login Credentials Section - For new staff OR admin editing existing staff */}
-                            {/* Login Credentials Section - Only show for non-Volunteers or if editing existing staff */}
-              {((!isEdit && formData.role !== 'Volunteer') || (isEdit && user?.role === 'Administrator')) && (
-                <motion.div 
-                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.3 }}
-                >
+              {/* Login Credentials Section - Available for all roles */}
+              <motion.div 
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+              >
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-medium text-nextgen-blue-dark">
                       {isEdit 
@@ -806,41 +863,53 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                         className="space-y-4"
                       >
                         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-md mb-4">
-                          <p className="text-sm text-blue-700">
-                            {isEdit && initialData?.user_id
-                              ? 'Change the password for this staff member\'s login credentials.'
-                              : isEdit 
-                                ? 'Create login credentials for this staff member. They will be able to access the system based on their role.'
-                                : 'Create login credentials now, or you can add them later from the staff list.'
-                            }
-                          </p>
+                          <div className="flex items-start justify-between">
+                            <p className="text-sm text-blue-700 flex-1">
+                              {isEdit && initialData?.user_id
+                                ? 'Change the password for this staff member\'s login credentials.'
+                                : 'Set a password manually to create their login credentials. Leave blank if you want to use "Generate Credentials" later.'
+                              }
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleGeneratePassword}
+                              className="ml-3 whitespace-nowrap"
+                              icon={
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                </svg>
+                              }
+                            >
+                              Generate
+                            </Button>
+                          </div>
                         </div>
 
                         <Input
                           type="password"
-                          label="Password *"
+                          label={isEdit && initialData?.user_id ? "New Password" : "Password (Optional)"}
                           name="password"
                           value={passwordData.password}
                           onChange={handlePasswordChange}
                           error={errors.password}
-                          placeholder="At least 8 characters"
+                          placeholder="At least 8 characters, or leave blank for email setup"
                           minLength={8}
                         />
                         <Input
                           type="password"
-                          label="Confirm Password *"
+                          label={isEdit && initialData?.user_id ? "Confirm New Password" : "Confirm Password"}
                           name="confirmPassword"
                           value={passwordData.confirmPassword}
                           onChange={handlePasswordChange}
                           error={errors.confirmPassword}
                           placeholder="Re-enter password"
-                          minLength={8}
                         />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </motion.div>
-              )}
             </div>
           </form>
         </div>

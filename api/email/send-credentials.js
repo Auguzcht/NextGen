@@ -133,18 +133,28 @@ export default async function handler(req, res) {
         console.log(`[send-credentials] Processing staff: ${staff.email}`);
         
         // Determine redirect URL based on environment
-        // VERCEL_URL doesn't include protocol, so we need to add it
-        let redirectUrl;
-        if (process.env.SITE_URL) {
-          redirectUrl = process.env.SITE_URL;
-        } else if (process.env.VERCEL_URL) {
-          redirectUrl = `https://${process.env.VERCEL_URL}`;
-        } else if (process.env.NODE_ENV === 'production') {
-          redirectUrl = 'https://www.nextgen-ccf.org';
-        } else {
-          redirectUrl = 'http://localhost:3002/nextgen';
-        }
+        // Helper function for consistent redirect URL logic
+        const getRedirectUrl = () => {
+          // Priority 1: Explicit SITE_URL (set in Vercel)
+          if (process.env.SITE_URL) {
+            return process.env.SITE_URL;
+          }
+          
+          // Priority 2: Vercel deployment URL (always HTTPS)
+          if (process.env.VERCEL_URL) {
+            return `https://${process.env.VERCEL_URL}`;
+          }
+          
+          // Priority 3: Production domain (fallback)
+          if (process.env.NODE_ENV === 'production') {
+            return 'https://www.nextgen-ccf.org';
+          }
+          
+          // Priority 4: Development (localhost)
+          return 'http://localhost:3002';
+        };
 
+        const redirectUrl = getRedirectUrl();
         console.log(`[send-credentials] Using redirect URL: ${redirectUrl}`);
 
         if (eventType === 'password_reset' || eventType === 'access_reminder') {

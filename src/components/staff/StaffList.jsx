@@ -60,6 +60,9 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
               Status
             </th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Last Activity
+            </th>
             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
               Actions
             </th>
@@ -135,6 +138,25 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
                       </Badge>
                     )}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  {staff.last_login_at ? (
+                    <span className="text-green-600">
+                      {new Date(staff.last_login_at).toLocaleDateString()}
+                    </span>
+                  ) : staff.credentials_sent_at ? (
+                    <span className="text-yellow-600">
+                      Pending
+                    </span>
+                  ) : staff.user_id ? (
+                    <span className="text-blue-600">
+                      Never logged in
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">
+                      No account
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex justify-end items-center space-x-2">

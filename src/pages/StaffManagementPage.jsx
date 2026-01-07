@@ -3,6 +3,7 @@ import supabase from '../services/supabase.js';
 import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
 import SendCredentialsModal from '../components/staff/SendCredentialsModal.jsx';
+import BatchCredentialCreation from '../components/staff/BatchCredentialCreation.jsx';
 import { Card, Button, Badge, Table, Input } from '../components/ui';
 import { motion } from 'framer-motion';
 import Swal from 'sweetalert2';
@@ -11,6 +12,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 const StaffManagementPage = () => {
   const { user } = useAuth();
   const [staffMembers, setStaffMembers] = useState([]);
+  const [allStaff, setAllStaff] = useState([]); // Full staff list for modals
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +25,7 @@ const StaffManagementPage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSendCredentialsModalOpen, setIsSendCredentialsModalOpen] = useState(false);
+  const [isBatchCredentialModalOpen, setIsBatchCredentialModalOpen] = useState(false);
 
   // Debounce search query
   useEffect(() => {
@@ -47,6 +50,7 @@ const StaffManagementPage = () => {
 
   useEffect(() => {
     fetchStaffMembers();
+    fetchAllStaff(); // Fetch all staff for modals
   }, [debouncedSearchQuery, currentPage]);
 
   const fetchStaffMembers = async () => {
@@ -88,6 +92,22 @@ const StaffManagementPage = () => {
       console.error('Error fetching staff members:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch all staff (unpaginated) for modals
+  const fetchAllStaff = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('staff_id, user_id, first_name, last_name, email, phone_number, role, is_active, access_level, credentials_sent_at, credentials_sent_count, last_login_at')
+        .eq('is_active', true)
+        .order('last_name');
+
+      if (error) throw error;
+      setAllStaff(data || []);
+    } catch (error) {
+      console.error('Error fetching all staff:', error);
     }
   };
 
@@ -506,6 +526,7 @@ const StaffManagementPage = () => {
 
   return (
     <div className="page-container">
+
       <Card
         variant="default"
         title="Staff Management"
@@ -542,18 +563,31 @@ const StaffManagementPage = () => {
           
           <div className="flex gap-2">
             {user?.access_level >= 10 && (
-              <Button
-                variant="outline"
-                onClick={() => setIsSendCredentialsModalOpen(true)}
-                icon={
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                  </svg>
-                }
-              >
-                Send Access Emails
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsBatchCredentialModalOpen(true)}
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" />
+                    </svg>
+                  }
+                >
+                  Create Accounts
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsSendCredentialsModalOpen(true)}
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                      <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                    </svg>
+                  }
+                >
+                  Send Access Emails
+                </Button>
+              </>
             )}
             
             <Button
@@ -633,7 +667,18 @@ const StaffManagementPage = () => {
       <SendCredentialsModal
         isOpen={isSendCredentialsModalOpen}
         onClose={() => setIsSendCredentialsModalOpen(false)}
-        staffMembers={staffMembers}
+        staffMembers={allStaff}
+      />
+
+      {/* Batch Credential Creation Modal */}
+      <BatchCredentialCreation
+        isOpen={isBatchCredentialModalOpen}
+        onClose={() => setIsBatchCredentialModalOpen(false)}
+        staffMembers={allStaff}
+        onSuccess={() => {
+          fetchStaffMembers();
+          fetchAllStaff();
+        }}
       />
     </div>
   );

@@ -151,6 +151,11 @@ export const AuthProvider = ({ children }) => {
                 setConnectionStatus('connected');
                 // Mark this as a new login for changelog tracking
                 markNewLogin(currentSession.user.id);
+                // Update last_login_at in staff table
+                await supabase
+                  .from('staff')
+                  .update({ last_login_at: new Date().toISOString() })
+                  .eq('user_id', currentSession.user.id);
                 toast.success('Successfully signed in!');
               } catch (error) {
                 setConnectionStatus('degraded');
@@ -317,6 +322,32 @@ export const AuthProvider = ({ children }) => {
     }
   }, [connectionStatus, user]);
 
+  // RBAC helper functions
+  const hasPermission = (requiredLevel) => {
+    if (!user) return false;
+    const userLevel = user.access_level || 1;
+    return userLevel >= requiredLevel;
+  };
+
+  const canView = (page) => {
+    // Define page permissions (minimum access level required)
+    const permissions = {
+      dashboard: 1,           // Volunteer+
+      staff_assignments: 1,   // Volunteer+
+      children: 3,            // Team Leader+
+      guardians: 3,           // Team Leader+
+      attendance: 3,          // Team Leader+
+      reports: 5,             // Coordinator+
+      staff_management: 10,   // Admin only
+      settings: 10,           // Admin only
+      email: 5,               // Coordinator+
+      materials: 5,           // Coordinator+
+    };
+    
+    const requiredLevel = permissions[page] || 10; // Default to admin-only
+    return hasPermission(requiredLevel);
+  };
+
   // Context value
   const value = {
     user,
@@ -327,6 +358,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     isAuthenticated: !!session,
     connectionStatus,
+    hasPermission,
+    canView,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
