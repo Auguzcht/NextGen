@@ -6,6 +6,7 @@ import { useNavigation } from '../../context/NavigationContext';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../services/firebase';
 import NotificationDropdown from './NotificationDropdown';
+import ProfileSettingsModal from './ProfileSettingsModal';
 
 // Define logo path directly from public folder
 const NextGenLogo = '/NextGen-Logo.png';
@@ -48,6 +49,7 @@ const Header = () => {
   const { toggleSidebar, sidebarOpen } = useNavigation();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [profileImageUrl, setProfileImageUrl] = useState(null);
@@ -373,9 +375,25 @@ const Header = () => {
                       </div>
                     </div>
                     
-                    {/* Menu items */}
+                    {/* Menu Actions */}
                     <div className='my-2'>                    
                       <hr className="my-2 border-nextgen-blue/10" />
+                      
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setShowProfileSettings(true);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm flex items-center space-x-3 bg-white hover:bg-nextgen-blue/5 text-nextgen-blue-dark transition-colors"
+                      >
+                        <div className="h-7 w-7 rounded-full bg-white border border-nextgen-blue/20 flex items-center justify-center shadow-sm">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-nextgen-blue-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </div>
+                        <span className="font-medium">Profile Settings</span>
+                      </button>
                       
                       <button
                         onClick={handleLogout}
@@ -396,6 +414,12 @@ const Header = () => {
           </div>
         </div>
       </div>
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={showProfileSettings}
+        onClose={() => setShowProfileSettings(false)}
+      />
     </motion.header>
   );
 };

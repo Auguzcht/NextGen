@@ -16,13 +16,23 @@ const ResetPasswordPage = () => {
   useEffect(() => {
     // Check if there's a valid recovery token in the URL
     const checkToken = async () => {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      // Get the full hash (everything after #)
+      const hash = window.location.hash;
+      console.log('Full hash:', hash);
+      
+      // Parse hash parameters - remove the # first
+      const hashParams = new URLSearchParams(hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const type = hashParams.get('type');
       const error = hashParams.get('error');
       const errorDescription = hashParams.get('error_description');
 
-      console.log('Reset password page - Hash params:', { accessToken: !!accessToken, type, error });
+      console.log('Reset password page - Hash params:', { 
+        accessToken: !!accessToken, 
+        type, 
+        error,
+        allParams: Array.from(hashParams.entries())
+      });
 
       // Handle error first
       if (error) {
@@ -39,24 +49,37 @@ const ResetPasswordPage = () => {
 
       // Check if user is already authenticated (Supabase auto-logs them in via the recovery link)
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('Current session:', { hasSession: !!session, sessionType: type });
       
-      if (session && type === 'recovery') {
+      // If we have a session and it's a recovery type, or if we have a session with access token in URL
+      if (session && (type === 'recovery' || accessToken)) {
         // User has been automatically logged in by Supabase via the recovery link
         console.log('Recovery session detected, allowing password reset');
         setIsValidToken(true);
         return;
       }
-
-      // If we have tokens in the URL but no session, something went wrong
-      if (accessToken && type === 'recovery' && !session) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Session Error',
-          text: 'Unable to verify your reset link. Please request a new password reset.',
-          confirmButtonColor: '#30cee4'
-        }).then(() => {
-          navigate('/login');
-        });
+      
+      // Also check if we have an access token in the URL but no session yet
+      // This might happen if the session hasn't been established yet
+      if (accessToken && type === 'recovery') {
+        console.log('Access token found, waiting for session...');
+        // Give Supabase a moment to establish the session
+        setTimeout(async () => {
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          if (retrySession) {
+            console.log('Session established on retry');
+            setIsValidToken(true);
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Session Error',
+              text: 'Unable to verify your reset link. Please request a new password reset.',
+              confirmButtonColor: '#30cee4'
+            }).then(() => {
+              navigate('/login');
+            });
+          }
+        }, 1000);
         return;
       }
 
