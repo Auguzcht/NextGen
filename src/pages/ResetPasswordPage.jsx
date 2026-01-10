@@ -51,18 +51,17 @@ const ResetPasswordPage = () => {
       const { data: { session } } = await supabase.auth.getSession();
       console.log('Current session:', { hasSession: !!session, sessionType: type });
       
-      // If we have a session and it's a recovery type, or if we have a session with access token in URL
-      if (session && (type === 'recovery' || accessToken)) {
-        // User has been automatically logged in by Supabase via the recovery link
-        console.log('Recovery session detected, allowing password reset');
+      // If we have a session on the reset-password page, it must be from the recovery link
+      // (Users aren't normally logged in when visiting this page)
+      if (session) {
+        console.log('Session detected on reset page - allowing password reset');
         setIsValidToken(true);
         return;
       }
       
-      // Also check if we have an access token in the URL but no session yet
-      // This might happen if the session hasn't been established yet
-      if (accessToken && type === 'recovery') {
-        console.log('Access token found, waiting for session...');
+      // If we have hash params but no session yet, wait for Supabase to establish it
+      if (accessToken || type === 'recovery') {
+        console.log('Recovery parameters found, waiting for session...');
         // Give Supabase a moment to establish the session
         setTimeout(async () => {
           const { data: { session: retrySession } } = await supabase.auth.getSession();
@@ -83,7 +82,7 @@ const ResetPasswordPage = () => {
         return;
       }
 
-      // No token and no error - user navigated directly to the page
+      // No token, no error, no session - user navigated directly to the page
       if (!accessToken && !error && !session) {
         Swal.fire({
           icon: 'warning',
