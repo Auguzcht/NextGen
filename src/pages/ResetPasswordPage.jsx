@@ -14,6 +14,20 @@ const ResetPasswordPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let mounted = true;
+    
+    // Listen for auth state changes (this will trigger when Supabase processes the recovery tokens)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, 'Has session:', !!session);
+      
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        if (session && mounted) {
+          console.log('Recovery session established via auth state change');
+          setIsValidToken(true);
+        }
+      }
+    });
+    
     // Check if there's a valid recovery token in the URL
     const checkToken = async () => {
       // Get the full hash (everything after #)
@@ -47,28 +61,40 @@ const ResetPasswordPage = () => {
         return;
       }
 
+      // If there are tokens in the URL, give Supabase time to process them
+      // The SDK will automatically exchange tokens for a session and clean the URL
+      if (accessToken && type === 'recovery') {
+        console.log('Recovery tokens detected in URL, waiting for Supabase to establish session...');
+        // Wait a bit for Supabase SDK to process the tokens
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       // Check if user is already authenticated (Supabase auto-logs them in via the recovery link)
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Current session:', { hasSession: !!session, sessionType: type });
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('Current session:', { hasSession: !!session, sessionError, sessionType: type });
       
       // If we have a session on the reset-password page, it must be from the recovery link
       // (Users aren't normally logged in when visiting this page)
-      if (session) {
+      if (session && mounted) {
         console.log('Session detected on reset page - allowing password reset');
         setIsValidToken(true);
         return;
       }
       
-      // If we have hash params but no session yet, wait for Supabase to establish it
-      if (accessToken || type === 'recovery') {
-        console.log('Recovery parameters found, waiting for session...');
-        // Give Supabase a moment to establish the session
-        setTimeout(async () => {
-          const { data: { session: retrySession } } = await supabase.auth.getSession();
-          if (retrySession) {
-            console.log('Session established on retry');
-            setIsValidToken(true);
-          } else {
+      // If no session yet but we had tokens, wait a bit longer and retry
+      if ((accessToken || type === 'recovery') && !session) {
+        console.log('No session yet, retrying...');
+        // Give Supabase more time to establish the session
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const { data: { session: retrySession } } = await supabase.auth.getSession();
+        if (retrySession && mounted) {
+          console.log('Session established on retry');
+          setIsValidToken(true);
+          return;
+        } else {
+          console.error('Failed to establish session after retries');
+          if (mounted) {
             Swal.fire({
               icon: 'error',
               title: 'Session Error',
@@ -78,8 +104,8 @@ const ResetPasswordPage = () => {
               navigate('/login');
             });
           }
-        }, 1000);
-        return;
+          return;
+        }
       }
 
       // No token, no error, no session - user navigated directly to the page
@@ -96,6 +122,12 @@ const ResetPasswordPage = () => {
     };
 
     checkToken();
+    
+    // Cleanup
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleResetPassword = async (e) => {
