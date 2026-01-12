@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { motion, AnimatePresence } from 'framer-motion';
 import Swal from 'sweetalert2';
 
-const FileUpload = ({
+const FileUpload = React.forwardRef(({
   category,
   onUploadComplete,
   onUploadError,
@@ -17,8 +17,9 @@ const FileUpload = ({
   alt,
   className,
   mode = 'image', // 'image' or 'file'
-  autoReset = false // Auto reset after upload completes
-}) => {
+  autoReset = false, // Auto reset after upload completes
+  compact = false // Compact mode with smaller buttons
+}, ref) => {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(initialPreview);
   const [imagePath, setImagePath] = useState(initialPath);
@@ -31,6 +32,11 @@ const FileUpload = ({
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+
+  // Expose triggerUpload method via ref
+  React.useImperativeHandle(ref, () => ({
+    triggerUpload: () => fileInputRef.current?.click()
+  }));
 
   // Cleanup camera stream
   useEffect(() => {
@@ -379,7 +385,7 @@ const FileUpload = ({
                 <motion.button
                   type="button"
                   onClick={() => setCaptureMode('file')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
+                  className={`flex-1 ${compact ? 'py-1.5 px-3 text-sm' : 'py-2 px-4'} rounded-lg font-medium transition-all ${
                     captureMode === 'file'
                       ? 'bg-nextgen-blue text-white shadow-md'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -388,16 +394,16 @@ const FileUpload = ({
                   whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center justify-center gap-2">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className={compact ? 'w-4 h-4' : 'w-5 h-5'} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
-                    Upload File
+                    {compact ? 'Upload' : 'Upload File'}
                   </div>
                 </motion.button>
                 <motion.button
                   type="button"
                   onClick={() => setCaptureMode('camera')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
+                  className={`flex-1 ${compact ? 'py-1.5 px-3 text-sm' : 'py-2 px-4'} rounded-lg font-medium transition-all ${
                     captureMode === 'camera'
                       ? 'bg-nextgen-blue text-white shadow-md'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -406,11 +412,11 @@ const FileUpload = ({
                   whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center justify-center gap-2">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className={compact ? 'w-4 h-4' : 'w-5 h-5'} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    Take Photo
+                    {compact ? 'Camera' : 'Take Photo'}
                   </div>
                 </motion.button>
               </div>
@@ -556,7 +562,9 @@ const FileUpload = ({
       </AnimatePresence>
     </div>
   );
-};
+});
+
+FileUpload.displayName = 'FileUpload';
 
 export default FileUpload;
 

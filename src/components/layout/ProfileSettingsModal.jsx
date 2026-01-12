@@ -1,18 +1,25 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import supabase, { supabaseAdmin } from '../../services/supabase';
+import { storage } from '../../services/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import FileUpload from '../common/FileUpload';
+import Badge from '../ui/Badge';
+import Modal from '../ui/Modal';
+import ProfilePicture from '../common/ProfilePicture';
 import Swal from 'sweetalert2';
 
 const ProfileSettingsModal = ({ isOpen, onClose }) => {
   const { user, refreshUser } = useAuth();
+  const fileUploadRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imagePath, setImagePath] = useState('');
-  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -28,18 +35,30 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
   });
 
   const [errors, setErrors] = useState({});
+  const [originalData, setOriginalData] = useState({});
 
   // Initialize form data when modal opens or user changes
   useEffect(() => {
     if (isOpen && user) {
-      setFormData({
+      const initialFormData = {
         first_name: user.first_name || '',
         last_name: user.last_name || '',
         email: user.email || '',
         phone_number: user.phone_number || ''
+      };
+      const initialImageUrl = user.profile_image_url || '';
+      const initialImagePath = user.profile_image_path || '';
+      
+      setFormData(initialFormData);
+      setImageUrl(initialImageUrl);
+      setImagePath(initialImagePath);
+      
+      // Store original data for comparison
+      setOriginalData({
+        ...initialFormData,
+        profile_image_url: initialImageUrl,
+        profile_image_path: initialImagePath
       });
-      setImageUrl(user.profile_image_url || '');
-      setImagePath(user.profile_image_path || '');
     }
   }, [isOpen, user]);
 
@@ -113,27 +132,43 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
       }
     }
     
-    // Password validation if changing password
-    if (showPasswordSection) {
+    // Password validation if changing password (all fields must be filled together)
+    const hasPasswordInput = passwordData.currentPassword || passwordData.newPassword || passwordData.confirmPassword;
+    
+    if (hasPasswordInput) {
       if (!passwordData.currentPassword) {
-        newErrors.currentPassword = 'Current password is required';
+        newErrors.currentPassword = 'Current password is required to change password';
       }
       
-      if (passwordData.newPassword) {
-        if (passwordData.newPassword.length < 8) {
-          newErrors.newPassword = 'New password must be at least 8 characters';
-        }
-        
-        if (passwordData.newPassword !== passwordData.confirmPassword) {
-          newErrors.confirmPassword = 'Passwords do not match';
-        }
-      } else {
+      if (!passwordData.newPassword) {
         newErrors.newPassword = 'New password is required';
+      } else if (passwordData.newPassword.length < 8) {
+        newErrors.newPassword = 'New password must be at least 8 characters';
+      }
+      
+      if (!passwordData.confirmPassword) {
+        newErrors.confirmPassword = 'Please confirm your new password';
+      } else if (passwordData.newPassword !== passwordData.confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
       }
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Check if any changes were made
+  const hasChanges = () => {
+    const formChanged = Object.keys(formData).some(key => 
+      formData[key] !== originalData[key]
+    );
+    const imageChanged = imageUrl !== originalData.profile_image_url || 
+                        imagePath !== originalData.profile_image_path;
+    const passwordChanged = passwordData.currentPassword || 
+                           passwordData.newPassword || 
+                           passwordData.confirmPassword;
+    
+    return formChanged || imageChanged || passwordChanged;
   };
 
   const handleSubmit = async (e) => {
@@ -143,8 +178,56 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
       Swal.fire({
         icon: 'error',
         title: 'Validation Error',
-        text: 'Please check all required fields'
+        text: 'Please check all required fields',
+        customClass: {
+          container: 'swal-high-z-index'
+        },
+        didOpen: () => {
+          // Ensure SweetAlert appears above modal
+          const swalContainer = document.querySelector('.swal2-container');
+          if (swalContainer) {
+            swalContainer.style.zIndex = '10000';
+          }
+        }
       });
+      return;
+    }
+
+    // Check if any changes were made
+    if (!hasChanges()) {
+      Swal.fire({
+        icon: 'info',
+        title: 'No Changes',
+        text: 'No changes were made to your profile.',
+        didOpen: () => {
+          const swalContainer = document.querySelector('.swal2-container');
+          if (swalContainer) {
+            swalContainer.style.zIndex = '10000';
+          }
+        }
+      });
+      return;
+    }
+
+    // Confirm before saving
+    const result = await Swal.fire({
+      title: 'Save Changes?',
+      text: 'Are you sure you want to update your profile?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#1e40af',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, save changes',
+      cancelButtonText: 'Cancel',
+      didOpen: () => {
+        const swalContainer = document.querySelector('.swal2-container');
+        if (swalContainer) {
+          swalContainer.style.zIndex = '10000';
+        }
+      }
+    });
+
+    if (!result.isConfirmed) {
       return;
     }
     
@@ -186,8 +269,8 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
         }
       }
 
-      // Handle password change if requested
-      if (showPasswordSection && passwordData.newPassword) {
+      // Handle password change if requested (check if any password field has input)
+      if (passwordData.newPassword && passwordData.currentPassword) {
         // Verify current password by attempting to sign in
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: user.email,
@@ -209,20 +292,33 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           icon: 'success',
           title: 'Profile & Password Updated',
           text: 'Your profile and password have been updated successfully!',
-          timer: 2000
+          timer: 2000,
+          didOpen: () => {
+            const swalContainer = document.querySelector('.swal2-container');
+            if (swalContainer) swalContainer.style.zIndex = '10000';
+          }
         });
       } else {
         Swal.fire({
           icon: 'success',
           title: 'Profile Updated',
           text: 'Your profile has been updated successfully!',
-          timer: 2000
+          timer: 2000,
+          didOpen: () => {
+            const swalContainer = document.querySelector('.swal2-container');
+            if (swalContainer) swalContainer.style.zIndex = '10000';
+          }
         });
       }
 
-      // Refresh user data
+      // Refresh user data and wait for it to complete
       if (refreshUser) {
-        await refreshUser();
+        const refreshSuccess = await refreshUser();
+        if (!refreshSuccess) {
+          console.warn('Failed to refresh user data, but changes were saved');
+        }
+        // Longer delay to ensure state updates propagate through React
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Reset password fields and close modal
@@ -231,7 +327,9 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
         newPassword: '',
         confirmPassword: ''
       });
-      setShowPasswordSection(false);
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       onClose();
 
     } catch (error) {
@@ -239,7 +337,11 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
       Swal.fire({
         icon: 'error',
         title: 'Update Failed',
-        text: error.message || 'Failed to update profile. Please try again.'
+        text: error.message || 'Failed to update profile. Please try again.',
+        didOpen: () => {
+          const swalContainer = document.querySelector('.swal2-container');
+          if (swalContainer) swalContainer.style.zIndex = '10000';
+        }
       });
     } finally {
       setIsLoading(false);
@@ -253,215 +355,245 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
       newPassword: '',
       confirmPassword: ''
     });
-    setShowPasswordSection(false);
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setErrors({});
     onClose();
-  };
-
-  const handleSendPasswordResetEmail = async () => {
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
-
-      if (error) throw error;
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Email Sent',
-        text: 'Password reset instructions have been sent to your email.',
-        timer: 3000
-      });
-    } catch (error) {
-      console.error('Error sending reset email:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Failed',
-        text: 'Failed to send password reset email. Please try again.'
-      });
-    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={handleClose}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-        />
-
-        {/* Modal */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-          className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl"
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Profile Settings"
+      size="5xl"
+      variant="primary"
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-3 gap-6 max-h-[calc(90vh-200px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#CBD5E0 #F7FAFC'
+        }}
         >
-          {/* Header */}
-          <div className="border-b border-gray-200 bg-gradient-to-r from-nextgen-blue to-nextgen-blue-dark px-6 py-4 rounded-t-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+          {/* Left Column - Profile Photo & Account Info */}
+          <div className="col-span-1 space-y-6">
+            {/* Profile Photo Display */}
+            <motion.div
+              className="flex flex-col items-center mt-12"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <ProfilePicture
+                imageUrl={imageUrl}
+                onUploadComplete={async (file) => {
+                  try {
+                    setIsLoading(true);
+                    
+                    // Upload using Firebase Storage API directly (same pattern as FileUpload)
+                    const storageRef = ref(storage, `NextGen/staff-photos/${Date.now()}_${file.name}`);
+                    const metadata = {
+                      cacheControl: 'public,max-age=31536000',
+                      contentType: file.type
+                    };
+                    
+                    const snapshot = await uploadBytes(storageRef, file, metadata);
+                    const url = await getDownloadURL(storageRef);
+                    
+                    setImageUrl(url);
+                    setImagePath(snapshot.ref.fullPath);
+                    
+                    Swal.fire({
+                      icon: 'success',
+                      title: 'Photo Updated',
+                      text: 'Profile photo has been updated successfully',
+                      timer: 1500,
+                      didOpen: () => {
+                        const swalContainer = document.querySelector('.swal2-container');
+                        if (swalContainer) swalContainer.style.zIndex = '10000';
+                      }
+                    });
+                  } catch (error) {
+                    Swal.fire({
+                      icon: 'error',
+                      title: 'Upload Error',
+                      text: error.message,
+                      didOpen: () => {
+                        const swalContainer = document.querySelector('.swal2-container');
+                        if (swalContainer) swalContainer.style.zIndex = '10000';
+                      }
+                    });
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                onDelete={async () => {
+                  setImageUrl('');
+                  setImagePath('');
+                  Swal.fire({
+                    icon: 'success',
+                    title: 'Photo Removed',
+                    text: 'Profile photo has been removed',
+                    timer: 1500,
+                    didOpen: () => {
+                      const swalContainer = document.querySelector('.swal2-container');
+                      if (swalContainer) swalContainer.style.zIndex = '10000';
+                    }
+                  });
+                }}
+                userGradient={`bg-gradient-to-br from-nextgen-blue to-nextgen-blue-dark`}
+                initials={`${formData.first_name?.charAt(0) || '?'}${formData.last_name?.charAt(0) || ''}`}
+                size="lg"
+              />
+            </motion.div>
+
+            {/* Account Information */}
+            <motion.div 
+              className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-nextgen-blue/20 p-5 shadow-sm"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-nextgen-blue" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <h4 className="text-base font-semibold text-nextgen-blue-dark">Account Information</h4>
+              </div>
+              <div className="space-y-3">
+                <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Role</p>
+                  <Badge variant="primary" size="sm">
+                    {user?.role || 'Staff'}
+                  </Badge>
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-white">Profile Settings</h3>
-                  <p className="text-sm text-white/80">Update your personal information</p>
+                <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Access Level</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Level {user?.access_level || '1'}
+                  </p>
+                </div>
+                <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Account Status</p>
+                  <Badge 
+                    variant={user?.is_active ? "success" : "danger"} 
+                    size="sm"
+                  >
+                    {user?.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
+                <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Last Login</p>
+                  <p className="text-xs font-medium text-gray-900">
+                    {user?.last_sign_in_at 
+                      ? new Date(user.last_sign_in_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })
+                      : 'First login'}
+                  </p>
                 </div>
               </div>
-              <button
-                onClick={handleClose}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+            </motion.div>
           </div>
 
-          {/* Body */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Profile Photo Section */}
-            <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
-              <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Profile Photo</h4>
-              <div className="flex justify-center">
-                <div className="w-full max-w-md">
-                  <FileUpload
-                    category="NextGen/staff-photos"
-                    onUploadComplete={(result) => {
-                      setImageUrl(result.url);
-                      setImagePath(result.path);
-                    }}
-                    onUploadError={(error) => {
-                      Swal.fire({
-                        icon: 'error',
-                        title: 'Upload Error',
-                        text: error.message
-                      });
-                    }}
-                    onDeleteComplete={async () => {
-                      setImageUrl('');
-                      setImagePath('');
-                      
-                      Swal.fire({
-                        icon: 'success',
-                        title: 'Photo Removed',
-                        text: 'Photo has been removed successfully',
-                        timer: 1500
-                      });
-                    }}
-                    accept="image/*"
-                    maxSize={5}
-                    initialPreview={imageUrl}
-                    initialPath={imagePath}
-                    previewClass="w-32 h-32 object-cover rounded-full mx-auto"
-                    alt={`${formData.first_name} ${formData.last_name}`}
-                    className="w-full"
+          {/* Right Column - Personal Info & Password */}
+          <div className="col-span-2 space-y-6">
+              {/* Personal Information */}
+              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
+                <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Personal Information</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="First Name *"
+                    name="first_name"
+                    value={formData.first_name}
+                    onChange={handleInputChange}
+                    error={errors.first_name}
+                    required
+                  />
+                  <Input
+                    label="Last Name *"
+                    name="last_name"
+                    value={formData.last_name}
+                    onChange={handleInputChange}
+                    error={errors.last_name}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <Input
+                    type="email"
+                    label="Email *"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    error={errors.email}
+                    disabled
+                    required
+                  />
+                  <Input
+                    type="tel"
+                    label="Phone Number"
+                    name="phone_number"
+                    value={formData.phone_number}
+                    onChange={handleInputChange}
+                    error={errors.phone_number}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={11}
+                    pattern="^09\d{9}$"
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Personal Information Section */}
-            <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
-              <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Personal Information</h4>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="First Name *"
-                  name="first_name"
-                  value={formData.first_name}
-                  onChange={handleInputChange}
-                  error={errors.first_name}
-                  required
-                />
-                <Input
-                  label="Last Name *"
-                  name="last_name"
-                  value={formData.last_name}
-                  onChange={handleInputChange}
-                  error={errors.last_name}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <Input
-                  type="email"
-                  label="Email *"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  error={errors.email}
-                  disabled
-                  required
-                />
-                <Input
-                  type="tel"
-                  label="Phone Number"
-                  name="phone_number"
-                  value={formData.phone_number}
-                  onChange={handleInputChange}
-                  error={errors.phone_number}
-                  placeholder="09XXXXXXXXX"
-                  maxLength={11}
-                  pattern="^09\d{9}$"
-                />
-              </div>
-
-              {formData.email !== user.email && (
-                <div className="mt-3 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-r-md">
-                  <p className="text-sm text-yellow-700">
-                    ⚠️ Changing your email will require re-verification
-                  </p>
+              {/* Password Section */}
+              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-5 h-5 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <h4 className="text-lg font-medium text-nextgen-blue-dark">Password & Security</h4>
                 </div>
-              )}
-            </div>
 
-            {/* Password Section */}
-            <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-medium text-nextgen-blue-dark">Password</h4>
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordSection(!showPasswordSection)}
-                  className="text-sm text-nextgen-blue hover:text-nextgen-blue-dark font-medium"
-                >
-                  {showPasswordSection ? 'Cancel' : 'Change Password'}
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {showPasswordSection ? (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="space-y-4"
-                  >
+                <div className="space-y-4">
+                  <div className="relative">
                     <Input
-                      type="password"
-                      label="Current Password *"
+                      type={showCurrentPassword ? "text" : "password"}
+                      label="Current Password"
                       name="currentPassword"
                       value={passwordData.currentPassword}
                       onChange={handlePasswordChange}
                       error={errors.currentPassword}
-                      placeholder="Enter your current password"
+                      placeholder="Leave blank to keep current"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showCurrentPassword ? (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  
+                  <div className="relative">
                     <Input
-                      type="password"
-                      label="New Password *"
+                      type={showNewPassword ? "text" : "password"}
+                      label="New Password"
                       name="newPassword"
                       value={passwordData.newPassword}
                       onChange={handlePasswordChange}
@@ -469,60 +601,73 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                       placeholder="At least 8 characters"
                       minLength={8}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showNewPassword ? (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  
+                  <div className="relative">
                     <Input
-                      type="password"
-                      label="Confirm New Password *"
+                      type={showConfirmPassword ? "text" : "password"}
+                      label="Confirm New Password"
                       name="confirmPassword"
                       value={passwordData.confirmPassword}
                       onChange={handlePasswordChange}
                       error={errors.confirmPassword}
                       placeholder="Re-enter new password"
                     />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    <p className="text-sm text-gray-600 mb-3">
-                      Keep your account secure with a strong password
-                    </p>
-                    <Button
+                    <button
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSendPasswordResetEmail}
-                      icon={
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      }
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
                     >
-                      Send Password Reset Email
-                    </Button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                      {showConfirmPassword ? (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
 
-            {/* Account Info */}
-            <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 rounded-r-md">
-              <div className="flex items-start">
-                <svg className="h-5 w-5 text-nextgen-blue mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <div className="text-sm text-nextgen-blue-dark">
-                  <p className="font-semibold mb-1">Account Information</p>
-                  <p className="text-gray-700">Role: <span className="font-medium">{user?.role || 'Staff'}</span></p>
-                  <p className="text-gray-700">Last Login: <span className="font-medium">{new Date().toLocaleDateString()}</span></p>
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-xs text-gray-700">
+                        <p className="font-medium mb-1">Password Requirements:</p>
+                        <ul className="list-disc list-inside space-y-0.5 text-gray-600">
+                          <li>At least 8 characters long</li>
+                          <li>Leave all fields blank to keep current password</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </form>
+          </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
             <Button
               type="button"
               variant="outline"
@@ -534,16 +679,13 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
             <Button
               type="submit"
               variant="primary"
-              onClick={handleSubmit}
               disabled={isLoading}
-              isLoading={isLoading}
             >
               {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        </form>
+    </Modal>
   );
 };
 

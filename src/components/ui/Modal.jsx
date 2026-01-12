@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import { FiX } from 'react-icons/fi';
 
@@ -104,11 +105,11 @@ const Modal = ({
     }
   };
 
-  return (
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] overflow-hidden flex items-center justify-center p-4"
           initial="hidden"
           animate="visible"
           exit="exit"
@@ -217,6 +218,8 @@ const Modal = ({
       )}
     </AnimatePresence>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 Modal.propTypes = {

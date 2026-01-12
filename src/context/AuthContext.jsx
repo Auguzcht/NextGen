@@ -20,7 +20,6 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      
       const { data, error } = await supabase
         .from('staff')
         .select('staff_id, user_id, first_name, last_name, email, role, is_active, access_level, profile_image_url, profile_image_path, phone_number')
@@ -42,8 +41,11 @@ export const AuthProvider = ({ children }) => {
           first_name: authUser.user_metadata?.first_name || 'Unknown',
           last_name: authUser.user_metadata?.last_name || 'User',
           status: 'Active',
+          access_level: 1,
+          is_active: true,
           profile_image_url: null,
-          profile_image_path: null
+          profile_image_path: null,
+          last_sign_in_at: authUser.last_sign_in_at
         };
         
         setUser(fallbackUser);
@@ -78,10 +80,13 @@ export const AuthProvider = ({ children }) => {
           role: data.role || authUser.user_metadata?.role || 'Staff',
           status: data.status || 'Active',
           access_level: data.access_level || 1,
+          is_active: data.is_active !== undefined ? data.is_active : true,
           staff_id: data.staff_id,
           profile_image_url: data.profile_image_url,
           profile_image_path: data.profile_image_path,
-          phone_number: data.phone_number
+          phone_number: data.phone_number,
+          user_id: data.user_id,
+          last_sign_in_at: authUser.last_sign_in_at
         });
       }
 
@@ -106,8 +111,10 @@ export const AuthProvider = ({ children }) => {
         last_name: authUser.user_metadata?.last_name || 'User',
         status: 'Active',
         access_level: 1,
+        is_active: true,
         profile_image_url: null,
-        profile_image_path: null
+        profile_image_path: null,
+        last_sign_in_at: authUser.last_sign_in_at
       });
     }
   };
@@ -322,6 +329,24 @@ export const AuthProvider = ({ children }) => {
     }
   }, [connectionStatus, user]);
 
+  // Function to refresh user data from database
+  const refreshUser = async () => {
+    try {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authUser) {
+        return false;
+      }
+
+      // Fetch fresh data from staff table
+      await fetchStaffProfile(authUser);
+      return true;
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      return false;
+    }
+  };
+
   // RBAC helper functions
   const hasPermission = (requiredLevel) => {
     if (!user) return false;
@@ -356,6 +381,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
+    refreshUser, // Add refreshUser function
     isAuthenticated: !!session,
     connectionStatus,
     hasPermission,

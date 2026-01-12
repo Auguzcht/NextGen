@@ -11,6 +11,7 @@ const ResetPasswordPage = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isValidToken, setIsValidToken] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -19,6 +20,12 @@ const ResetPasswordPage = () => {
     // Listen for auth state changes (this will trigger when Supabase processes the recovery tokens)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, 'Has session:', !!session);
+      
+      // Ignore auth state changes if we're in the middle of resetting password
+      if (isResettingPassword) {
+        console.log('Ignoring auth state change during password reset');
+        return;
+      }
       
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         if (session && mounted) {
@@ -128,7 +135,7 @@ const ResetPasswordPage = () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, isResettingPassword]);
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
@@ -154,29 +161,48 @@ const ResetPasswordPage = () => {
     }
 
     setIsLoading(true);
+    setIsResettingPassword(true); // Prevent auth listener interference
 
     try {
+      console.log('Starting password update...');
+      
       // Update the user's password
       const { error } = await supabase.auth.updateUser({
         password: password
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Password update error:', error);
+        throw error;
+      }
 
-      // Sign out the user after password reset
+      console.log('Password updated successfully, signing out...');
+
+      // Sign out the user after password reset with a timeout
       // This ensures they must log in with their new password
-      await supabase.auth.signOut();
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
+      
+      // Wait for signOut or timeout, whichever comes first
+      await Promise.race([signOutPromise, timeoutPromise]);
+      
+      console.log('Sign out completed, showing success message...');
 
-      Swal.fire({
+      // Show success message and navigate
+      await Swal.fire({
         icon: 'success',
         title: 'Password Updated!',
         text: 'Your password has been successfully updated. Please log in with your new password.',
-        confirmButtonColor: '#30cee4'
-      }).then(() => {
-        navigate('/login');
+        confirmButtonColor: '#30cee4',
+        allowOutsideClick: false
       });
+      
+      console.log('Navigating to login...');
+      navigate('/login', { replace: true });
+      
     } catch (error) {
       console.error('Error resetting password:', error);
+      setIsResettingPassword(false); // Re-enable auth listener on error
       Swal.fire({
         icon: 'error',
         title: 'Error',

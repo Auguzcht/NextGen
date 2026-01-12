@@ -65,7 +65,16 @@ const Header = () => {
         return;
       }
 
-      setImageLoading(true);
+      // Check if image URL hasn't changed - avoid unnecessary loading state
+      if (user.profile_image_url && profileImageUrl === user.profile_image_url) {
+        return; // Already have the correct image, no need to reload
+      }
+
+      // Only show loading if we're actually changing something
+      const needsUpdate = user.profile_image_url !== profileImageUrl;
+      if (needsUpdate) {
+        setImageLoading(true);
+      }
       
       try {
         // Priority 1: Check if user object already has profile_image_url from database
@@ -103,7 +112,7 @@ const Header = () => {
     };
 
     fetchProfileImage();
-  }, [user?.staff_id, user?.uid, user?.profile_image_url, user?.profile_image_path]);
+  }, [user?.staff_id, user?.profile_image_url, user?.profile_image_path, profileImageUrl]);
 
   // Get current page title and description
   const currentPath = location.pathname;
