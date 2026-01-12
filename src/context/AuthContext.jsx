@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const initializedRef = useRef(false);
 
   // Fetch staff profile from staff table
@@ -132,6 +133,12 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         
+        // Ignore certain auth events during password updates to prevent interference
+        if (isUpdatingPassword && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED')) {
+          console.log('Ignoring auth state change during password update:', event);
+          return;
+        }
+        
         // Always update session state first
         setSession(currentSession);
         
@@ -202,7 +209,7 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
       initializedRef.current = false;
     };
-  }, []); // Empty dependency array - initialize once and only once
+  }, [isUpdatingPassword]); // Add dependency on isUpdatingPassword
 
   // Login function
   const login = async (email, password, remember = false) => {
@@ -386,6 +393,7 @@ export const AuthProvider = ({ children }) => {
     connectionStatus,
     hasPermission,
     canView,
+    setIsUpdatingPassword, // Export this so ProfileSettingsModal can use it
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

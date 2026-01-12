@@ -12,7 +12,7 @@ import ProfilePicture from '../common/ProfilePicture';
 import Swal from 'sweetalert2';
 
 const ProfileSettingsModal = ({ isOpen, onClose }) => {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, setIsUpdatingPassword } = useAuth();
   const fileUploadRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
@@ -271,39 +271,66 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
 
       // Handle password change if requested (check if any password field has input)
       if (passwordData.newPassword && passwordData.currentPassword) {
-        // Verify current password by attempting to sign in
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: user.email,
-          password: passwordData.currentPassword
-        });
+        setIsUpdatingPassword(true); // Prevent auth listener interference
+        
+        try {
+          console.log('Verifying current password...');
+          
+          // Verify current password by attempting to sign in
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: user.email,
+            password: passwordData.currentPassword
+          });
 
-        if (signInError) {
-          throw new Error('Current password is incorrect');
-        }
-
-        // Update password
-        const { error: passwordError } = await supabase.auth.updateUser({
-          password: passwordData.newPassword
-        });
-
-        if (passwordError) throw passwordError;
-
-        Swal.fire({
-          icon: 'success',
-          title: 'Profile & Password Updated',
-          text: 'Your profile and password have been updated successfully!',
-          timer: 2000,
-          didOpen: () => {
-            const swalContainer = document.querySelector('.swal2-container');
-            if (swalContainer) swalContainer.style.zIndex = '10000';
+          if (signInError) {
+            setIsUpdatingPassword(false);
+            throw new Error('Current password is incorrect');
           }
-        });
+
+          console.log('Password verified, updating to new password...');
+
+          // Update password with timeout protection
+          const updatePromise = supabase.auth.updateUser({
+            password: passwordData.newPassword
+          });
+          const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+          
+          const { error: passwordError } = await Promise.race([updatePromise, timeoutPromise]);
+
+          if (passwordError) {
+            setIsUpdatingPassword(false);
+            throw passwordError;
+          }
+
+          console.log('Password updated successfully');
+
+          // Wait a bit before re-enabling auth listener
+          await new Promise(resolve => setTimeout(resolve, 500));
+          setIsUpdatingPassword(false);
+
+          await Swal.fire({
+            icon: 'success',
+            title: 'Profile & Password Updated',
+            text: 'Your profile and password have been updated successfully!',
+            timer: 2000,
+            allowOutsideClick: false,
+            didOpen: () => {
+              const swalContainer = document.querySelector('.swal2-container');
+              if (swalContainer) swalContainer.style.zIndex = '10000';
+            }
+          });
+        } catch (passwordError) {
+          console.error('Password update error:', passwordError);
+          setIsUpdatingPassword(false);
+          throw passwordError;
+        }
       } else {
-        Swal.fire({
+        await Swal.fire({
           icon: 'success',
           title: 'Profile Updated',
           text: 'Your profile has been updated successfully!',
           timer: 2000,
+          allowOutsideClick: false,
           didOpen: () => {
             const swalContainer = document.querySelector('.swal2-container');
             if (swalContainer) swalContainer.style.zIndex = '10000';
@@ -318,7 +345,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           console.warn('Failed to refresh user data, but changes were saved');
         }
         // Longer delay to ensure state updates propagate through React
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       // Reset password fields and close modal
@@ -681,7 +708,17 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
               variant="primary"
               disabled={isLoading}
             >
-              {isLoading ? 'Saving...' : 'Save Changes'}
+              {isLoading ? (
+                <span className="flex items-center justify-center">
+                  Saving
+                  <svg className="animate-spin ml-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              ) : (
+                'Save Changes'
+              )}
             </Button>
           </div>
         </form>

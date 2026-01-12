@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import supabase from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Swal from 'sweetalert2';
 
 const ResetPasswordPage = () => {
+  const { setIsUpdatingPassword } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isValidToken, setIsValidToken] = useState(false);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -20,12 +21,6 @@ const ResetPasswordPage = () => {
     // Listen for auth state changes (this will trigger when Supabase processes the recovery tokens)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, 'Has session:', !!session);
-      
-      // Ignore auth state changes if we're in the middle of resetting password
-      if (isResettingPassword) {
-        console.log('Ignoring auth state change during password reset');
-        return;
-      }
       
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         if (session && mounted) {
@@ -135,7 +130,7 @@ const ResetPasswordPage = () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [navigate, isResettingPassword]);
+  }, [navigate]);
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
@@ -161,7 +156,7 @@ const ResetPasswordPage = () => {
     }
 
     setIsLoading(true);
-    setIsResettingPassword(true); // Prevent auth listener interference
+    setIsUpdatingPassword(true); // Prevent global auth listener interference
 
     try {
       console.log('Starting password update...');
@@ -173,6 +168,7 @@ const ResetPasswordPage = () => {
 
       if (error) {
         console.error('Password update error:', error);
+        setIsUpdatingPassword(false);
         throw error;
       }
 
@@ -185,6 +181,10 @@ const ResetPasswordPage = () => {
       
       // Wait for signOut or timeout, whichever comes first
       await Promise.race([signOutPromise, timeoutPromise]);
+      
+      // Wait a bit before re-enabling auth listener
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setIsUpdatingPassword(false);
       
       console.log('Sign out completed, showing success message...');
 
@@ -202,7 +202,7 @@ const ResetPasswordPage = () => {
       
     } catch (error) {
       console.error('Error resetting password:', error);
-      setIsResettingPassword(false); // Re-enable auth listener on error
+      setIsUpdatingPassword(false); // Re-enable auth listener on error
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -305,9 +305,18 @@ const ResetPasswordPage = () => {
               variant="primary"
               className="w-full"
               disabled={isLoading || password.length < 8 || password !== confirmPassword}
-              isLoading={isLoading}
             >
-              {isLoading ? 'Updating Password...' : 'Update Password'}
+              {isLoading ? (
+                <span className="flex items-center justify-center">
+                  Updating Password
+                  <svg className="animate-spin ml-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              ) : (
+                'Update Password'
+              )}
             </Button>
           </form>
 
