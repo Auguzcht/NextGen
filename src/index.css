@@ -311,4 +311,9 @@ button:focus-visible {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
   }
+
+  /* High z-index for SweetAlert modals that need to appear above other modals */
+  .swal-high-z-index {
+    z-index: 10000 !important;
+  }
 }

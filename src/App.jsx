@@ -47,22 +47,19 @@ const PageWrapper = ({ children, pageName }) => {
 
 // AuthCheck component for route protection
 const AuthCheck = () => {
-  const { user, loading, session } = useAuth();
-  const navigate = useNavigate();
+  const { session, loading } = useAuth();
   const location = useLocation();
-  const [initialLoading, setInitialLoading] = useState(true);
   
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setInitialLoading(false);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-  
-  // Show loading screen during initial load
-  if (initialLoading || loading) {
-    return <LoadingScreen finishLoading={() => setInitialLoading(false)} />;
+  // If still loading auth state, show a simple spinner (not full LoadingScreen)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-nextgen-blue-light border-t-nextgen-blue-dark rounded-full animate-spin"></div>
+          <p className="text-gray-600 text-sm">Loading...</p>
+        </div>
+      </div>
+    );
   }
   
   // If no session, redirect to login
@@ -216,20 +213,23 @@ const RedirectHandler = () => {
 
 function AppContent() {
   const { loading, initialized } = useAuth();
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
-  // Effect to disable initial loading screen after a delay
+  // Only show loading screen once during initial auth initialization
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setInitialLoading(false);
-    }, 2000); // Show loading for at least 2 seconds
-    
-    return () => clearTimeout(timer);
-  }, []);
+    if (initialized && !initialLoadComplete) {
+      // Give a brief moment for auth to settle
+      const timer = setTimeout(() => {
+        setInitialLoadComplete(true);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [initialized, initialLoadComplete]);
   
-  // Show initial loading screen
-  if (initialLoading || (loading && !initialized)) {
-    return <LoadingScreen finishLoading={() => setInitialLoading(false)} />;
+  // Show initial loading screen ONLY during first load
+  if (!initialLoadComplete) {
+    return <LoadingScreen finishLoading={() => setInitialLoadComplete(true)} />;
   }
   
   return (

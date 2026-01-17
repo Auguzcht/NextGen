@@ -444,6 +444,82 @@ export const getGreetingForRecipientType = (recipientType, recipientName = null,
 };
 
 /**
+ * Child QR Code Email Template
+ * Sends the child's QR code to their guardian for easy check-in
+ */
+export const createChildQREmailTemplate = ({
+  childFirstName,
+  childLastName,
+  childFormalId,
+  guardianName,
+  qrCodeDataUrl // Base64 data URL of the QR code image
+}) => {
+  const content = `
+    <h2 style="color: #1a202c; margin: 0 0 24px 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em;">
+      ${childFirstName}'s Check-In QR Code
+    </h2>
+    
+    <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      Hello${guardianName ? ` ${guardianName}` : ''},
+    </p>
+    
+    <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+      Thank you for registering <strong>${childFirstName} ${childLastName}</strong> with NextGen Ministry! 
+      We're excited to have your child join us.
+    </p>
+    
+    <div style="background: linear-gradient(135deg, ${NXTGEN_COLORS.primary} 0%, #2ba5c7 100%); border-radius: 16px; padding: 40px; text-align: center; margin: 32px 0; box-shadow: 0 8px 20px rgba(48, 206, 228, 0.25);">
+      <p style="color: #ffffff; font-size: 16px; font-weight: 700; margin: 0 0 24px 0; text-transform: uppercase; letter-spacing: 0.1em;">
+        ✨ Your Check-In QR Code ✨
+      </p>
+      
+      <div style="background: white; display: inline-block; padding: 32px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); margin-bottom: 24px;">
+        ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="${childFirstName}'s QR Code" style="width: 300px; height: 300px; display: block;" />` : '<div style="width: 300px; height: 300px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; border-radius: 8px;">QR Code</div>'}
+      </div>
+      
+      <div style="background: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 20px; margin: 0 auto; max-width: 400px;">
+        <p style="color: ${NXTGEN_COLORS.primary}; font-size: 14px; font-weight: 600; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+          Child ID
+        </p>
+        <p style="color: #1a202c; font-size: 28px; font-weight: 700; margin: 0 0 12px 0; letter-spacing: 0.02em; font-family: 'Courier New', monospace;">
+          ${childFormalId}
+        </p>
+        <p style="color: #64748b; font-size: 14px; margin: 0; line-height: 1.5;">
+          💾 Save this QR code for quick check-in<br/>
+          📱 Show it on your phone or print it out
+        </p>
+      </div>
+    </div>
+    
+    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0;">
+      <p style="color: #92400e; font-size: 14px; margin: 0; line-height: 1.6;">
+        <strong style="display: block; margin-bottom: 8px;">📱 Quick Check-In Tips:</strong>
+        • Save this email or take a screenshot of the QR code<br/>
+        • Show the QR code to our staff during check-in<br/>
+        • You can also use the Child ID (${childFormalId}) for check-in
+      </p>
+    </div>
+    
+    <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 24px 0 0 0;">
+      If you have any questions or need assistance, please don't hesitate to contact our NextGen Ministry team.
+    </p>
+    
+    <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 16px 0 0 0;">
+      Blessings,<br/>
+      <strong style="color: ${NXTGEN_COLORS.primary};">NextGen Ministry Davao Team</strong>
+    </p>
+  `;
+
+  return createEmailTemplate({
+    title: 'Welcome to NextGen Ministry!',
+    subtitle: `${childFirstName}'s Registration Confirmation`,
+    content,
+    footerText: 'This is an automated message from NextGen Ministry Management System.',
+    recipientEmail: ''
+  });
+};
+
+/**
  * Custom Email Template (for Email Composer)
  */
 export const createCustomEmailTemplate = ({ 

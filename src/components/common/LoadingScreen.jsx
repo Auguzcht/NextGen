@@ -48,24 +48,15 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     if (initialized) {
       console.log('LoadingScreen - Auth initialized, preparing to exit');
       
-      // Short delay before exit animation to ensure state is settled
-      const exitTimer = setTimeout(() => {
-        setIsExiting(true);
-      }, 800);
+      // Faster exit - no delay needed
+      setIsExiting(true);
       
-      // Slightly longer delay for actual completion
+      // Quick completion
       const loadingTimer = setTimeout(() => {
         finishLoading && finishLoading();
-        
-        // If user is null and initialized is true, we need to redirect to login
-        if (!user && initialized && !loading) {
-          console.log('LoadingScreen - No user after initialization, redirecting to login');
-          navigate('/login', { replace: true });
-        }
-      }, 1200);
+      }, 300);
       
       return () => {
-        clearTimeout(exitTimer);
         clearTimeout(loadingTimer);
       };
     }
@@ -76,51 +67,33 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
         console.log('LoadingScreen - Forcing initialization after delay');
         setIsExiting(true);
         finishLoading && finishLoading();
-        // Reset auth state to break the loading loop
-        resetAuthState();
-        navigate('/login', { replace: true });
       }
-    }, 5000);
+    }, 3000); // Reduced from 5000 to 3000
     
     return () => clearTimeout(forcedInitTimer);
-  }, [initialized, user, loading, finishLoading, navigate, resetAuthState]);
+  }, [initialized, finishLoading]);
 
   // Handle exit animation timings based on auth and manual triggers
   useEffect(() => {
     // Check if we should exit based on initialLoadingComplete prop
     const shouldStartExit = isInitialLoadingComplete || forceExit;
     
-    let exitTimer, loadingTimer;
-    
     if (shouldStartExit) {
-      // Exit based on initialLoadingComplete prop
-      exitTimer = setTimeout(() => {
-        setIsExiting(true);
-      }, 1000);
+      // Immediate exit - no delays
+      setIsExiting(true);
       
-      loadingTimer = setTimeout(() => {
+      const loadingTimer = setTimeout(() => {
         finishLoading && finishLoading();
-        
-        // Add direct navigation to ensure we don't get stuck
-        if (!user) {
-          // Also reset auth state
-          resetAuthState();
-          // Force navigation without relying on auth state
-          window.location.href = '/nextgen/login';
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-      }, 1400);
+      }, 300);
       
       return () => {
-        clearTimeout(exitTimer);
         clearTimeout(loadingTimer);
       };
     } else {
       // Otherwise use auth-based exit strategy
       return handleAuthBasedExit();
     }
-  }, [isInitialLoadingComplete, finishLoading, forceExit, handleAuthBasedExit, user, navigate, resetAuthState]);
+  }, [isInitialLoadingComplete, finishLoading, forceExit, handleAuthBasedExit]);
 
   // Pre-generate random positions for geometric shapes
   const shapeProps = useMemo(() => {
@@ -213,16 +186,16 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
 
   // Loading text and different messages based on auth state
   const getLoadingMessage = () => {
-    if (forceExit) return "Resolving session state...";
-    if (user) return "Loading your dashboard...";
-    if (initialized && !user) return "Preparing login page...";
-    return "Loading NextGen Ministry...";
+    if (forceExit) return "Resolving session state";
+    if (user) return "Welcome back";
+    if (initialized && !user) return "NextGen Ministry";
+    return "NextGen Ministry";
   };
   
   const loadingText = getLoadingMessage();
   const subText = initialized 
-    ? (user ? "Loading your ministry tools" : "Please sign in to continue") 
-    : "Preparing your ministry tools";
+    ? (user ? "Setting up your workspace" : "Please sign in to continue") 
+    : "Initializing application";
 
   // Wipe animation variants
   const wipeVariants = {
@@ -493,7 +466,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             <AnimatePresence mode="wait">
               <motion.div
                 key={loadingText}
-                className="overflow-hidden mt-5 h-6"
+                className="overflow-hidden mt-5 h-8"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -503,7 +476,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
                   {loadingText.split("").map((char, i) => (
                     <motion.span
                       key={i}
-                      className="text-gray-800 font-medium text-base inline-block"
+                      className="text-transparent bg-clip-text bg-gradient-to-r from-nextgen-blue to-nextgen-orange font-semibold text-xl inline-block"
                       variants={textVariants}
                       initial="hidden"
                       animate="visible"
@@ -617,15 +590,6 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
             margin: 0,
             padding: 0,
             textAlign: 'center'
-          }}
-          onAnimationComplete={() => {
-            // Handle navigation on animation complete
-            if (!user) {
-              // Use window.location for a hard navigation to break any loops
-              window.location.href = '/nextgen/login';
-            } else {
-              navigate('/dashboard', { replace: true });
-            }
           }}
         >
           <motion.div 

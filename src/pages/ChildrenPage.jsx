@@ -25,6 +25,7 @@ const ChildrenPage = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showPrintableID, setShowPrintableID] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
 
   // Debounce search query
@@ -548,6 +549,48 @@ const ChildrenPage = () => {
             setIsViewModalOpen(false);
             setSelectedChild(null); // Add this line to clean up
           }}
+          onPrintID={() => {
+            setIsViewModalOpen(false);
+            setSelectedChild(null);
+            setRegisteredChildData({
+              firstName: selectedChild.first_name,
+              lastName: selectedChild.last_name,
+              middleName: selectedChild.middle_name || '',
+              formalId: selectedChild.formal_id || 'N/A',
+              gender: selectedChild.gender,
+              birthdate: selectedChild.birthdate,
+              age: Math.floor((new Date() - new Date(selectedChild.birthdate)) / 31557600000),
+              ageCategory: selectedChild.age_categories?.category_name || 'N/A',
+              guardianFirstName: selectedChild.child_guardian?.[0]?.guardians?.first_name || '',
+              guardianLastName: selectedChild.child_guardian?.[0]?.guardians?.last_name || '',
+              guardianPhone: selectedChild.child_guardian?.[0]?.guardians?.phone_number || '',
+              guardianEmail: selectedChild.child_guardian?.[0]?.guardians?.email || '',
+              photoUrl: selectedChild.photo_url || '',
+              registrationDate: selectedChild.registration_date
+            });
+            setTimeout(() => setShowPrintableID(true), 100);
+          }}
+          onShowQR={() => {
+            setIsViewModalOpen(false);
+            setSelectedChild(null);
+            setRegisteredChildData({
+              firstName: selectedChild.first_name,
+              lastName: selectedChild.last_name,
+              middleName: selectedChild.middle_name || '',
+              formalId: selectedChild.formal_id || 'N/A',
+              gender: selectedChild.gender,
+              birthdate: selectedChild.birthdate,
+              age: Math.floor((new Date() - new Date(selectedChild.birthdate)) / 31557600000),
+              ageCategory: selectedChild.age_categories?.category_name || 'N/A',
+              guardianFirstName: selectedChild.child_guardian?.[0]?.guardians?.first_name || '',
+              guardianLastName: selectedChild.child_guardian?.[0]?.guardians?.last_name || '',
+              guardianPhone: selectedChild.child_guardian?.[0]?.guardians?.phone_number || '',
+              guardianEmail: selectedChild.child_guardian?.[0]?.guardians?.email || '',
+              photoUrl: selectedChild.photo_url || '',
+              registrationDate: selectedChild.registration_date
+            });
+            setTimeout(() => setShowQRModal(true), 100);
+          }}
         />
       )}
 
@@ -558,6 +601,19 @@ const ChildrenPage = () => {
           onClose={() => setShowSuccessModal(false)}
           childData={registeredChildData}
           onPrintID={handlePrintIDCard}
+        />
+      )}
+
+      {/* QR Code Modal (from Show QR button) */}
+      {showQRModal && registeredChildData && (
+        <RegistrationSuccessModal
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+          childData={registeredChildData}
+          onPrintID={() => {
+            setShowQRModal(false);
+            setTimeout(() => setShowPrintableID(true), 100);
+          }}
         />
       )}
 

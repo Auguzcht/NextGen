@@ -2,10 +2,8 @@ import { useState, useEffect } from 'react';
 import { Modal, Badge, Button } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import QRCode from '../common/QRCode';
-import PrintableIDCard from './PrintableIDCard';
 
-const ChildDetailView = ({ child, isOpen, onClose }) => {
-  const [showPrintableID, setShowPrintableID] = useState(false);
+const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
   const [showQR, setShowQR] = useState(false);
   
   // Auto transition timer
@@ -36,6 +34,20 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
       age--;
     }
     return age;
+  };
+
+  // Handler for Show QR button
+  const handleShowQR = () => {
+    if (onShowQR) {
+      onShowQR(); // Use parent's handler
+    }
+  };
+
+  // Handler for Print ID button
+  const handlePrintID = () => {
+    if (onPrintID) {
+      onPrintID(); // Use parent's handler
+    }
   };
 
   // Format child data for the ID card
@@ -165,14 +177,15 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                 </AnimatePresence>
               </div>
               
-              <div className="mt-4 text-center">
+              <div className="mt-4 text-center space-y-2">
                 <h3 className="text-lg font-bold text-nextgen-blue-dark mb-3">
                   {child.first_name} {child.middle_name} {child.last_name}
                 </h3>
+                
                 <Button 
                   variant="primary" 
                   size="sm" 
-                  onClick={() => setShowPrintableID(true)}
+                  onClick={handlePrintID}
                   disabled={!child.formal_id}
                   fullWidth
                   className="flex items-center justify-center"
@@ -182,6 +195,22 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                     </svg>
                     <span>Print ID</span>
+                  </div>
+                </Button>
+
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={handleShowQR}
+                  disabled={!child.formal_id}
+                  fullWidth
+                  className="flex items-center justify-center"
+                >
+                  <div className="flex items-center whitespace-nowrap">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                    <span>Show QR</span>
                   </div>
                 </Button>
               </div>
@@ -291,14 +320,6 @@ const ChildDetailView = ({ child, isOpen, onClose }) => {
           </div>
         </motion.div>
       </Modal>
-
-      {/* Printable ID Card Modal */}
-      {showPrintableID && (
-        <PrintableIDCard 
-          childData={formatChildDataForID()}
-          onClose={() => setShowPrintableID(false)}
-        />
-      )}
     </>
   );
 };

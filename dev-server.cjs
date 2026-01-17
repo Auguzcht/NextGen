@@ -429,6 +429,145 @@ app.post('/api/email/send-credentials', async (req, res) => {
   }
 });
 
+// Send child QR code email handler
+app.post('/api/email/send-child-qr', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const { childData } = req.body;
+
+    if (!childData || !childData.guardianEmail) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: childData with guardianEmail' 
+      });
+    }
+
+    const { firstName, lastName, formalId, guardianEmail, guardianName } = childData;
+
+    console.log(`📧 Sending child QR code email for ${firstName} ${lastName} (${formalId}) to ${guardianEmail}`);
+
+    // Generate QR code as data URL
+    const QRCode = require('qrcode');
+    let qrCodeDataUrl = null;
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(formalId, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#30cee4', // NextGen teal
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+      });
+    } catch (qrError) {
+      console.error('Error generating QR code:', qrError);
+    }
+
+    // Get email configuration from database
+    const { data: config, error: configError } = await supabase
+      .from('email_api_config')
+      .select('*')
+      .eq('is_active', true)
+      .single();
+
+    if (configError || !config) {
+      console.error('Email configuration not found:', configError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Email service not configured' 
+      });
+    }
+
+    // Import email template function
+    const { createChildQREmailTemplate } = await import('./api/utils/emailProviders.js').then(module => {
+      // If the template is not in emailProviders, try the templates file
+      return import('./src/utils/emailTemplates.js');
+    }).catch(() => {
+      return import('./src/utils/emailTemplates.js');
+    });
+
+    // Create email template
+    const htmlContent = createChildQREmailTemplate({
+      childFirstName: firstName,
+      childLastName: lastName,
+      childFormalId: formalId,
+      guardianName: guardianName,
+      qrCodeDataUrl: qrCodeDataUrl
+    });
+
+    // Prepare email data - use Resend directly for dev server
+    const emailData = {
+      from: `${config.from_name} <${config.from_email}>`,
+      to: [guardianEmail],
+      subject: `${firstName}'s Check-In QR Code - NextGen Ministry`,
+      html: htmlContent,
+      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease use this ID or the QR code in the email to check in your child.\n\nBlessings,\nNextGen Ministry Davao Team`
+    };
+
+    // Send email via Resend API
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.api_key}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(emailData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Resend API error:', errorData);
+      throw new Error(`Resend API error: ${errorData.message || response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Child QR code email sent successfully to ${guardianEmail}`);
+
+    // Log the email in database
+    try {
+      await supabase
+        .from('email_logs')
+        .insert({
+          recipient_email: guardianEmail,
+          subject: emailData.subject,
+          status: 'sent',
+          sent_date: new Date().toISOString(),
+          notes: `DEV MODE - Child QR Code | Message ID: ${result.id || 'N/A'}`
+        });
+    } catch (logError) {
+      console.warn('Failed to log email:', logError);
+      // Don't fail the request if logging fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'QR code email sent successfully',
+      data: {
+        recipient: guardianEmail,
+        childName: `${firstName} ${lastName}`,
+        formalId: formalId,
+        messageId: result.id || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error sending child QR email:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send email'
+    });
+  }
+});
+
+
 // Send batch emails handler
 app.post('/api/email/send-batch', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -994,6 +1133,7 @@ app.listen(PORT, () => {
   console.log(`   - POST /api/email/send-test`);
   console.log(`   - POST /api/email/send-batch`);
   console.log(`   - POST /api/email/send-credentials`);
+  console.log(`   - POST /api/email/send-child-qr`);
   console.log(`   - GET/POST /api/email/config`);
   console.log(`📅 Cal.com API endpoints available at http://localhost:${PORT}/api/calcom/*`);
   console.log(`   - POST /api/calcom/bookings`);
