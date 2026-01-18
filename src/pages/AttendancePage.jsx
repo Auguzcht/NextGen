@@ -19,6 +19,7 @@ const AttendancePage = () => {
   const [error, setError] = useState(null);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [selectedChildren, setSelectedChildren] = useState([]);
 
   // Fetch services on mount
   useEffect(() => {
@@ -49,8 +50,31 @@ const AttendancePage = () => {
       searchChildren();
     } else {
       setSearchResults([]);
+      setSelectedChildren([]); // Clear selections when search is cleared
     }
   }, [debouncedSearchQuery, selectedService, selectedDate]);
+
+  // Toggle child selection
+  const toggleChildSelection = (childId) => {
+    setSelectedChildren(prev => {
+      if (prev.includes(childId)) {
+        return prev.filter(id => id !== childId);
+      } else {
+        return [...prev, childId];
+      }
+    });
+  };
+
+  // Select all visible children
+  const selectAllChildren = () => {
+    const allIds = searchResults.map(child => child.child_id);
+    setSelectedChildren(allIds);
+  };
+
+  // Deselect all children
+  const deselectAllChildren = () => {
+    setSelectedChildren([]);
+  };
 
   // Cache fetched data
   const fetchWithCache = useCallback(async (key, fetchFn) => {
@@ -159,6 +183,92 @@ const AttendancePage = () => {
       setError('Failed to search children');
     } finally {
       setSearching(false);
+    }
+  };
+
+  // Handle checking in multiple children
+  const handleCheckInMultiple = async () => {
+    if (selectedChildren.length === 0) return;
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const staffEmail = session?.user?.email || 'Unknown Staff';
+      const now = new Date();
+      const localTime = now.toTimeString().split(' ')[0];
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const childId of selectedChildren) {
+        try {
+          // Check if already checked in
+          const { data: existingCheckIn } = await supabase
+            .from('attendance')
+            .select('attendance_id')
+            .eq('child_id', childId)
+            .eq('service_id', selectedService)
+            .eq('attendance_date', selectedDate)
+            .maybeSingle();
+          
+          if (existingCheckIn) {
+            // Update existing record
+            await supabase
+              .from('attendance')
+              .update({
+                check_in_time: localTime,
+                checked_in_by: staffEmail
+              })
+              .eq('attendance_id', existingCheckIn.attendance_id);
+          } else {
+            // Create new record
+            await supabase
+              .from('attendance')
+              .insert({
+                child_id: childId,
+                service_id: selectedService,
+                attendance_date: selectedDate,
+                check_in_time: localTime,
+                checked_in_by: staffEmail
+              });
+          }
+          successCount++;
+        } catch (err) {
+          console.error(`Error checking in child ${childId}:`, err);
+          errorCount++;
+        }
+      }
+      
+      // Reset state
+      setCheckInSuccess(prev => !prev);
+      setSelectedChildren([]);
+      setSearchResults([]);
+      setSearchQuery('');
+      setError(null);
+      
+      // Show success message
+      if (successCount > 0) {
+        Swal.fire({
+          icon: 'success',
+          title: `${successCount} ${successCount === 1 ? 'child' : 'children'} checked in`,
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+          iconColor: '#1ca7bc',
+          customClass: {
+            popup: 'swal-nextgen-toast',
+            title: 'swal-nextgen-title'
+          }
+        });
+      }
+      
+      if (errorCount > 0) {
+        setError(`${errorCount} children failed to check in`);
+      }
+    } catch (error) {
+      console.error('Error checking in children:', error);
+      setError('Failed to check in children');
     }
   };
 
@@ -316,54 +426,91 @@ const AttendancePage = () => {
     }
     
     return (
-      <div className="mt-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm max-h-60 overflow-y-auto">
-        <h4 className="text-sm font-medium text-gray-600 mb-2">Search Results</h4>
-        <div className="space-y-2">
+      <div className="mt-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200">
+          <h4 className="text-sm font-medium text-gray-600">
+            Search Results ({searchResults.length})
+          </h4>
+          <div className="flex items-center gap-2">
+            {selectedChildren.length > 0 && (
+              <span className="text-xs text-gray-500">
+                {selectedChildren.length} selected
+              </span>
+            )}
+            {searchResults.length > 0 && (
+              <button
+                onClick={selectedChildren.length === searchResults.length ? deselectAllChildren : selectAllChildren}
+                className="text-xs text-nextgen-blue hover:text-nextgen-blue-dark transition-colors"
+              >
+                {selectedChildren.length === searchResults.length ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="max-h-72 overflow-y-auto space-y-1">
           {searchResults.map(child => (
-            <div key={child.child_id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-md">
-              <div className="flex items-center gap-3">
-                {child.photo_url ? (
-                  <img
-                    src={child.photo_url}
-                    alt={`${child.first_name} ${child.last_name}`}
-                    className="h-8 w-8 rounded-full object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
-                    }}
-                  />
-                ) : (
-                  <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
-                    <span className="text-nextgen-blue-dark font-medium text-xs">
-                      {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
-                    </span>
-                  </div>
-                )}
-                <div>
-                  <div className="font-medium text-gray-900">
-                    {child.first_name} {child.last_name}
-                  </div>
-                  <div className="text-xs text-gray-500 flex items-center gap-1">
-                    <span>{calculateAge(child.birthdate)} yrs</span>
-                    {child.age_categories?.category_name && (
-                      <Badge variant="primary" size="xs">
-                        {child.age_categories?.category_name}
-                      </Badge>
-                    )}
-                  </div>
+            <div 
+              key={child.child_id} 
+              className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                selectedChildren.includes(child.child_id) 
+                  ? 'bg-nextgen-blue/10 hover:bg-nextgen-blue/20' 
+                  : 'hover:bg-gray-50'
+              }`}
+              onClick={() => toggleChildSelection(child.child_id)}
+            >
+              <input
+                type="checkbox"
+                checked={selectedChildren.includes(child.child_id)}
+                onChange={() => toggleChildSelection(child.child_id)}
+                className="h-4 w-4 rounded border-gray-300 text-nextgen-blue focus:ring-nextgen-blue cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {child.photo_url ? (
+                <img
+                  src={child.photo_url}
+                  alt={`${child.first_name} ${child.last_name}`}
+                  className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
+                  }}
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-nextgen-blue-dark font-medium text-xs">
+                    {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
+                  </span>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 truncate">
+                  {child.first_name} {child.last_name}
+                </div>
+                <div className="text-xs text-gray-500 flex items-center gap-1">
+                  <span>{calculateAge(child.birthdate)} yrs</span>
+                  {child.age_categories?.category_name && (
+                    <Badge variant="primary" size="xs">
+                      {child.age_categories?.category_name}
+                    </Badge>
+                  )}
                 </div>
               </div>
-              <Button
-                variant="primary"
-                size="xs"
-                onClick={() => handleCheckIn(child.child_id)}
-              >
-                Check In
-              </Button>
             </div>
           ))}
         </div>
+        {selectedChildren.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-200">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleCheckInMultiple}
+              fullWidth
+            >
+              Check In {selectedChildren.length} {selectedChildren.length === 1 ? 'Child' : 'Children'}
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -657,7 +804,10 @@ const AttendancePage = () => {
                           </svg>
                         ) : searchQuery ? (
                           <button 
-                            onClick={() => setSearchQuery('')}
+                            onClick={() => {
+                              setSearchQuery('');
+                              setSelectedChildren([]);
+                            }}
                             className="text-gray-400 hover:text-gray-600"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

@@ -19,6 +19,8 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   const videoContainerRef = useRef(null);
   const externalBufferTimeoutRef = useRef(null);
   const modalContentRef = useRef(null);
+  const processingRef = useRef(false); // Synchronous processing flag
+  const lastScanRef = useRef({ value: '', timestamp: 0 }); // Track last scan to prevent duplicates
   
   // Calculate scanner box dimensions based on container size
   useEffect(() => {
@@ -40,12 +42,19 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
     if (!isOpen) return;
     
     const handleKeyDown = (e) => {
-      // Process only when modal is open
-      if (!isOpen || hasProcessedScan) return;
+      // Process only when modal is open and not already processing
+      if (!isOpen || hasProcessedScan || processingRef.current) return;
       
       // If Enter is pressed or we receive a sufficient number of characters, process the buffer
       if ((e.key === 'Enter' || e.key === 'Tab') && externalScanBuffer) {
         e.preventDefault(); // Prevent form submission
+        
+        // Clear any pending timeout to prevent double processing
+        if (externalBufferTimeoutRef.current) {
+          clearTimeout(externalBufferTimeoutRef.current);
+          externalBufferTimeoutRef.current = null;
+        }
+        
         processExternalScan();
         return;
       }
@@ -62,7 +71,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
         // If we've accumulated characters, it's likely a scan in progress
         // Most USB scanners will finish sending characters within 100-200ms
         externalBufferTimeoutRef.current = setTimeout(() => {
-          if (externalScanBuffer.length > 3) {
+          if (externalScanBuffer.length > 3 && !processingRef.current) {
             processExternalScan();
           }
         }, 200);
@@ -81,29 +90,50 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   
   // Process external scanner input
   const processExternalScan = () => {
-    if (processingExternalScan || !externalScanBuffer || hasProcessedScan) return;
+    if (processingRef.current || !externalScanBuffer || hasProcessedScan) return;
+    
+    // Immediately set processing flag to prevent any race conditions
+    processingRef.current = true;
+    setProcessingExternalScan(true);
+    setHasProcessedScan(true);
     
     try {
-      setProcessingExternalScan(true);
-      setHasProcessedScan(true);
+      // Get the scanned value
+      const scanValue = externalScanBuffer.trim();
+      
+      // Clear buffer immediately to prevent overlapping scans
+      setExternalScanBuffer('');
+      
+      // Clear any pending timeout
+      if (externalBufferTimeoutRef.current) {
+        clearTimeout(externalBufferTimeoutRef.current);
+        externalBufferTimeoutRef.current = null;
+      }
+      
+      // Check for duplicate scan (same value within 2 seconds)
+      const now = Date.now();
+      if (lastScanRef.current.value === scanValue && (now - lastScanRef.current.timestamp) < 2000) {
+        console.log('Duplicate scan detected, ignoring');
+        processingRef.current = false;
+        setProcessingExternalScan(false);
+        return;
+      }
+      
+      // Update last scan
+      lastScanRef.current = { value: scanValue, timestamp: now };
       
       // Show animation
       setShowSuccessAnimation(true);
       
-      // Process the scanned code
-      const scanValue = externalScanBuffer.trim();
-      
-      // Show success message with a delay for the animation
+      // Process the scanned code with a delay for the animation
       setTimeout(() => {
         handleScanResult(scanValue);
-        // Clear the buffer
-        setExternalScanBuffer('');
       }, 700);
     } catch (error) {
       console.error('Error processing external scan:', error);
       setError('Failed to process the scanned code');
       setExternalScanBuffer('');
-    } finally {
+      processingRef.current = false;
       setProcessingExternalScan(false);
     }
   };
@@ -116,6 +146,9 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       setSuccess(null);
       setShowSuccessAnimation(false);
       setHasProcessedScan(false);
+      processingRef.current = false;
+      // Clear last scan when starting new scan session
+      lastScanRef.current = { value: '', timestamp: 0 };
       
       if (!videoRef.current) return;
       
@@ -125,26 +158,45 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
           videoRef.current,
           result => {
             // Only process if we haven't already processed a scan
-            if (hasProcessedScan) return;
+            if (hasProcessedScan || processingRef.current) return;
             
             console.log("QR code detected:", result);
             
-            // Mark as processed to prevent multiple scans
+            // Immediately set processing flag and stop scanner
+            processingRef.current = true;
             setHasProcessedScan(true);
+            
+            // Stop the scanner immediately to prevent additional scans
+            if (qrScannerRef.current) {
+              qrScannerRef.current.stop();
+            }
+            setScanning(false);
+            
+            // Check for duplicate scan (same value within 2 seconds)
+            const now = Date.now();
+            const scanValue = result.data;
+            if (lastScanRef.current.value === scanValue && (now - lastScanRef.current.timestamp) < 2000) {
+              console.log('Duplicate scan detected, ignoring');
+              processingRef.current = false;
+              return;
+            }
+            
+            // Update last scan
+            lastScanRef.current = { value: scanValue, timestamp: now };
             
             // Show success animation
             setShowSuccessAnimation(true);
             
             // Process the QR code after a brief delay for animation
             setTimeout(() => {
-              handleScanResult(result.data);
+              handleScanResult(scanValue);
             }, 700);
           },
           {
             returnDetailedScanResult: true,
             highlightScanRegion: true,
             highlightCodeOutline: true,
-            maxScansPerSecond: 3, // Reduce scan rate to prevent multiple detections
+            maxScansPerSecond: 1, // Further reduce scan rate to prevent multiple detections
             preferredCamera: 'environment', // Use back camera by default
           }
         );
@@ -228,6 +280,9 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       setSuccess(null);
       setShowSuccessAnimation(false);
       setHasProcessedScan(false);
+      processingRef.current = false;
+      // Reset last scan when modal closes
+      lastScanRef.current = { value: '', timestamp: 0 };
     }
     
     // Clean up resources when component unmounts
