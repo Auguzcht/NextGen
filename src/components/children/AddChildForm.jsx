@@ -301,8 +301,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     const birthDate = new Date(formData.birthdate);
     const today = new Date();
     const age = today.getFullYear() - birthDate.getFullYear();
-    if (formData.birthdate && (age < 4 || age > 12)) {
-      newErrors.birthdate = 'Child must be between 4 and 12 years old';
+    if (formData.birthdate && (age < 4 || age > 15)) {
+      newErrors.birthdate = 'Child must be between 4 and 15 years old';
     }
 
     setErrors(newErrors);
