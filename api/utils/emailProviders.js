@@ -18,6 +18,12 @@ async function sendViaResend(apiKey, emailData) {
     text: emailData.text
   };
 
+  // Add attachments if provided
+  if (emailData.attachments && emailData.attachments.length > 0) {
+    emailPayload.attachments = emailData.attachments;
+    console.log(`📎 Including ${emailData.attachments.length} attachment(s)`);
+  }
+
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {

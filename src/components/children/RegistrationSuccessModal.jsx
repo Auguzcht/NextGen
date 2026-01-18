@@ -38,7 +38,8 @@ const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => 
             lastName: childData.lastName,
             formalId: childData.formalId,
             guardianEmail: childData.guardianEmail,
-            guardianName: `${childData.guardianFirstName || ''} ${childData.guardianLastName || ''}`.trim()
+            guardianName: `${childData.guardianFirstName || ''} ${childData.guardianLastName || ''}`.trim(),
+            childId: childData.child_id || childData.childId || childData.formalId // Include child ID for QR storage
           }
         })
       });

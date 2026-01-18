@@ -48,9 +48,19 @@ const FileUpload = React.forwardRef(({
   }, [stream]);
 
   const uploadFile = async (file) => {
+    // Validate file exists
+    if (!file) {
+      console.error('No file provided to uploadFile');
+      if (onUploadError) {
+        onUploadError(new Error('No file provided'));
+      }
+      return;
+    }
 
     if (file.size > maxSize * 1024 * 1024) {
-      onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      if (onUploadError) {
+        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      }
       return;
     }
 
@@ -73,11 +83,13 @@ const FileUpload = React.forwardRef(({
       // Show success state
       setShowSuccess(true);
       
-      onUploadComplete({
-        url,
-        path: snapshot.ref.fullPath,
-        fileName: file.name
-      });
+      if (onUploadComplete) {
+        onUploadComplete({
+          url,
+          path: snapshot.ref.fullPath,
+          fileName: file.name
+        });
+      }
       
       // Auto reset if enabled (for staging workflows)
       if (autoReset) {
@@ -89,7 +101,10 @@ const FileUpload = React.forwardRef(({
         }, 800);
       }
     } catch (error) {
-      onUploadError(error);
+      console.error('Upload error:', error);
+      if (onUploadError) {
+        onUploadError(error);
+      }
     } finally {
       setUploading(false);
     }
@@ -100,7 +115,9 @@ const FileUpload = React.forwardRef(({
     if (!file) return;
 
     if (file.size > maxSize * 1024 * 1024) {
-      onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      if (onUploadError) {
+        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      }
       return;
     }
 
@@ -137,7 +154,9 @@ const FileUpload = React.forwardRef(({
     if (!file) return;
 
     if (file.size > maxSize * 1024 * 1024) {
-      onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      if (onUploadError) {
+        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+      }
       return;
     }
 
@@ -185,18 +204,58 @@ const FileUpload = React.forwardRef(({
     const video = videoRef.current;
     const canvas = canvasRef.current;
     
-    if (!video || !canvas) return;
+    if (!video || !canvas) {
+      console.error('Video or canvas ref not available');
+      return;
+    }
+
+    // Validate video has valid dimensions
+    if (!video.videoWidth || !video.videoHeight) {
+      console.error('Video dimensions not available');
+      if (onUploadError) {
+        onUploadError(new Error('Camera not ready. Please try again.'));
+      }
+      return;
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const context = canvas.getContext('2d');
+    
+    if (!context) {
+      console.error('Could not get canvas context');
+      if (onUploadError) {
+        onUploadError(new Error('Failed to process image'));
+      }
+      return;
+    }
+    
     context.drawImage(video, 0, 0);
 
     canvas.toBlob(async (blob) => {
-      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      stopCamera();
-      setCaptureMode('file');
-      await uploadFile(file);
+      if (!blob) {
+        console.error('Failed to create blob from canvas');
+        if (onUploadError) {
+          onUploadError(new Error('Failed to capture photo'));
+        }
+        stopCamera();
+        setCaptureMode('file');
+        return;
+      }
+
+      try {
+        const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        stopCamera();
+        setCaptureMode('file');
+        await uploadFile(file);
+      } catch (error) {
+        console.error('Error creating file from blob:', error);
+        if (onUploadError) {
+          onUploadError(new Error('Failed to process captured photo'));
+        }
+        stopCamera();
+        setCaptureMode('file');
+      }
     }, 'image/jpeg', 0.95);
   };
 
@@ -228,7 +287,9 @@ const FileUpload = React.forwardRef(({
       setImagePath('');
       setFileName('');
       setShowSuccess(false);
-      onDeleteComplete();
+      if (onDeleteComplete) {
+        onDeleteComplete();
+      }
     } catch (error) {
       console.error('Error deleting file:', error);
       // Still clear the preview even if deletion fails
@@ -236,7 +297,9 @@ const FileUpload = React.forwardRef(({
       setImagePath('');
       setFileName('');
       setShowSuccess(false);
-      onDeleteComplete();
+      if (onDeleteComplete) {
+        onDeleteComplete();
+      }
     }
   };
 

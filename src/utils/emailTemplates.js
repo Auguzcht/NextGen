@@ -452,7 +452,7 @@ export const createChildQREmailTemplate = ({
   childLastName,
   childFormalId,
   guardianName,
-  qrCodeDataUrl // Base64 data URL of the QR code image
+  qrCodeImageUrl // Hosted image URL (Firebase Storage)
 }) => {
   const content = `
     <h2 style="color: #1a202c; margin: 0 0 24px 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em;">
@@ -474,7 +474,7 @@ export const createChildQREmailTemplate = ({
       </p>
       
       <div style="background: white; display: inline-block; padding: 32px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); margin-bottom: 24px;">
-        ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="${childFirstName}'s QR Code" style="width: 300px; height: 300px; display: block;" />` : '<div style="width: 300px; height: 300px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; border-radius: 8px;">QR Code</div>'}
+        ${qrCodeImageUrl ? `<img src="${qrCodeImageUrl}" alt="${childFirstName}'s QR Code" style="width: 300px; height: 300px; display: block;" />` : '<div style="width: 300px; height: 300px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; border-radius: 8px;">QR Code</div>'}
       </div>
       
       <div style="background: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 20px; margin: 0 auto; max-width: 400px;">
@@ -485,8 +485,8 @@ export const createChildQREmailTemplate = ({
           ${childFormalId}
         </p>
         <p style="color: #64748b; font-size: 14px; margin: 0; line-height: 1.5;">
-          💾 Save this QR code for quick check-in<br/>
-          📱 Show it on your phone or print it out
+          💾 Download the attachment below<br/>
+          📱 Show it on your phone during check-in
         </p>
       </div>
     </div>
@@ -494,7 +494,8 @@ export const createChildQREmailTemplate = ({
     <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0;">
       <p style="color: #92400e; font-size: 14px; margin: 0; line-height: 1.6;">
         <strong style="display: block; margin-bottom: 8px;">📱 Quick Check-In Tips:</strong>
-        • Save this email or take a screenshot of the QR code<br/>
+        • Download the attached QR code image<br/>
+        • Save it to your phone or print it out<br/>
         • Show the QR code to our staff during check-in<br/>
         • You can also use the Child ID (${childFormalId}) for check-in
       </p>

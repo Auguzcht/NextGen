@@ -4,9 +4,9 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import QRCode from 'qrcode';
 import { createChildQREmailTemplate } from '../../src/utils/emailTemplates.js';
 import { sendEmail } from '../utils/emailProviders.js';
+import { generateAndUploadQR, deleteOldQRCodes } from '../utils/qrGenerator.js';
 
 // Use non-VITE prefixed vars in production, fallback to VITE_ for development
 const supabase = createClient(
@@ -42,24 +42,26 @@ export default async function handler(req, res) {
       });
     }
 
-    const { firstName, lastName, formalId, guardianEmail, guardianName } = childData;
+    const { firstName, lastName, formalId, guardianEmail, guardianName, childId } = childData;
 
     console.log(`📧 Sending child QR code email for ${firstName} ${lastName} (${formalId}) to ${guardianEmail}`);
 
-    // Generate QR code as data URL
-    let qrCodeDataUrl = null;
+    // Delete old QR codes for this child (cleanup)
+    if (childId) {
+      await deleteOldQRCodes(childId);
+    }
+
+    // Generate QR code with logo and upload to Firebase
+    let qrCodeImageUrl = null;
     try {
-      qrCodeDataUrl = await QRCode.toDataURL(formalId, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#30cee4', // NextGen teal
-          light: '#ffffff'
-        },
-        errorCorrectionLevel: 'H'
-      });
+      qrCodeImageUrl = await generateAndUploadQR(formalId, childId || formalId);
+      console.log(`✅ QR code generated and uploaded: ${qrCodeImageUrl}`);
     } catch (qrError) {
-      console.error('Error generating QR code:', qrError);
+      console.error('Error generating/uploading QR code:', qrError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to generate QR code' 
+      });
     }
 
     // Get email configuration from database
@@ -77,24 +79,51 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create email template
+    // Create email template with hosted image URL
     const htmlContent = createChildQREmailTemplate({
       childFirstName: firstName,
       childLastName: lastName,
       childFormalId: formalId,
       guardianName: guardianName,
-      qrCodeDataUrl: qrCodeDataUrl
+      qrCodeImageUrl: qrCodeImageUrl
     });
 
-    // Prepare email data
+    // Fetch the QR image and convert to base64 for attachment
+    let qrImageBase64 = null;
+    try {
+      const imageResponse = await fetch(qrCodeImageUrl);
+      const imageBuffer = await imageResponse.arrayBuffer();
+      qrImageBase64 = Buffer.from(imageBuffer).toString('base64');
+      console.log('✅ QR image fetched and converted to base64 for attachment');
+    } catch (fetchError) {
+      console.error('Error fetching QR image for attachment:', fetchError);
+      // Continue without attachment if fetch fails
+    }
+
+    // Prepare email data with attachment
     const emailData = {
       to: [guardianEmail],
       subject: `${firstName}'s Check-In QR Code - NextGen Ministry`,
       html: htmlContent,
-      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease use this ID or the QR code in the email to check in your child.\n\nBlessings,\nNextGen Ministry Davao Team`,
+      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNextGen Ministry Davao Team`,
       fromEmail: config.from_email,
       fromName: config.from_name
     };
+
+    // Add attachment if base64 conversion was successful
+    if (qrImageBase64) {
+      emailData.attachments = [
+        {
+          filename: `${firstName}_${lastName}_QR_${formalId}.png`,
+          content: qrImageBase64,
+          type: 'image/png',
+          disposition: 'attachment'
+        }
+      ];
+      console.log(`📎 Attachment added: ${firstName}_${lastName}_QR_${formalId}.png`);
+    } else {
+      console.warn('⚠️ No attachment added due to fetch error');
+    }
 
     // Send email
     const result = await sendEmail(

@@ -454,21 +454,63 @@ app.post('/api/email/send-child-qr', async (req, res) => {
 
     console.log(`📧 Sending child QR code email for ${firstName} ${lastName} (${formalId}) to ${guardianEmail}`);
 
-    // Generate QR code as data URL
+    // Generate QR code as data URL (for both embedding and attachment)
     const QRCode = require('qrcode');
+    const { createCanvas, loadImage } = require('canvas');
+    const path = require('path');
+    
     let qrCodeDataUrl = null;
+    let qrCodeBuffer = null;
+    
     try {
-      qrCodeDataUrl = await QRCode.toDataURL(formalId, {
-        width: 300,
+      // Create canvas for QR with logo
+      const qrSize = 400;
+      const canvas = createCanvas(qrSize, qrSize);
+      const ctx = canvas.getContext('2d');
+
+      // Generate QR code on canvas
+      await QRCode.toCanvas(canvas, formalId, {
+        width: qrSize,
         margin: 2,
         color: {
-          dark: '#30cee4', // NextGen teal
+          dark: '#30cee4',
           light: '#ffffff'
         },
         errorCorrectionLevel: 'H'
       });
+
+      // Try to add logo
+      try {
+        const logoPath = path.join(__dirname, 'public', 'NextGen-Logo.png');
+        const logo = await loadImage(logoPath);
+        const logoSize = 88;
+        const logoX = (qrSize - logoSize) / 2;
+        const logoY = (qrSize - logoSize) / 2;
+        
+        // Draw white background for logo
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(qrSize / 2, qrSize / 2, logoSize / 2 + 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw logo
+        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+      } catch (logoError) {
+        console.warn('Could not load logo for dev QR:', logoError.message);
+      }
+
+      // Convert to data URL and buffer
+      qrCodeDataUrl = canvas.toDataURL('image/png');
+      qrCodeBuffer = canvas.toBuffer('image/png');
     } catch (qrError) {
       console.error('Error generating QR code:', qrError);
+      // Fallback to simple QR without logo
+      qrCodeDataUrl = await QRCode.toDataURL(formalId, {
+        width: 300,
+        margin: 2,
+        color: { dark: '#30cee4', light: '#ffffff' },
+        errorCorrectionLevel: 'H'
+      });
     }
 
     // Get email configuration from database
@@ -494,13 +536,13 @@ app.post('/api/email/send-child-qr', async (req, res) => {
       return import('./src/utils/emailTemplates.js');
     });
 
-    // Create email template
+    // Create email template (still uses data URL for display in email body)
     const htmlContent = createChildQREmailTemplate({
       childFirstName: firstName,
       childLastName: lastName,
       childFormalId: formalId,
       guardianName: guardianName,
-      qrCodeDataUrl: qrCodeDataUrl
+      qrCodeImageUrl: qrCodeDataUrl // Using data URL for dev simplicity
     });
 
     // Prepare email data - use Resend directly for dev server
@@ -509,8 +551,23 @@ app.post('/api/email/send-child-qr', async (req, res) => {
       to: [guardianEmail],
       subject: `${firstName}'s Check-In QR Code - NextGen Ministry`,
       html: htmlContent,
-      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease use this ID or the QR code in the email to check in your child.\n\nBlessings,\nNextGen Ministry Davao Team`
+      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNextGen Ministry Davao Team`
     };
+
+    // Add attachment if QR buffer was generated successfully
+    if (qrCodeBuffer) {
+      emailData.attachments = [
+        {
+          filename: `${firstName}_${lastName}_QR_${formalId}.png`,
+          content: qrCodeBuffer.toString('base64'),
+          type: 'image/png',
+          disposition: 'attachment'
+        }
+      ];
+      console.log(`📎 DEV MODE - Including QR code attachment: ${firstName}_${lastName}_QR_${formalId}.png`);
+    } else {
+      console.warn('⚠️ DEV MODE - No attachment added, QR buffer generation failed');
+    }
 
     // Send email via Resend API
     const response = await fetch('https://api.resend.com/emails', {
