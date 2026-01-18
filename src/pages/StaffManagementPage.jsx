@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import supabase from '../services/supabase.js';
+import useImageCache from '../hooks/useImageCache.jsx';
 import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
 import SendCredentialsModal from '../components/staff/SendCredentialsModal.jsx';
@@ -26,6 +27,13 @@ const StaffManagementPage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSendCredentialsModalOpen, setIsSendCredentialsModalOpen] = useState(false);
   const [isBatchCredentialModalOpen, setIsBatchCredentialModalOpen] = useState(false);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState('first_name');
+  const [sortOrder, setSortOrder] = useState('asc');
+  
+  // Image caching
+  const { cacheImages } = useImageCache();
 
   // Debounce search query
   useEffect(() => {
@@ -51,7 +59,7 @@ const StaffManagementPage = () => {
   useEffect(() => {
     fetchStaffMembers();
     fetchAllStaff(); // Fetch all staff for modals
-  }, [debouncedSearchQuery, currentPage]);
+  }, [debouncedSearchQuery, currentPage, sortBy, sortOrder]);
 
   const fetchStaffMembers = async () => {
     setLoading(true);
@@ -59,7 +67,7 @@ const StaffManagementPage = () => {
       let query = supabase
         .from('staff')
         .select('staff_id, user_id, first_name, last_name, email, phone_number, role, is_active, access_level, created_date, profile_image_url, profile_image_path') // Added profile_image fields
-        .order('last_name');
+        .order(sortBy, { ascending: sortOrder === 'asc' });
       
       if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
         query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%,role.ilike.%${debouncedSearchQuery}%`);
@@ -86,8 +94,16 @@ const StaffManagementPage = () => {
 
       if (error) throw error;
       
-      console.log('Fetched staff with images:', data); // Debug log
+      // console.log('Fetched staff with images:', data); // Debug log
       setStaffMembers(data || []);
+      
+      // Cache all staff profile images
+      if (data && data.length > 0) {
+        const photoUrls = data
+          .map(staff => staff.profile_image_url)
+          .filter(url => url);
+        cacheImages(photoUrls);
+      }
     } catch (error) {
       console.error('Error fetching staff members:', error);
     } finally {
@@ -283,6 +299,16 @@ const StaffManagementPage = () => {
     }
   };
 
+  // Handle column sorting
+  const handleSort = (columnKey) => {
+    if (sortBy === columnKey) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(columnKey);
+      setSortOrder('asc');
+    }
+  };
+
   // Define table columns
   const columns = useMemo(() => [
     {
@@ -318,7 +344,9 @@ const StaffManagementPage = () => {
           </div>
         </div>
       ),
-      width: "250px"
+      width: "250px",
+      sortable: true,
+      sortKey: "first_name"
     },
     {
       header: "Contact",
@@ -332,7 +360,9 @@ const StaffManagementPage = () => {
           )}
         </div>
       ),
-      width: "200px"
+      width: "200px",
+      sortable: true,
+      sortKey: "email"
     },
     {
       header: "Role",
@@ -341,12 +371,16 @@ const StaffManagementPage = () => {
           {row.role}
         </Badge>
       ),
-      width: "120px"
+      width: "120px",
+      sortable: true,
+      sortKey: "role"
     },
     {
       header: "Access",
       cell: (row) => row.access_level || 'N/A',
-      width: "100px"
+      width: "100px",
+      sortable: true,
+      sortKey: "access_level"
     },
     {
       header: "Status",
@@ -365,7 +399,9 @@ const StaffManagementPage = () => {
           )}
         </div>
       ),
-      width: "120px"
+      width: "120px",
+      sortable: true,
+      sortKey: "is_active"
     },
     {
       header: "Actions",
@@ -620,6 +656,10 @@ const StaffManagementPage = () => {
             variant="primary"
             stickyHeader={true}
             onRowClick={(row) => handleViewStaff(row)}
+            sortable={true}
+            onSort={handleSort}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
           />
         </motion.div>
         

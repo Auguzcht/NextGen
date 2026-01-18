@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import supabase from '../services/supabase.js';
+import useImageCache from '../hooks/useImageCache.jsx';
 import AddGuardianForm from '../components/guardians/AddGuardianForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
 import { motion } from 'framer-motion';
@@ -17,6 +18,13 @@ const GuardiansPage = () => {
   const itemsPerPage = 10;
   const [selectedGuardian, setSelectedGuardian] = useState(null);
   const [viewMode, setViewMode] = useState(null); // 'view' or 'edit'
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState('first_name');
+  const [sortOrder, setSortOrder] = useState('asc');
+  
+  // Image caching
+  const { cacheImages } = useImageCache();
 
   // Debounce search query
   useEffect(() => {
@@ -57,8 +65,7 @@ const GuardiansPage = () => {
               age_categories (category_name)
             )
           )
-        `)
-        .order('last_name', { ascending: true });
+        `);
 
       if (debouncedSearchQuery) {
         query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,phone_number.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%`);
@@ -78,6 +85,9 @@ const GuardiansPage = () => {
       if (countError) throw countError;
       setTotalPages(Math.ceil(totalCount / itemsPerPage));
       
+      // Apply sorting
+      query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+      
       // Apply pagination
       query = query.range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1);
       
@@ -85,12 +95,20 @@ const GuardiansPage = () => {
 
       if (error) throw error;
       setGuardians(data || []);
+      
+      // Cache all children photos from guardian relationships
+      if (data && data.length > 0) {
+        const photoUrls = data.flatMap(guardian => 
+          (guardian.child_guardian || []).map(cg => cg.children?.photo_url)
+        ).filter(url => url);
+        cacheImages(photoUrls);
+      }
     } catch (error) {
       console.error('Error fetching guardians:', error);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, debouncedSearchQuery, itemsPerPage]);
+  }, [currentPage, debouncedSearchQuery, itemsPerPage, sortBy, sortOrder]);
 
   // Reset to first page when search query changes
   useEffect(() => {
@@ -149,6 +167,16 @@ const GuardiansPage = () => {
     }
     
     return age;
+  };
+
+  // Handle column sorting
+  const handleSort = (columnKey) => {
+    if (sortBy === columnKey) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(columnKey);
+      setSortOrder('asc');
+    }
   };
 
   const handleViewGuardian = (guardian) => {
@@ -240,7 +268,9 @@ const GuardiansPage = () => {
     {
       header: "Name",
       accessor: (row) => `${row.first_name} ${row.last_name}`,
-      cellClassName: "font-medium text-gray-900"
+      cellClassName: "font-medium text-gray-900",
+      sortable: true,
+      sortKey: "first_name"
     },
     {
       header: "Contact",
@@ -253,12 +283,16 @@ const GuardiansPage = () => {
             <div className="text-nextgen-blue">{row.email}</div>
           )}
         </div>
-      )
+      ),
+      sortable: true,
+      sortKey: "email"
     },
     {
       header: "Relationship",
       accessor: "relationship",
-      cell: (row) => row.relationship || 'Not specified'
+      cell: (row) => row.relationship || 'Not specified',
+      sortable: true,
+      sortKey: "relationship"
     },
     {
       header: "Children",
@@ -479,6 +513,10 @@ const GuardiansPage = () => {
             highlightOnHover={true}
             variant="primary"
             stickyHeader
+            sortable={true}
+            onSort={handleSort}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
           />
         </motion.div>
         
@@ -670,29 +708,6 @@ const GuardiansPage = () => {
       )}
     </div>
   );
-};
-
-// Add a cache for storing children's photos to reduce network requests
-// Similar to the approach used in ChildrenPage
-const useImageCache = () => {
-  const [cache, setCache] = useState(new Map());
-  
-  const getImage = useCallback((url) => {
-    if (cache.has(url)) {
-      return cache.get(url);
-    }
-    return null;
-  }, [cache]);
-  
-  const setImage = useCallback((url, image) => {
-    setCache(prev => {
-      const newCache = new Map(prev);
-      newCache.set(url, image);
-      return newCache;
-    });
-  }, []);
-  
-  return { getImage, setImage };
 };
 
 export default GuardiansPage;

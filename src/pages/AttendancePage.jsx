@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
+import useImageCache from '../hooks/useImageCache.jsx';
 import { Card, Button, Table, Input, Badge } from '../components/ui';
 import { motion } from 'framer-motion';
 import QRScannerModal from '../components/common/QRScannerModal';
@@ -20,6 +21,9 @@ const AttendancePage = () => {
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedChildren, setSelectedChildren] = useState([]);
+  
+  // Image caching
+  const { cacheImages } = useImageCache();
 
   // Fetch services on mount
   useEffect(() => {
@@ -120,7 +124,7 @@ const AttendancePage = () => {
     
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('attendance')
         .select(`
           *,
@@ -139,10 +143,21 @@ const AttendancePage = () => {
           )
         `)
         .eq('service_id', selectedService)
-        .eq('attendance_date', selectedDate);
+        .eq('attendance_date', selectedDate)
+        .order('check_in_time', { ascending: false }); // Always order by check-in time, newest first
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setCheckedInList(data || []);
+      
+      // Cache all children photos
+      if (data && data.length > 0) {
+        const photoUrls = data
+          .map(item => item.children?.photo_url)
+          .filter(url => url);
+        cacheImages(photoUrls);
+      }
     } catch (error) {
       console.error('Error fetching checked-in children:', error);
       setError('Failed to load attendance records');
@@ -178,6 +193,14 @@ const AttendancePage = () => {
       );
       
       setSearchResults(filteredResults);
+      
+      // Cache search result photos
+      if (filteredResults.length > 0) {
+        const photoUrls = filteredResults
+          .map(child => child.photo_url)
+          .filter(url => url);
+        cacheImages(photoUrls);
+      }
     } catch (error) {
       console.error('Error searching children:', error);
       setError('Failed to search children');
@@ -410,7 +433,7 @@ const AttendancePage = () => {
     
     return age;
   };
-  
+
   // Search results component
   const SearchResultsList = () => {
     if (searchResults.length === 0) {

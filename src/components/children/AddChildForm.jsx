@@ -24,6 +24,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       firstName: data.first_name || '',
       middleName: data.middle_name || '',
       lastName: data.last_name || '',
+      nickname: data.nickname || '',
       birthdate: data.birthdate || '',
       gender: data.gender || '',
       formalId: data.formal_id || '',
@@ -72,6 +73,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       firstName: '',
       middleName: '',
       lastName: '',
+      nickname: '',
       birthdate: '',
       gender: '',
       guardianFirstName: '',
@@ -520,6 +522,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
             first_name: formatName(formData.firstName),
             middle_name: formatName(formData.middleName) || null,
             last_name: formatName(formData.lastName),
+            nickname: formData.nickname?.trim() || null,
             birthdate: formData.birthdate,
             gender: formData.gender.trim(),
             photo_url: imageUrl || null,
@@ -617,6 +620,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   first_name: formatName(formData.firstName),
                   middle_name: formatName(formData.middleName) || null,
                   last_name: formatName(formData.lastName),
+                  nickname: formData.nickname?.trim() || null,
                   birthdate: formData.birthdate,
                   gender: formData.gender.trim(),
                   photo_url: imageUrl,
@@ -978,7 +982,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 </h3>
                 
                 {/* Basic Info - First Row */}
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-3 gap-3">
                   <Input
                     label="First Name *"
                     name="firstName"
@@ -987,7 +991,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     error={errors.firstName}
                   />
                   <Input
-                    label="Middle Name"
+                    label="Middle Name (Optional)"
                     name="middleName"
                     value={formData.middleName}
                     onChange={handleChange}
@@ -1001,8 +1005,14 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   />
                 </div>
 
-                {/* Second Row */}
+                {/* Second Row - Nickname and Birthdate */}
                 <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Nickname (Optional)"
+                    name="nickname"
+                    value={formData.nickname}
+                    onChange={handleChange}
+                  />
                   <Input
                     type="date"
                     label="Birth Date *"
@@ -1014,6 +1024,10 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                     className="h-[42px]"
                     required
                   />
+                </div>
+
+                {/* Third Row - Gender */}
+                <div className="grid grid-cols-2 gap-4">
                   <Input
                     type="select"
                     label="Gender *"
@@ -1224,12 +1238,12 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                   name="notes"
                   value={formData.notes}
                   onChange={handleChange}
-                  placeholder="Add any additional information about the child (allergies, medical conditions, special needs, etc.)"
+                  placeholder="Add any important information (allergies, medical conditions, special needs, behavioral notes, etc.)"
                   rows={4}
                   className="w-full"
                 />
                 <p className="mt-2 text-xs text-gray-500">
-                  This information will be visible to staff members and can help provide better care for the child.
+                  Medical notes, allergies, special care instructions, or other important information for staff members.
                 </p>
               </motion.div>
             </div>

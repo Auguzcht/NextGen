@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import supabase from '../services/supabase.js';
+import useImageCache from '../hooks/useImageCache.jsx';
 import AddChildForm from '../components/children/AddChildForm.jsx';
 import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
 import { motion } from 'framer-motion';
@@ -27,6 +28,13 @@ const ChildrenPage = () => {
   const [showPrintableID, setShowPrintableID] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState('registration_date');
+  const [sortOrder, setSortOrder] = useState('asc');
+  
+  // Image caching
+  const { cacheImages } = useImageCache();
 
   // Debounce search query
   useEffect(() => {
@@ -60,11 +68,11 @@ const ChildrenPage = () => {
             guardians(first_name, last_name, phone_number, email)
           )
         `)
-        .order('registration_date', { ascending: true });
+        .order(sortBy, { ascending: sortOrder === 'asc' });
 
       // Only apply search filter if there's actually a search query
       if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
-        query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`);
+        query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%,nickname.ilike.%${debouncedSearchQuery}%`);
       }
 
       // Get total count for pagination - also only apply search filter if there's a query
@@ -73,7 +81,7 @@ const ChildrenPage = () => {
         .select('*', { count: 'exact', head: true });
         
       if (debouncedSearchQuery && debouncedSearchQuery.trim() !== '') {
-        countQuery = countQuery.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`);
+        countQuery = countQuery.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%,nickname.ilike.%${debouncedSearchQuery}%`);
       }
       
       const { count: totalCount, error: countError } = await countQuery;
@@ -94,12 +102,20 @@ const ChildrenPage = () => {
         throw error;
       }
       setChildren(data || []);
+      
+      // Cache all children photos
+      if (data && data.length > 0) {
+        const photoUrls = data
+          .map(child => child.photo_url)
+          .filter(url => url);
+        cacheImages(photoUrls);
+      }
     } catch (error) {
       console.error('Error fetching children:', error);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, debouncedSearchQuery, itemsPerPage]);
+  }, [currentPage, debouncedSearchQuery, itemsPerPage, sortBy, sortOrder]);
 
   // Reset to first page when search query changes
   useEffect(() => {
@@ -156,6 +172,18 @@ const ChildrenPage = () => {
     return primaryGuardian.guardians;
   }, []);
   
+  // Handle column sorting
+  const handleSort = (columnKey) => {
+    if (sortBy === columnKey) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new sort column with ascending order
+      setSortBy(columnKey);
+      setSortOrder('asc');
+    }
+  };
+  
   // For table columns that don't need to be recreated on every render
   const columns = useMemo(() => [
     {
@@ -163,7 +191,9 @@ const ChildrenPage = () => {
       accessor: "formal_id",
       cellClassName: "font-medium text-gray-900",
       cell: (row) => row.formal_id || 'N/A',
-      width: "80px" // Slightly reduced
+      width: "80px", // Slightly reduced
+      sortable: true,
+      sortKey: "formal_id"
     },
     {
       header: "Name",
@@ -188,12 +218,19 @@ const ChildrenPage = () => {
               </span>
             </div>
           )}
-          <div className="font-medium text-gray-900">
-            {row.first_name} {row.last_name}
+          <div>
+            <div className="font-medium text-gray-900">
+              {row.first_name} {row.last_name}
+            </div>
+            {row.nickname && (
+              <div className="text-sm text-gray-500">"{row.nickname}"</div>
+            )}
           </div>
         </div>
       ),
-      width: "200px" // Reduced from 300px
+      width: "200px", // Reduced from 300px
+      sortable: true,
+      sortKey: "first_name"
     },
     {
       header: "Age / Group",
@@ -205,7 +242,9 @@ const ChildrenPage = () => {
           </Badge>
         </div>
       ),
-      width: "180px" // Increased width slightly to accommodate horizontal layout
+      width: "180px", // Increased width slightly to accommodate horizontal layout
+      sortable: true,
+      sortKey: "birthdate"
     },
     {
       header: "Guardian",
@@ -234,7 +273,9 @@ const ChildrenPage = () => {
           {row.is_active ? 'Active' : 'Inactive'}
         </Badge>
       ),
-      width: "100px" // Slightly reduced
+      width: "100px", // Slightly reduced
+      sortable: true,
+      sortKey: "is_active"
     },
     {
       header: "Actions",
@@ -467,7 +508,7 @@ const ChildrenPage = () => {
           <div className="relative w-full md:w-1/2">
             <Input
               type="text"
-              placeholder="Search by name or ID..."
+              placeholder="Search by name, ID, or nickname..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               startIcon={
@@ -515,6 +556,10 @@ const ChildrenPage = () => {
               variant="primary"
               stickyHeader={true}
               onRowClick={(row) => handleViewChild(row)}
+              sortable={true}
+              onSort={handleSort}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
             />
           </motion.div>
         </div>

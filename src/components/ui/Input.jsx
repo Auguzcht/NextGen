@@ -148,6 +148,7 @@ const Input = ({
               ${startIcon ? 'pl-10' : ''}
               ${endIcon ? 'pr-10' : ''}
               ${sizes[size] || sizes.md}
+              h-[42px]
             `}
             onChange={handleChange}
             onFocus={handleFocus}

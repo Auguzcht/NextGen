@@ -15,6 +15,10 @@ const Table = ({
   dense = false,
   stickyHeader = false,
   className = '',
+  sortable = false,
+  onSort,
+  sortBy,
+  sortOrder,
   ...props
 }) => {
   // Size classes
@@ -158,6 +162,44 @@ const Table = ({
     return row[accessor];
   };
 
+  // Render sort indicator
+  const renderSortIndicator = (column) => {
+    if (!sortable || !column.sortable) return null;
+    
+    const sortKey = column.sortKey || column.accessor;
+    const isActive = sortBy === sortKey;
+    
+    if (!isActive) {
+      return (
+        <svg className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 inline-block ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    
+    if (sortOrder === 'asc') {
+      return (
+        <svg className="h-4 w-4 text-nextgen-blue inline-block ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      );
+    }
+    
+    return (
+      <svg className="h-4 w-4 text-nextgen-blue inline-block ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
+  // Handle column click for sorting
+  const handleColumnClick = (column) => {
+    if (!sortable || !column.sortable || !onSort) return;
+    
+    const sortKey = column.sortKey || column.accessor;
+    onSort(sortKey);
+  };
+
   return (
     // Enhanced responsive container with proper width constraints
     <div className="overflow-x-auto shadow-sm rounded-lg w-full">
@@ -170,10 +212,18 @@ const Table = ({
                   <th
                     key={`header-${index}`}
                     scope="col"
-                    className={`${headerClasses} ${column.className || ''}`}
+                    className={`
+                      ${headerClasses} 
+                      ${column.className || ''} 
+                      ${sortable && column.sortable ? 'cursor-pointer select-none group hover:bg-gray-100 transition-colors' : ''}
+                    `}
                     style={column.width ? { width: column.width } : {}}
+                    onClick={() => handleColumnClick(column)}
                   >
-                    {column.header}
+                    <div className="flex items-center">
+                      {column.header}
+                      {renderSortIndicator(column)}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -227,7 +277,9 @@ Table.propTypes = {
       cell: PropTypes.func,
       className: PropTypes.string,
       cellClassName: PropTypes.string,
-      width: PropTypes.string
+      width: PropTypes.string,
+      sortable: PropTypes.bool,
+      sortKey: PropTypes.string
     })
   ),
   isLoading: PropTypes.bool,
@@ -239,7 +291,11 @@ Table.propTypes = {
   variant: PropTypes.oneOf(['default', 'primary', 'secondary', 'minimal']),
   dense: PropTypes.bool,
   stickyHeader: PropTypes.bool,
-  className: PropTypes.string
+  className: PropTypes.string,
+  sortable: PropTypes.bool,
+  onSort: PropTypes.func,
+  sortBy: PropTypes.string,
+  sortOrder: PropTypes.oneOf(['asc', 'desc'])
 };
 
 export default Table;
