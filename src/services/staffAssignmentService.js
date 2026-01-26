@@ -46,7 +46,7 @@ export const fetchStaffAssignments = async (startDate, endDate) => {
       `)
       .gte('assignment_date', startDateStr)
       .lte('assignment_date', endDateStr)
-      .in('booking_status', ['accepted']) // Only show accepted bookings
+      .not('booking_status', 'eq', 'cancelled') // Show all except cancelled
       .order('assignment_date', { ascending: true })
       .order('start_time', { ascending: true });
     
@@ -195,7 +195,7 @@ export const getStaffStatisticsFromDB = async (staffEmail, startDate = null, end
       .eq('attendee_email', staffEmail.toLowerCase())
       .gte('assignment_date', startDateStr)
       .lte('assignment_date', endDateStr)
-      .in('booking_status', ['accepted'])
+      .not('booking_status', 'eq', 'cancelled')
       .order('assignment_date', { ascending: false });
     
     if (error) throw error;

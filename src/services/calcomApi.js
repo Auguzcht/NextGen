@@ -359,10 +359,10 @@ export const exportToFormattedCSV = (bookings, monthDate) => {
   // Role categories matching volunteer schedule needs
   const roleCategories = [
     'Team Leader',
-    'Lead Teacher 5-8 Y.O.',
-    'Lead Teacher 9-11 Y.O.',
-    'Teacher 5-8 Y.O.',
-    'Teacher 9-11 Y.O.',
+    'Lead Teachers (5-8 Y.O.)',
+    'Lead Teachers (9-11 Y.O.)',
+    'Teachers (5-8 Y.O.)',
+    'Teachers (9-11 Y.O.)',
     'Gate Keeper'
   ];
 
@@ -392,8 +392,9 @@ export const exportToFormattedCSV = (bookings, monthDate) => {
     const sundayStr = sunday.toLocaleDateString('en-CA'); // YYYY-MM-DD
     const displayDate = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     
-    // Get bookings for this Sunday
+    // Get bookings for this Sunday (excluding cancelled)
     const sundayBookings = bookings.filter(booking => {
+      if (booking.status === 'cancelled') return false; // Skip cancelled
       const bookingDate = new Date(booking.start);
       const bookingDateStr = bookingDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
       return bookingDateStr === sundayStr;
@@ -515,17 +516,18 @@ const generateStyledScheduleHTML = (bookings, monthDate) => {
   // Define roles
   const roles = [
     { key: 'Team Leader', label: 'Team Leaders' },
-    { key: 'Lead Teacher 5-8 Y.O.', label: 'Lead Teachers 5-8 Y.O.' },
-    { key: 'Lead Teacher 9-11 Y.O.', label: 'Lead Teachers 9-11 Y.O.' },
-    { key: 'Teacher 5-8 Y.O', label: 'Teachers 5-8 Y.O' },
-    { key: 'Teacher 9-11 Y.O', label: 'Teachers 9-11 Y.O' },
+    { key: 'Lead Teachers (5-8 Y.O.)', label: 'Lead Teachers (5-8 Y.O.)' },
+    { key: 'Lead Teachers (9-11 Y.O.)', label: 'Lead Teachers (9-11 Y.O.)' },
+    { key: 'Teachers (5-8 Y.O.)', label: 'Teachers (5-8 Y.O.)' },
+    { key: 'Teachers (9-11 Y.O.)', label: 'Teachers (9-11 Y.O.)' },
     { key: 'Gate Keeper', label: 'Gate Keepers' }
   ];
 
   // Group bookings by date and service
   const groupedByDate = {};
   bookings.forEach(booking => {
-    if (booking.status === 'cancelled') return;
+    // Skip cancelled bookings
+    if (booking.status === 'cancelled' || booking.booking_status === 'cancelled') return;
     
     const bookingDate = new Date(booking.start);
     const dateStr = bookingDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });

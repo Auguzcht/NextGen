@@ -135,22 +135,9 @@ Deno.serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ONE-TIME CLEANUP: Delete all existing Cal.com assignments to fix timezone issues
-    console.log('🧹 Cleaning up existing Cal.com assignments...');
-    const { error: cleanupError } = await supabase
-      .from('staff_assignments')
-      .delete()
-      .not('calcom_booking_id', 'is', null);
-    
-    if (cleanupError) {
-      console.error('⚠️ Cleanup error:', cleanupError);
-    } else {
-      console.log('✅ Cleanup complete - all Cal.com assignments deleted');
-    }
-
-    // Fetch bookings from last 7 days and next 365 days (entire year)
+    // Fetch bookings from last 180 days (6 months) and next 365 days (entire year)
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7);
+    startDate.setDate(startDate.getDate() - 180); // 6 months of history
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + 365);
 
@@ -214,11 +201,23 @@ Deno.serve(async (req) => {
 
     console.log(`🔍 Found ${assignmentsToUpsert.length} new/updated assignments`);
 
+    // Deduplicate assignments by calcom_booking_id + attendee_email (keep most recent)
+    const uniqueAssignments = new Map();
+    assignmentsToUpsert.forEach(assignment => {
+      const key = `${assignment.calcom_booking_id}:${assignment.attendee_email}`;
+      uniqueAssignments.set(key, assignment);
+    });
+    const deduplicatedAssignments = Array.from(uniqueAssignments.values());
+
+    if (deduplicatedAssignments.length < assignmentsToUpsert.length) {
+      console.log(`⚠️ Deduplicated ${assignmentsToUpsert.length - deduplicatedAssignments.length} duplicate assignments`);
+    }
+
     // Batch upsert
-    if (assignmentsToUpsert.length > 0) {
+    if (deduplicatedAssignments.length > 0) {
       const { data, error } = await supabase
         .from('staff_assignments')
-        .upsert(assignmentsToUpsert, {
+        .upsert(deduplicatedAssignments, {
           onConflict: 'calcom_booking_id,attendee_email',
           ignoreDuplicates: false
         })
@@ -232,22 +231,24 @@ Deno.serve(async (req) => {
       console.log(`✅ Synced ${data?.length || 0} assignments`);
     }
 
-    // Handle deleted bookings
-    const calcomBookingIds = new Set(rawBookings.map((b: any) => b.uid));
-    const assignmentsToDelete = existingAssignments?.filter(
-      (a: any) => !calcomBookingIds.has(a.calcom_booking_id)
-    ) || [];
+    // Handle cancelled/rejected bookings from Cal.com
+    const cancelledBookingIds = new Set(
+      rawBookings
+        .filter((b: any) => b.status === 'cancelled' || b.status === 'rejected')
+        .map((b: any) => b.uid)
+    );
 
-    if (assignmentsToDelete.length > 0) {
-      const bookingIdsToDelete = [...new Set(assignmentsToDelete.map((a: any) => a.calcom_booking_id))];
-
-      const { error: deleteError } = await supabase
+    // Mark cancelled/rejected bookings in Supabase (preserve historical data)
+    if (cancelledBookingIds.size > 0) {
+      const { error: updateError } = await supabase
         .from('staff_assignments')
-        .delete()
-        .in('calcom_booking_id', bookingIdsToDelete);
+        .update({ booking_status: 'cancelled', updated_at: new Date().toISOString() })
+        .in('calcom_booking_id', Array.from(cancelledBookingIds));
 
-      if (!deleteError) {
-        console.log(`✅ Cleaned up ${assignmentsToDelete.length} cancelled assignments`);
+      if (!updateError) {
+        console.log(`✅ Marked ${cancelledBookingIds.size} assignments as cancelled`);
+      } else {
+        console.error('⚠️ Error marking cancelled bookings:', updateError);
       }
     }
 
@@ -255,7 +256,7 @@ Deno.serve(async (req) => {
       success: true,
       processed: rawBookings.length,
       synced: assignmentsToUpsert.length,
-      deleted: assignmentsToDelete.length,
+      cancelled: cancelledBookingIds.size,
       skipped: skippedCount,
       timestamp: new Date().toISOString()
     };

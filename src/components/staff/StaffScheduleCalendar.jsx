@@ -46,14 +46,14 @@ const StaffScheduleCalendar = () => {
   const fetchZohoEvents = async () => {
     setLoading(true);
     try {
-      // Get first Sunday of current month
+      // Get first day displayed on calendar (may be from previous month)
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       while (startDate.getDay() !== 0) { // 0 = Sunday
         startDate.setDate(startDate.getDate() - 1);
       }
 
-      // Get last Saturday covering next 2 months
-      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 3, 0);
+      // Get last day displayed on calendar (may be from next month)
+      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       while (endDate.getDay() !== 6) { // 6 = Saturday
         endDate.setDate(endDate.getDate() + 1);
       }
