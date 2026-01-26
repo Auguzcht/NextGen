@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { storage } from '../../services/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { motion, AnimatePresence } from 'framer-motion';
 import Swal from 'sweetalert2';
 
@@ -51,14 +51,14 @@ const FileUpload = React.forwardRef(({
     // Validate file exists
     if (!file) {
       console.error('No file provided to uploadFile');
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error('No file provided'));
       }
       return;
     }
 
     if (file.size > maxSize * 1024 * 1024) {
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error(`File size must be less than ${maxSize}MB`));
       }
       return;
@@ -67,14 +67,14 @@ const FileUpload = React.forwardRef(({
     setUploading(true);
     try {
       // Add cache control metadata
-      const storageRef = ref(storage, `${category}/${Date.now()}_${file.name}`);
+      const fileStorageRef = storageRef(storage, `${category}/${Date.now()}_${file.name}`);
       const metadata = {
         cacheControl: 'public,max-age=31536000', // Cache for 1 year
         contentType: file.type
       };
       
-      const snapshot = await uploadBytes(storageRef, file, metadata);
-      const url = await getDownloadURL(storageRef);
+      const snapshot = await uploadBytes(fileStorageRef, file, metadata);
+      const url = await getDownloadURL(fileStorageRef);
       
       setPreview(url);
       setImagePath(snapshot.ref.fullPath);
@@ -83,7 +83,7 @@ const FileUpload = React.forwardRef(({
       // Show success state
       setShowSuccess(true);
       
-      if (onUploadComplete) {
+      if (typeof onUploadComplete === 'function') {
         onUploadComplete({
           url,
           path: snapshot.ref.fullPath,
@@ -102,7 +102,7 @@ const FileUpload = React.forwardRef(({
       }
     } catch (error) {
       console.error('Upload error:', error);
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(error);
       }
     } finally {
@@ -115,7 +115,7 @@ const FileUpload = React.forwardRef(({
     if (!file) return;
 
     if (file.size > maxSize * 1024 * 1024) {
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error(`File size must be less than ${maxSize}MB`));
       }
       return;
@@ -154,7 +154,7 @@ const FileUpload = React.forwardRef(({
     if (!file) return;
 
     if (file.size > maxSize * 1024 * 1024) {
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error(`File size must be less than ${maxSize}MB`));
       }
       return;
@@ -212,7 +212,7 @@ const FileUpload = React.forwardRef(({
     // Validate video has valid dimensions
     if (!video.videoWidth || !video.videoHeight) {
       console.error('Video dimensions not available');
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error('Camera not ready. Please try again.'));
       }
       return;
@@ -224,7 +224,7 @@ const FileUpload = React.forwardRef(({
     
     if (!context) {
       console.error('Could not get canvas context');
-      if (onUploadError) {
+      if (typeof onUploadError === 'function') {
         onUploadError(new Error('Failed to process image'));
       }
       return;
@@ -235,7 +235,7 @@ const FileUpload = React.forwardRef(({
     canvas.toBlob(async (blob) => {
       if (!blob) {
         console.error('Failed to create blob from canvas');
-        if (onUploadError) {
+        if (typeof onUploadError === 'function') {
           onUploadError(new Error('Failed to capture photo'));
         }
         stopCamera();
@@ -250,7 +250,7 @@ const FileUpload = React.forwardRef(({
         await uploadFile(file);
       } catch (error) {
         console.error('Error creating file from blob:', error);
-        if (onUploadError) {
+        if (typeof onUploadError === 'function') {
           onUploadError(new Error('Failed to process captured photo'));
         }
         stopCamera();
@@ -280,14 +280,14 @@ const FileUpload = React.forwardRef(({
       // Use imagePath if available, otherwise try to extract from preview URL
       const pathToDelete = imagePath || preview;
       if (pathToDelete) {
-        const imageRef = ref(storage, pathToDelete);
+        const imageRef = storageRef(storage, pathToDelete);
         await deleteObject(imageRef);
       }
       setPreview('');
       setImagePath('');
       setFileName('');
       setShowSuccess(false);
-      if (onDeleteComplete) {
+      if (typeof onDeleteComplete === 'function') {
         onDeleteComplete();
       }
     } catch (error) {
@@ -297,7 +297,7 @@ const FileUpload = React.forwardRef(({
       setImagePath('');
       setFileName('');
       setShowSuccess(false);
-      if (onDeleteComplete) {
+      if (typeof onDeleteComplete === 'function') {
         onDeleteComplete();
       }
     }
@@ -648,7 +648,9 @@ export const MultiFileUpload = ({
   const uploadFiles = async (files) => {
     const validFiles = Array.from(files).filter(file => {
       if (file.size > maxSize * 1024 * 1024) {
-        onUploadError(new Error(`${file.name} exceeds ${maxSize}MB limit`));
+        if (typeof onUploadError === 'function') {
+          onUploadError(new Error(`${file.name} exceeds ${maxSize}MB limit`));
+        }
         return false;
       }
       return true;
@@ -661,14 +663,14 @@ export const MultiFileUpload = ({
 
     try {
       const uploadPromises = validFiles.map(async (file, index) => {
-        const storageRef = ref(storage, `${category}/${Date.now()}_${file.name}`);
+        const fileStorageRef = storageRef(storage, `${category}/${Date.now()}_${file.name}`);
         const metadata = {
           cacheControl: 'public,max-age=31536000',
           contentType: file.type
         };
         
-        const snapshot = await uploadBytes(storageRef, file, metadata);
-        const url = await getDownloadURL(storageRef);
+        const snapshot = await uploadBytes(fileStorageRef, file, metadata);
+        const url = await getDownloadURL(fileStorageRef);
         
         setUploadProgress(prev => ({ ...prev, current: index + 1 }));
         
@@ -680,14 +682,18 @@ export const MultiFileUpload = ({
       });
 
       const results = await Promise.all(uploadPromises);
-      onUploadComplete(results);
+      if (typeof onUploadComplete === 'function') {
+        onUploadComplete(results);
+      }
       
       // Reset after short delay
       setTimeout(() => {
         setUploadProgress(null);
       }, 800);
     } catch (error) {
-      onUploadError(error);
+      if (typeof onUploadError === 'function') {
+        onUploadError(error);
+      }
     } finally {
       setUploading(false);
     }
