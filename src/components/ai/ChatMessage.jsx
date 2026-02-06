@@ -51,76 +51,271 @@ const ChatMessage = ({ message, userProfile }) => {
       ));
     }
 
-    // AI messages - parse markdown
+    // AI messages - parse markdown with headers, lists, and formatting
     const lines = text.split('\n');
     const elements = [];
     let currentList = [];
     let listType = null;
-    let inList = false;
+    let currentListItem = null;
+    let nestedBullets = []; // Track bullets within numbered items
 
     lines.forEach((line, idx) => {
       const trimmedLine = line.trim();
       
-      // Skip empty lines within lists
-      if (!trimmedLine && inList) {
+      // Skip empty lines (flush current item but keep list open)
+      if (!trimmedLine) {
+        // If we have nested bullets, convert them to <ul> and add to list item
+        if (nestedBullets.length > 0 && currentListItem) {
+          const prevContent = currentListItem.props.children;
+          const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+          currentListItem = (
+            <li key={currentListItem.key}>
+              {prevContent}
+              {bulletList}
+            </li>
+          );
+          nestedBullets = [];
+        }
+        
+        // Flush current item but DON'T end the list (allows continuous numbering)
+        if (currentListItem) {
+          currentList.push(currentListItem);
+          currentListItem = null;
+        }
+        // List continues - will be flushed when we hit a non-list element
         return;
       }
       
-      // Check if line starts with dash/asterisk bullet (not numbered with dash after)
-      const isBulletPoint = /^[\-\*]\s+/.test(trimmedLine) && !/^\d+\.\s*[\-\*]/.test(trimmedLine);
-      // Check if line starts with number (but not number followed by dash)
-      const isNumberedItem = /^\d+\.\s+/.test(trimmedLine) && !/^\d+\.\s*[\-\*]/.test(trimmedLine);
-      
-      if (isBulletPoint) {
-        const content = trimmedLine.replace(/^[\-\*]\s+/, '');
-        currentList.push(<li key={`li-${idx}`}>{formatInlineMarkdown(content)}</li>);
-        if (listType !== 'ul') {
-          // Start new unordered list or switch from ordered
-          if (currentList.length === 1) {
-            listType = 'ul';
-            inList = true;
-          }
+      // Headers (###, ##, #)
+      if (trimmedLine.startsWith('###')) {
+        // Flush nested bullets and list item
+        if (nestedBullets.length > 0 && currentListItem) {
+          const prevContent = currentListItem.props.children;
+          const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+          currentListItem = (
+            <li key={currentListItem.key}>
+              {prevContent}
+              {bulletList}
+            </li>
+          );
+          nestedBullets = [];
         }
-      }
-      else if (isNumberedItem) {
-        const content = trimmedLine.replace(/^\d+\.\s+/, '');
-        currentList.push(<li key={`li-${idx}`}>{formatInlineMarkdown(content)}</li>);
-        if (listType !== 'ol') {
-          // Flush previous list if switching types
-          if (currentList.length > 1 && listType === 'ul') {
-            elements.push(<ul key={`list-${idx}`}>{currentList.slice(0, -1)}</ul>);
-            currentList = [currentList[currentList.length - 1]];
-          }
-          listType = 'ol';
-          inList = true;
+        if (currentListItem) {
+          currentList.push(currentListItem);
+          currentListItem = null;
         }
-      }
-      // Regular text or empty line
-      else {
-        // Push accumulated list if we were in one
         if (currentList.length > 0) {
           const ListTag = listType === 'ol' ? 'ol' : 'ul';
-          elements.push(<ListTag key={`list-${idx}`}>{currentList}</ListTag>);
+          elements.push(<ListTag key={`list-${elements.length}`}>{currentList}</ListTag>);
           currentList = [];
           listType = null;
-          inList = false;
+        }
+        const content = trimmedLine.replace(/^###\s*/, '');
+        elements.push(
+          <h3 key={`h3-${idx}`} className="text-sm font-semibold text-gray-900 mt-2 mb-2">
+            {formatInlineMarkdown(content)}
+          </h3>
+        );
+        return;
+      }
+      
+      if (trimmedLine.startsWith('##')) {
+        if (nestedBullets.length > 0 && currentListItem) {
+          const prevContent = currentListItem.props.children;
+          const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+          currentListItem = (
+            <li key={currentListItem.key}>
+              {prevContent}
+              {bulletList}
+            </li>
+          );
+          nestedBullets = [];
+        }
+        if (currentListItem) {
+          currentList.push(currentListItem);
+          currentListItem = null;
+        }
+        if (currentList.length > 0) {
+          const ListTag = listType === 'ol' ? 'ol' : 'ul';
+          elements.push(<ListTag key={`list-${elements.length}`}>{currentList}</ListTag>);
+          currentList = [];
+          listType = null;
+        }
+        const content = trimmedLine.replace(/^##\s*/, '');
+        elements.push(
+          <h2 key={`h2-${idx}`} className="text-sm font-bold text-gray-900 mt-2 mb-2">
+            {formatInlineMarkdown(content)}
+          </h2>
+        );
+        return;
+      }
+
+      if (trimmedLine.startsWith('#') && !trimmedLine.startsWith('##')) {
+        if (nestedBullets.length > 0 && currentListItem) {
+          const prevContent = currentListItem.props.children;
+          const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+          currentListItem = (
+            <li key={currentListItem.key}>
+              {prevContent}
+              {bulletList}
+            </li>
+          );
+          nestedBullets = [];
+        }
+        if (currentListItem) {
+          currentList.push(currentListItem);
+          currentListItem = null;
+        }
+        if (currentList.length > 0) {
+          const ListTag = listType === 'ol' ? 'ol' : 'ul';
+          elements.push(<ListTag key={`list-${elements.length}`}>{currentList}</ListTag>);
+          currentList = [];
+          listType = null;
+        }
+        const content = trimmedLine.replace(/^#\s*/, '');
+        elements.push(
+          <h1 key={`h1-${idx}`} className="text-sm font-bold text-gray-900 mt-2 mb-2">
+            {formatInlineMarkdown(content)}
+          </h1>
+        );
+        return;
+      }
+      
+      // Numbered list items (1., 2., 3.)
+      const numberedMatch = trimmedLine.match(/^(\d+)\.\s+(.+)$/);
+      if (numberedMatch) {
+        // Flush nested bullets from previous item
+        if (nestedBullets.length > 0 && currentListItem) {
+          const prevContent = currentListItem.props.children;
+          const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+          currentListItem = (
+            <li key={currentListItem.key}>
+              {prevContent}
+              {bulletList}
+            </li>
+          );
+          nestedBullets = [];
         }
         
-        // Add paragraph if line has content
-        if (trimmedLine) {
-          elements.push(
-            <p key={`p-${idx}`} className="ai-chat-message-text">
-              {formatInlineMarkdown(line)}
-            </p>
-          );
+        // Save previous list item if exists
+        if (currentListItem) {
+          currentList.push(currentListItem);
         }
+        
+        const content = numberedMatch[2];
+        
+        // Switch to ol if we were in ul
+        if (listType === 'ul' && currentList.length > 0) {
+          elements.push(<ul key={`list-${elements.length}`}>{currentList}</ul>);
+          currentList = [];
+        }
+        
+        // Start new list item
+        currentListItem = (
+          <li key={`li-${idx}`}>
+            {formatInlineMarkdown(content)}
+          </li>
+        );
+        listType = 'ol';
+        return;
       }
+      
+      // Bullet list items (-, *)
+      const bulletMatch = trimmedLine.match(/^[\-\*]\s+(.+)$/);
+      if (bulletMatch) {
+        const content = bulletMatch[1];
+        
+        // If we're inside a numbered list item, add as nested bullet
+        if (currentListItem && listType === 'ol') {
+          nestedBullets.push(
+            <li key={`bullet-${idx}`}>
+              {formatInlineMarkdown(content)}
+            </li>
+          );
+          return;
+        }
+        
+        // Otherwise, start a new bullet list
+        if (currentListItem) {
+          currentList.push(currentListItem);
+        }
+        
+        if (listType === 'ol' && currentList.length > 0) {
+          elements.push(<ol key={`list-${elements.length}`}>{currentList}</ol>);
+          currentList = [];
+        }
+        
+        currentListItem = (
+          <li key={`li-${idx}`}>
+            {formatInlineMarkdown(content)}
+          </li>
+        );
+        listType = 'ul';
+        return;
+      }
+      
+      // Continuation text
+      if (currentListItem && (listType === 'ol' || listType === 'ul')) {
+        const prevContent = currentListItem.props.children;
+        currentListItem = (
+          <li key={currentListItem.key}>
+            {prevContent}
+            <br />
+            {formatInlineMarkdown(trimmedLine)}
+          </li>
+        );
+        return;
+      }
+      
+      // Regular paragraph
+      if (nestedBullets.length > 0 && currentListItem) {
+        const prevContent = currentListItem.props.children;
+        const bulletList = <ul key={`nested-${idx}`}>{nestedBullets}</ul>;
+        currentListItem = (
+          <li key={currentListItem.key}>
+            {prevContent}
+            {bulletList}
+          </li>
+        );
+        nestedBullets = [];
+      }
+      
+      if (currentListItem) {
+        currentList.push(currentListItem);
+        currentListItem = null;
+      }
+      if (currentList.length > 0) {
+        const ListTag = listType === 'ol' ? 'ol' : 'ul';
+        elements.push(<ListTag key={`list-${elements.length}`}>{currentList}</ListTag>);
+        currentList = [];
+        listType = null;
+      }
+      
+      elements.push(
+        <p key={`p-${idx}`} className="ai-chat-message-text">
+          {formatInlineMarkdown(line)}
+        </p>
+      );
     });
 
-    // Push remaining list
+    // Flush remaining nested bullets and list
+    if (nestedBullets.length > 0 && currentListItem) {
+      const prevContent = currentListItem.props.children;
+      const bulletList = <ul key="nested-final">{nestedBullets}</ul>;
+      currentListItem = (
+        <li key={currentListItem.key}>
+          {prevContent}
+          {bulletList}
+        </li>
+      );
+    }
+    
+    if (currentListItem) {
+      currentList.push(currentListItem);
+    }
     if (currentList.length > 0) {
       const ListTag = listType === 'ol' ? 'ol' : 'ul';
-      elements.push(<ListTag key="list-final">{currentList}</ListTag>);
+      elements.push(<ListTag key={`list-final`}>{currentList}</ListTag>);
     }
 
     return elements;

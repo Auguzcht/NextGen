@@ -209,6 +209,69 @@
   background: rgba(0, 0, 0, 0.2);
 }
 
+/* Scroll to Bottom Button - Absolute Overlay */
+.ai-scroll-to-bottom {
+  position: absolute;
+  bottom: 135px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(48, 206, 228, 0.95) 0%, rgba(28, 167, 188, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(48, 206, 228, 0.3), 
+              0 1px 4px rgba(0, 0, 0, 0.1),
+              0 0 20px rgba(48, 206, 228, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.ai-scroll-to-bottom:hover {
+  background: linear-gradient(135deg, rgba(48, 206, 228, 1) 0%, rgba(28, 167, 188, 1) 100%);
+  box-shadow: 0 4px 16px rgba(48, 206, 228, 0.4), 
+              0 2px 6px rgba(0, 0, 0, 0.15),
+              0 0 30px rgba(48, 206, 228, 0.2);
+  transform: translateY(-2px);
+}
+
+.ai-scroll-to-bottom:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(48, 206, 228, 0.3), 
+              0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.ai-scroll-to-bottom svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  animation: subtleBounce 2s ease-in-out infinite;
+}
+
+@keyframes subtleBounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.ai-scroll-to-bottom-text {
+  white-space: nowrap;
+  line-height: 1;
+}
+
 /* Message */
 .ai-chat-message {
   display: flex;
@@ -366,7 +429,23 @@
   color: #1f2937;
 }
 
-.ai-chat-message.assistant .ai-chat-message-content li::marker {
+.ai-chat-message.assistant .ai-chat-message-content ul li::marker {
+  color: #30cee4;
+  font-weight: 600;
+}
+
+.ai-chat-message.assistant .ai-chat-message-content ol li::marker {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+/* Nested bullets within numbered lists */
+.ai-chat-message.assistant .ai-chat-message-content ol li ul {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.ai-chat-message.assistant .ai-chat-message-content ol li ul li::marker {
   color: #30cee4;
   font-weight: 600;
 }
@@ -699,3 +778,97 @@
     padding: 12px;
   }
 }
+
+/* ============================================================================
+   ACTION ANIMATIONS (Todo 7)
+   For AI-suggested UI interactions
+   ============================================================================ */
+
+/* Highlight animation for components */
+.ai-highlight-pulse {
+  position: relative;
+  animation: highlightPulse 1s ease-in-out 3;
+  box-shadow: 0 0 0 0 rgba(48, 206, 228, 0.7) !important;
+  border: 2px solid var(--nextgen-blue) !important;
+  border-radius: 8px;
+  z-index: 1000;
+}
+
+@keyframes highlightPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(48, 206, 228, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(48, 206, 228, 0);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(48, 206, 228, 0);
+    transform: scale(1);
+  }
+}
+
+/* Bounce animation for AI button (proactive hint) */
+.ai-bounce {
+  animation: bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) 3;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  25% {
+    transform: translateY(-15px) scale(1.1);
+  }
+  50% {
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    transform: translateY(-7px) scale(1.05);
+  }
+}
+
+/* Proactive message badge */
+.ai-message.proactive {
+  background: linear-gradient(135deg, #e3f9ff 0%, #d1f4ff 100%);
+  border-left: 4px solid var(--nextgen-blue);
+  position: relative;
+}
+
+.ai-message.proactive::before {
+  content: '🤖 Proactive Suggestion';
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--nextgen-blue-dark);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Navigation hint arrow */
+.ai-navigation-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #30cee4 0%, #1ca7bc 100%);
+  color: white;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 12px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.ai-navigation-hint:hover {
+  transform: translateX(4px);
+}
+
+.ai-navigation-hint svg {
+  width: 16px;
+  height: 16px;
+}
+
