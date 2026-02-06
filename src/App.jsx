@@ -13,6 +13,7 @@ import Footer from './components/layout/Footer.jsx';
 import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CURRENT_VERSION, shouldShowChangelog, markChangelogAsShown } from './utils/changelog.js';
+import AIChatWidget from './components/ai/AIChatWidget.jsx';
 import './App.css';
 
 // Lazy load page components for better performance
@@ -123,6 +124,9 @@ const MainLayoutContent = () => {
         onClose={handleCloseChangelog}
         version={CURRENT_VERSION}
       />
+      
+      {/* AI Chat Widget - Available on all authenticated pages */}
+      <AIChatWidget />
       
       {/* Fixed sidebar that doesn't scroll */}
       <div className="fixed h-full z-30">
