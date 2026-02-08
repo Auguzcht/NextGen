@@ -484,7 +484,7 @@ What would you like to know?`,
                 </div>
                 <div>
                   <h3 className="ai-chat-title">NextGen AI Assistant</h3>
-                  <p className="ai-chat-subtitle">Powered by GPT-4o-mini</p>
+                  <p className="ai-chat-subtitle">Powered by AWS Bedrock</p>
                 </div>
               </div>
               
