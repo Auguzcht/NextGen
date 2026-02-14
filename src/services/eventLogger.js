@@ -190,7 +190,7 @@ export const setupUnloadTracking = () => {
     }
   });
 
-  console.log('[EventLogger] Unload tracking enabled');
+  // console.log('[EventLogger] Unload tracking enabled');
 };
 
 /**

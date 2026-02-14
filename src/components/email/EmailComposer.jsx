@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Input, Badge, Modal } from '../ui';
+import { Button, Input, Badge, Modal, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { createCustomEmailTemplate } from '../../utils/emailTemplates.js';
 import { sendBatchEmails } from '../../services/emailService.js';
 
 const EmailComposer = ({ templates }) => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     template_id: '',
     subject: '',
@@ -31,6 +31,12 @@ const EmailComposer = ({ templates }) => {
   const [filteredGuardians, setFilteredGuardians] = useState([]);
   const [filteredStaff, setFilteredStaff] = useState([]);
   const [activeContentTab, setActiveContentTab] = useState('editor');
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  
+  // Material browser filters
+  const [materialSearchQuery, setMaterialSearchQuery] = useState('');
+  const [materialCategoryFilter, setMaterialCategoryFilter] = useState('all');
+  const [materialSortFilter, setMaterialSortFilter] = useState('recent');
 
   useEffect(() => {
     fetchMaterials();
@@ -329,43 +335,29 @@ const EmailComposer = ({ templates }) => {
     e.preventDefault();
 
     if (!formData.subject || !formData.body_html) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Missing Information',
-        text: 'Please provide both subject and email body'
+      toast.error('Missing Information', {
+        description: 'Please provide both subject and email body'
       });
       return;
     }
 
     if (formData.recipient_type === 'individual' && formData.selected_recipients.length === 0) {
-      Swal.fire({
-        icon: 'error',
-        title: 'No Recipients',
-        text: 'Please select at least one recipient'
+      toast.error('No Recipients', {
+        description: 'Please select at least one recipient'
       });
       return;
     }
 
-    const result = await Swal.fire({
-      title: 'Confirm Send',
-      html: `
-        <div class="text-left">
-          <p><strong>Subject:</strong> ${formData.subject}</p>
-          <p><strong>Recipients:</strong> ${formData.recipient_type === 'individual' ? formData.selected_recipients.length : recipientCount}</p>
-          <p><strong>Attachments:</strong> ${selectedMaterials.length}</p>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, send emails',
-      cancelButtonText: 'Cancel'
-    });
+    setShowSendDialog(true);
+  };
 
-    if (!result.isConfirmed) return;
-
+  const confirmSend = async () => {
+    setShowSendDialog(false);
     setIsSending(true);
+
+    const loadingToastId = toast.loading('Sending Emails...', {
+      description: 'Preparing and sending emails to recipients'
+    });
 
     try {
       // First, resolve recipients based on the form data
@@ -487,18 +479,18 @@ const EmailComposer = ({ templates }) => {
         throw new Error(result.error || 'Failed to send emails');
       }
 
-      Swal.fire({
-        icon: 'success',
+      let description = `Successfully sent: ${result.data.successful || result.data.sent || 0} emails`;
+      if ((result.data.failed || 0) > 0) {
+        description += `\nFailed: ${result.data.failed} emails`;
+      }
+      description += `\nTotal recipients: ${result.data.total || recipients.length}`;
+      description += `\nSuccess Rate: ${result.data.successRate || '100%'}`;
+      
+      toast.update(loadingToastId, {
+        variant: 'success',
         title: 'Emails Sent!',
-        html: `
-          <div class="text-left">
-            <p><strong>Successfully sent:</strong> ${result.data.successful || result.data.sent || 0} emails</p>
-            ${(result.data.failed || 0) > 0 ? `<p><strong>Failed:</strong> ${result.data.failed} emails</p>` : ''}
-            <p><strong>Total recipients:</strong> ${result.data.total || recipients.length}</p>
-            <p><strong>Success Rate:</strong> ${result.data.successRate || '100%'}</p>
-          </div>
-        `,
-        timer: 3000
+        description,
+        duration: 5000
       });
 
       // Reset form
@@ -513,10 +505,11 @@ const EmailComposer = ({ templates }) => {
       });
       setSelectedMaterials([]);
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
+      toast.update(loadingToastId, {
+        variant: 'destructive',
         title: 'Error',
-        text: error.message || 'Failed to send emails'
+        description: error.message || 'Failed to send emails',
+        duration: 5000
       });
     } finally {
       setIsSending(false);
@@ -551,6 +544,40 @@ const EmailComposer = ({ templates }) => {
       recipientType: formData.recipient_type || 'guardians'
     });
   };
+
+  // Filter and sort materials for browser
+  const filteredBrowseMaterials = useMemo(() => {
+    let filtered = materials.filter(material => {
+      // Search filter
+      const searchLower = materialSearchQuery.toLowerCase();
+      const matchesSearch = !materialSearchQuery || 
+        material.title.toLowerCase().includes(searchLower) ||
+        material.description?.toLowerCase().includes(searchLower);
+      
+      // Category filter
+      const matchesCategory = materialCategoryFilter === 'all' || 
+        material.category === materialCategoryFilter;
+      
+      return matchesSearch && matchesCategory;
+    });
+    
+    // Sort materials
+    if (materialSortFilter === 'recent') {
+      filtered.sort((a, b) => new Date(b.upload_date) - new Date(a.upload_date));
+    } else if (materialSortFilter === 'title') {
+      filtered.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (materialSortFilter === 'category') {
+      filtered.sort((a, b) => a.category.localeCompare(b.category));
+    }
+    
+    return filtered;
+  }, [materials, materialSearchQuery, materialCategoryFilter, materialSortFilter]);
+  
+  // Get unique categories from materials
+  const materialCategories = useMemo(() => {
+    const uniqueCategories = [...new Set(materials.map(m => m.category))];
+    return uniqueCategories.sort();
+  }, [materials]);
 
   const getMaterialIcon = (category) => {
     const icons = {
@@ -1097,13 +1124,60 @@ const EmailComposer = ({ templates }) => {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="border border-gray-200 rounded-lg p-4 max-h-96 overflow-y-auto"
+                  className="border border-gray-200 rounded-lg p-4 space-y-3"
                 >
-                  {materials.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No materials available</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {materials.map((material) => (
+                  {/* Material Browser Filters */}
+                  <div className="flex flex-col sm:flex-row gap-2 pb-3 border-b border-gray-200">
+                    <div className="flex-1">
+                      <Input
+                        type="text"
+                        placeholder="Search materials..."
+                        value={materialSearchQuery}
+                        onChange={(e) => setMaterialSearchQuery(e.target.value)}
+                        startIcon={
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                          </svg>
+                        }
+                        fullWidth
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="select"
+                        value={materialCategoryFilter}
+                        onChange={(e) => setMaterialCategoryFilter(e.target.value)}
+                        options={[
+                          { value: 'all', label: 'All Types' },
+                          ...materialCategories.map(cat => ({ value: cat, label: cat }))
+                        ]}
+                        className="w-30"
+                      />
+                      <Input
+                        type="select"
+                        value={materialSortFilter}
+                        onChange={(e) => setMaterialSortFilter(e.target.value)}
+                        options={[
+                          { value: 'recent', label: 'Recent' },
+                          { value: 'title', label: 'Title A-Z' },
+                          { value: 'category', label: 'Category' }
+                        ]}
+                        className="w-30"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Materials List */}
+                  <div className="max-h-80 overflow-y-auto">
+                    {filteredBrowseMaterials.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        {materialSearchQuery || materialCategoryFilter !== 'all' 
+                          ? 'No materials match your filters' 
+                          : 'No materials available'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredBrowseMaterials.map((material) => (
                         <label
                           key={material.material_id}
                           className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer"
@@ -1132,6 +1206,7 @@ const EmailComposer = ({ templates }) => {
                       ))}
                     </div>
                   )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1167,6 +1242,36 @@ const EmailComposer = ({ templates }) => {
           </div>
         </div>
       </form>
+
+      {/* Send Confirmation Dialog */}
+      <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Send</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-2 text-left">
+                <p><strong>Subject:</strong> {formData.subject}</p>
+                <p><strong>Recipients:</strong> {formData.recipient_type === 'individual' ? formData.selected_recipients.length : recipientCount}</p>
+                <p><strong>Attachments:</strong> {selectedMaterials.length}</p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSendDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmSend}
+            >
+              Yes, send emails
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

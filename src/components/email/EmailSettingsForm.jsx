@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast } from '../ui';
 import Input from '../ui/Input';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { sendTestEmail } from '../../services/emailService';
 
 const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     provider: 'Resend',
     api_key: '',
@@ -44,20 +44,16 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
     try {
       const success = await onUpdate(formData);
       if (success) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Saved!',
-          text: 'Email settings saved successfully',
-          timer: 1500
+        toast.success('Saved!', {
+          description: 'Email settings saved successfully',
+          duration: 1500
         });
       } else {
         throw new Error('Error saving settings');
       }
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save email settings'
+      toast.error('Error', {
+        description: error.message || 'Failed to save email settings'
       });
     } finally {
       setIsSaving(false);
@@ -76,35 +72,38 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
     e.preventDefault();
     
     if (!testEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Invalid Email',
-        text: 'Please enter a valid email address'
+      toast.error('Invalid Email', {
+        description: 'Please enter a valid email address'
       });
       return;
     }
     
     setIsSendingTest(true);
     
+    const loadingToastId = toast.loading('Sending Test Email...', {
+      description: `Sending test email to ${testEmail}`
+    });
+    
     try {
       // Send test email using the current form configuration
       const result = await sendTestEmail(testEmail, formData);
       
       if (result.success) {
-        Swal.fire({
-          icon: 'success',
+        toast.update(loadingToastId, {
+          variant: 'success',
           title: 'Test Email Sent!',
-          text: `Test email sent successfully to ${testEmail}`,
-          timer: 2000
+          description: `Test email sent successfully to ${testEmail}`,
+          duration: 5000
         });
       } else {
         throw new Error(result.error || 'Failed to send test email');
       }
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
+      toast.update(loadingToastId, {
+        variant: 'destructive',
         title: 'Error',
-        text: error.response?.data?.error || error.message || 'Failed to send test email'
+        description: error.response?.data?.error || error.message || 'Failed to send test email',
+        duration: 5000
       });
     } finally {
       setIsSendingTest(false);

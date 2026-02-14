@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { storage } from '../../services/firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
+import { useToast } from '../ui';
 
 const FileUpload = React.forwardRef(({
   category,
@@ -19,8 +19,7 @@ const FileUpload = React.forwardRef(({
   mode = 'image', // 'image' or 'file'
   autoReset = false, // Auto reset after upload completes
   compact = false // Compact mode with smaller buttons
-}, ref) => {
-  const [uploading, setUploading] = useState(false);
+}, ref) => {  const { toast } = useToast();  const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(initialPreview);
   const [imagePath, setImagePath] = useState(initialPath);
   const [fileName, setFileName] = useState('');
@@ -183,11 +182,8 @@ const FileUpload = React.forwardRef(({
         videoRef.current.srcObject = mediaStream;
       }
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Camera Access Denied',
-        text: 'Please allow camera access to capture photos',
-        confirmButtonColor: '#30CEE4'
+      toast.error('Camera Access Denied', {
+        description: 'Please allow camera access to capture photos'
       });
       setCaptureMode('file');
     }

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Input, Button } from '../ui';
+import { Input, Button, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { createPortal } from 'react-dom';
 import { createEmailTemplate } from '../../utils/emailTemplates.js';
 
 const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState(() => {
     if (isEdit && initialData) {
       return {
@@ -31,6 +31,7 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
 
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   // Control body overflow
   useEffect(() => {
@@ -78,31 +79,23 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
     const hasData = formData.template_name || formData.subject || formData.body_html || formData.body_text;
     
     if (hasData && !isEdit) {
-      Swal.fire({
-        title: 'Discard Changes?',
-        text: 'Any unsaved changes will be lost.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, discard',
-        cancelButtonText: 'No, keep editing'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          onClose();
-        }
-      });
+      setShowDiscardDialog(true);
     } else {
       onClose();
     }
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    onClose();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Validation Error', {
+        description: 'Please check all required fields'
       });
       return;
     }
@@ -126,11 +119,9 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
         
         if (error) throw error;
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Template has been updated successfully.',
-          timer: 1500
+        toast.success('Updated!', {
+          description: 'Template has been updated successfully.',
+          duration: 1500
         });
       } else {
         const { error } = await supabase
@@ -147,11 +138,9 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
         
         if (error) throw error;
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Added!',
-          text: 'Template has been added successfully.',
-          timer: 1500
+        toast.success('Added!', {
+          description: 'Template has been added successfully.',
+          duration: 1500
         });
       }
       
@@ -159,10 +148,8 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
       if (onClose) onClose();
     } catch (error) {
       console.error('Error saving template:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save template'
+      toast.error('Error', {
+        description: error.message || 'Failed to save template'
       });
     } finally {
       setIsSaving(false);
@@ -406,6 +393,32 @@ const EmailTemplateForm = ({ onClose, onSuccess, isEdit = false, initialData = n
           </div>
         </div>
       </motion.div>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscardDialog(false)}
+            >
+              No, keep editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDiscard}
+            >
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

@@ -5,10 +5,11 @@ import supabase from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Swal from 'sweetalert2';
+import { useToast } from '../components/ui';
 
 const ResetPasswordPage = () => {
   const { setIsUpdatingPassword } = useAuth();
+  const { toast } = useToast();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,14 +55,10 @@ const ResetPasswordPage = () => {
 
       // Handle error first
       if (error) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Invalid or Expired Link',
-          text: errorDescription || 'This password reset link is invalid or has expired. Please request a new one.',
-          confirmButtonColor: '#30cee4'
-        }).then(() => {
-          navigate('/login');
+        toast.error('Invalid or Expired Link', {
+          description: errorDescription || 'This password reset link is invalid or has expired. Please request a new one.'
         });
+        setTimeout(() => navigate('/login'), 3000);
         return;
       }
 
@@ -99,14 +96,10 @@ const ResetPasswordPage = () => {
         } else {
           console.error('Failed to establish session after retries');
           if (mounted) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Session Error',
-              text: 'Unable to verify your reset link. Please request a new password reset.',
-              confirmButtonColor: '#30cee4'
-            }).then(() => {
-              navigate('/login');
+            toast.error('Session Error', {
+              description: 'Unable to verify your reset link. Please request a new password reset.'
             });
+            setTimeout(() => navigate('/login'), 3000);
           }
           return;
         }
@@ -114,14 +107,10 @@ const ResetPasswordPage = () => {
 
       // No token, no error, no session - user navigated directly to the page
       if (!accessToken && !error && !session) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'No Reset Token',
-          text: 'Please use the password reset link sent to your email.',
-          confirmButtonColor: '#30cee4'
-        }).then(() => {
-          navigate('/login');
+        toast.warning('No Reset Token', {
+          description: 'Please use the password reset link sent to your email.'
         });
+        setTimeout(() => navigate('/login'), 3000);
       }
     };
 
@@ -138,21 +127,15 @@ const ResetPasswordPage = () => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Passwords Do Not Match',
-        text: 'Please make sure both passwords are identical.',
-        confirmButtonColor: '#30cee4'
+      toast.error('Passwords Do Not Match', {
+        description: 'Please make sure both passwords are identical.'
       });
       return;
     }
 
     if (password.length < 8) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Password Too Short',
-        text: 'Password must be at least 8 characters long.',
-        confirmButtonColor: '#30cee4'
+      toast.error('Password Too Short', {
+        description: 'Password must be at least 8 characters long.'
       });
       return;
     }
@@ -177,12 +160,8 @@ const ResetPasswordPage = () => {
       console.log('Password updated successfully, signing out...');
 
       // Show success message BEFORE sign out to prevent race conditions
-      await Swal.fire({
-        icon: 'success',
-        title: 'Password Updated!',
-        text: 'Your password has been successfully updated. Please log in with your new password.',
-        confirmButtonColor: '#30cee4',
-        allowOutsideClick: false
+      toast.success('Password Updated!', {
+        description: 'Your password has been successfully updated. Please log in with your new password.'
       });
 
       // Now sign out the user - do this AFTER showing message
@@ -194,8 +173,8 @@ const ResetPasswordPage = () => {
         // Continue anyway - we'll force navigation
       }
       
-      // Wait a bit before re-enabling auth listener
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Wait a bit before re-enabling auth listener and navigating
+      await new Promise(resolve => setTimeout(resolve, 2000));
       setIsUpdatingPassword(false);
       
       console.log('Navigating to login...');
@@ -206,11 +185,8 @@ const ResetPasswordPage = () => {
     } catch (error) {
       console.error('Error resetting password:', error);
       setIsUpdatingPassword(false); // Re-enable auth listener on error
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to reset password. Please try again.',
-        confirmButtonColor: '#30cee4'
+      toast.error('Error', {
+        description: error.message || 'Failed to reset password. Please try again.'
       });
     } finally {
       setIsLoading(false);

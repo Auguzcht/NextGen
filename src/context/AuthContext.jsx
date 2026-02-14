@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect, useContext, useRef } from 'react';
-import { toast } from 'react-hot-toast';
+import { toast } from '../components/ui';
 import supabase from '../services/supabase';
 import { clearChangelogSession, markNewLogin } from '../utils/changelog.js';
 
@@ -170,7 +170,9 @@ export const AuthProvider = ({ children }) => {
                   .from('staff')
                   .update({ last_login_at: new Date().toISOString() })
                   .eq('user_id', currentSession.user.id);
-                toast.success('Successfully signed in!');
+                toast.success('Successfully signed in!', {
+                  description: 'Welcome back to NextGen'
+                });
               } catch (error) {
                 setConnectionStatus('degraded');
               }
@@ -237,12 +239,19 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Proceed with login attempt
+      
+      // Set the remember me preference BEFORE signing in so custom storage can use it
+      if (remember) {
+        localStorage.setItem('auth-remember-me', 'true');
+        sessionStorage.setItem('auth-remember-me', 'true');
+      } else {
+        localStorage.removeItem('auth-remember-me');
+        sessionStorage.setItem('auth-remember-me', 'false');
+      }
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password,
-        options: {
-          persistSession: remember
-        }
+        password
       });
 
       if (error) {
@@ -291,13 +300,21 @@ export const AuthProvider = ({ children }) => {
         clearChangelogSession(user.id);
       }
       
+      // Clear remember me preference
+      localStorage.removeItem('auth-remember-me');
+      sessionStorage.removeItem('auth-remember-me');
+      
       const { error } = await supabase.auth.signOut();
       
       if (error) {
         console.warn('Logout API error:', error);
-        toast.warning('Logged out with some errors. You may need to clear browser data.');
+        toast.warning('Logged out with some errors', {
+          description: 'You may need to clear browser data.'
+        });
       } else {
-        toast.success('Logged out successfully');
+        toast.success('Logged out successfully', {
+          description: 'See you next time!'
+        });
       }
       
       // Get the correct base path based on environment
@@ -307,7 +324,9 @@ export const AuthProvider = ({ children }) => {
       window.location.href = `${basePath}/login`;
     } catch (error) {
       console.error('Logout error:', error);
-      toast.error('Failed to complete logout properly');
+      toast.error('Failed to complete logout', {
+        description: 'Please try again or clear your browser data'
+      });
       
       // Force clear state anyway for better UX
       setUser(null);
@@ -386,6 +405,7 @@ export const AuthProvider = ({ children }) => {
     staffProfile: user, // Add this line - staffProfile is an alias for user
     session,
     loading,
+    initialized: initializedRef.current, // Export initialized state
     login,
     logout,
     refreshUser, // Add refreshUser function

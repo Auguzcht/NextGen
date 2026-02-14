@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import supabase from '../../services/supabase.js';
 import AgeGroupForm from './AgeGroupForm.jsx';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
+  const { toast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -15,20 +17,15 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
   };
 
   const handleDeleteCategory = async (categoryId) => {
-    const result = await Swal.fire({
-      title: 'Delete Age Category?',
-      text: 'This may affect children records. Are you sure you want to delete this category?',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, delete it',
-      cancelButtonText: 'Cancel'
-    });
+    setCategoryToDelete(categoryId);
+    setShowDeleteDialog(true);
+  };
 
-    if (!result.isConfirmed) return;
-    
+  const confirmDelete = async () => {
+    const categoryId = categoryToDelete;
+    setShowDeleteDialog(false);
     setDeletingId(categoryId);
+
     try {
       const { error } = await supabase
         .from('age_categories')
@@ -37,20 +34,15 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
         
       if (error) throw error;
       
-      Swal.fire({
-        icon: 'success',
-        title: 'Deleted!',
-        text: 'Age category has been deleted.',
-        timer: 1500
+      toast.success('Age category has been deleted', {
+        description: 'Deleted!'
       });
       
       onUpdate();
     } catch (error) {
       console.error('Error deleting age category:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to delete age category'
+      toast.error(error.message || 'Failed to delete age category', {
+        description: 'Error'
       });
     } finally {
       setDeletingId(null);
@@ -193,6 +185,26 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
           }}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Age Category?</DialogTitle>
+            <DialogDescription>
+              This may affect children records. Are you sure you want to delete this category?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDelete}>
+              Yes, delete it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

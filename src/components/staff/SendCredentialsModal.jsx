@@ -3,14 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
-import Swal from 'sweetalert2';
+import { useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { sendStaffCredentials } from '../../services/emailService';
 
 const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
+  const { toast } = useToast();
   const [selectedStaff, setSelectedStaff] = useState([]);
   const [eventType, setEventType] = useState('new_account');
   const [isSending, setIsSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSendDialog, setShowSendDialog] = useState(false);
 
   // Memoize filtered staff to prevent recalculation
   const eligibleStaff = useMemo(() => 
@@ -91,68 +93,36 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
 
   const handleSend = async () => {
     if (selectedStaff.length === 0) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'No Staff Selected',
-        text: 'Please select at least one staff member to send credentials.',
-        confirmButtonColor: '#1CABB8'
+      toast.warning('No Staff Selected', {
+        description: 'Please select at least one staff member to send credentials.'
       });
       return;
     }
 
-    const selectedEventType = eventTypes.find(et => et.value === eventType);
-    const staffToSend = staffMembers.filter(staff => selectedStaff.includes(staff.staff_id));
+    setShowSendDialog(true);
+  };
 
-    const result = await Swal.fire({
-      title: 'Send Access Emails?',
-      html: `
-        <div class="text-left">
-          <p class="mb-3"><strong>Event Type:</strong> ${selectedEventType.label}</p>
-          <p class="mb-3"><strong>Recipients:</strong> ${selectedStaff.length} staff member(s)</p>
-          <div class="bg-gray-50 p-3 rounded-md max-h-32 overflow-y-auto">
-            <ul class="text-sm space-y-1">
-              ${staffToSend.map(staff => `
-                <li>• ${staff.first_name} ${staff.last_name} (${staff.email})</li>
-              `).join('')}
-            </ul>
-          </div>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#1CABB8',
-      cancelButtonColor: '#6B7280',
-      confirmButtonText: 'Yes, Send Emails',
-      cancelButtonText: 'Cancel'
-    });
-
-    if (!result.isConfirmed) return;
-
+  const confirmSend = async () => {
+    setShowSendDialog(false);
     setIsSending(true);
+
+    const staffToSend = staffMembers.filter(staff => selectedStaff.includes(staff.staff_id));
 
     try {
       // Call API to send credentials (config is fetched from database in API)
       const response = await sendStaffCredentials(staffToSend, eventType);
 
-      Swal.fire({
-        icon: 'success',
-        title: 'Emails Sent Successfully!',
-        html: `
-          <div class="text-left">
-            <p class="mb-2"><strong>Successfully sent:</strong> ${response.successCount} email(s)</p>
-            ${response.failureCount > 0 ? `
-              <p class="mb-2 text-red-600"><strong>Failed:</strong> ${response.failureCount} email(s)</p>
-              <div class="bg-red-50 p-2 rounded-md max-h-24 overflow-y-auto">
-                <ul class="text-sm space-y-1">
-                  ${response.errors.map(error => `
-                    <li class="text-red-700">• ${error}</li>
-                  `).join('')}
-                </ul>
-              </div>
-            ` : ''}
-          </div>
-        `,
-        confirmButtonColor: '#1CABB8'
+      let description = `Successfully sent: ${response.successCount} email(s)`;
+      if (response.failureCount > 0) {
+        description += `\nFailed: ${response.failureCount} email(s)`;
+        if (response.errors && response.errors.length > 0) {
+          description += `\nErrors: ${response.errors.slice(0, 3).join(', ')}`;
+        }
+      }
+
+      toast.success('Emails Sent Successfully!', {
+        description,
+        duration: 5000
       });
 
       // Reset selection
@@ -160,11 +130,8 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
       onClose();
     } catch (error) {
       console.error('Error sending credentials:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error Sending Emails',
-        text: error.response?.data?.error || error.message || 'Failed to send credential emails. Please try again.',
-        confirmButtonColor: '#EF4444'
+      toast.error('Error Sending Emails', {
+        description: error.response?.data?.error || error.message || 'Failed to send credential emails. Please try again.'
       });
     } finally {
       setIsSending(false);
@@ -183,8 +150,9 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence mode="wait">
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <>
+      <AnimatePresence mode="wait">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -372,6 +340,45 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
             </motion.div>
           </div>
         </AnimatePresence>
+
+        {/* Send Confirmation Dialog */}
+        <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Send Access Emails?</DialogTitle>
+              <DialogDescription>
+                <div className="space-y-3 text-left">
+                  <p><strong>Event Type:</strong> {eventTypes.find(et => et.value === eventType)?.label}</p>
+                  <p><strong>Recipients:</strong> {selectedStaff.length} staff member(s)</p>
+                  <div className="bg-gray-50 p-3 rounded-md max-h-32 overflow-y-auto">
+                    <ul className="text-sm space-y-1">
+                      {staffMembers.filter(staff => selectedStaff.includes(staff.staff_id)).map(staff => (
+                        <li key={staff.staff_id}>
+                          • {staff.first_name} {staff.last_name} ({staff.email})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowSendDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={confirmSend}
+              >
+                Yes, Send Emails
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
   );
 };
 

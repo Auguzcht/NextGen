@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import supabase from '../../services/supabase.js';
-import { Button, Badge, Input } from '../ui';
+import { Button, Badge, Input, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { formatDate } from '../../utils/dateUtils.js';
 
 const ServiceNotesForm = ({ onClose, onSuccess }) => {
+  const { toast } = useToast();
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [formData, setFormData] = useState({
     theme: '',
     lesson_summary: '',
@@ -146,20 +147,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
       
       // Only prompt if there's data AND it's not an existing note
       if (hasData && !existingNoteId) {
-        Swal.fire({
-          title: 'Discard Changes?',
-          text: 'Any unsaved changes will be lost.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#3085d6',
-          cancelButtonColor: '#d33',
-          confirmButtonText: 'Yes, discard',
-          cancelButtonText: 'No, keep editing'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            onClose();
-          }
-        });
+        setShowDiscardDialog(true);
         return; // Don't close yet - wait for user response
       }
     }
@@ -168,6 +156,11 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
     // 1. On service list view
     // 2. No unsaved data
     // 3. Editing existing note
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
     onClose();
   };
 
@@ -204,11 +197,8 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Service notes have been updated successfully.',
-          timer: 1500
+        toast.success('Service notes have been updated successfully', {
+          description: 'Updated!'
         });
       } else {
         const { error } = await supabase
@@ -222,11 +212,8 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Added!',
-          text: 'Service notes have been added successfully.',
-          timer: 1500
+        toast.success('Service notes have been added successfully', {
+          description: 'Added!'
         });
       }
       
@@ -234,10 +221,8 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
       if (onClose) onClose();
     } catch (error) {
       console.error('Error saving service notes:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save service notes'
+      toast.error(error.message || 'Failed to save service notes', {
+        description: 'Error'
       });
     } finally {
       setIsSaving(false);
@@ -536,6 +521,26 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
           </div>
         </div>
       </motion.div>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDiscardDialog(false)}>
+              No, keep editing
+            </Button>
+            <Button variant="danger" onClick={confirmDiscard}>
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

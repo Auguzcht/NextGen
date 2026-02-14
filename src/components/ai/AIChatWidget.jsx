@@ -436,29 +436,70 @@ What would you like to know?`,
       {/* Chat Widget Button */}
       <AnimatePresence>
         {!isOpen && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={toggleChat}
-            className="ai-chat-trigger"
-            aria-label="Open AI Assistant"
-          >
-            <motion.div
-              animate={{ 
-                y: [0, -4, 0],
-                rotate: [0, 5, -5, 0]
-              }}
-              transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
+          <>
+            <motion.button
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleChat}
+              className="ai-chat-trigger"
+              aria-label="Open AI Assistant"
             >
-              <Sparkles className="w-6 h-6" />
-            </motion.div>
+              <motion.div
+                animate={{ 
+                  y: [0, -4, 0],
+                  rotate: [0, 5, -5, 0]
+                }}
+                transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
+              >
+                <Sparkles className="w-6 h-6" />
+              </motion.div>
+              
+              {/* Ping animation */}
+              <span className="ai-chat-ping" />
+            </motion.button>
             
-            {/* Ping animation */}
-            <span className="ai-chat-ping" />
-          </motion.button>
+            {/* Dynamic Indicator Badge */}
+            <motion.div
+              initial={{ opacity: 0, x: 20, scale: 0.8 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 20, scale: 0.8 }}
+              transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
+              className="fixed bottom-20 right-20 z-[9999] pointer-events-none"
+            >
+              <motion.div
+                animate={{
+                  y: [0, -8, 0],
+                }}
+                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                className="bg-gradient-to-r from-nextgen-blue to-nextgen-blue-dark text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium"
+                style={{
+                  boxShadow: '0 4px 20px rgba(48, 206, 228, 0.4), 0 0 40px rgba(48, 206, 228, 0.2)'
+                }}
+              >
+                <span><strong>New:</strong> Try our AI Assistant!</span>
+                {/* Arrow pointing to button */}
+                <svg 
+                  className="w-4 h-4 ml-1" 
+                  fill="currentColor" 
+                  viewBox="0 0 20 20"
+                >
+                  <path 
+                    fillRule="evenodd" 
+                    d="M10.293 15.707a1 1 0 010-1.414L14.586 10l-4.293-4.293a1 1 0 111.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" 
+                    clipRule="evenodd" 
+                  />
+                  <path 
+                    fillRule="evenodd" 
+                    d="M4.293 15.707a1 1 0 010-1.414L8.586 10 4.293 5.707a1 1 0 011.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" 
+                    clipRule="evenodd" 
+                  />
+                </svg>
+              </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

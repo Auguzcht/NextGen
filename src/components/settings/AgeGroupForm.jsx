@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import supabase from '../../services/supabase.js';
-import { Input, Button } from '../ui';
+import { Input, Button, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [formData, setFormData] = useState(() => {
     if (isEdit && initialData) {
       return {
@@ -81,20 +82,7 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     
     // Only prompt if there's data AND it's not editing an existing category
     if (hasData && !isEdit) {
-      Swal.fire({
-        title: 'Discard Changes?',
-        text: 'Any unsaved changes will be lost.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, discard',
-        cancelButtonText: 'No, keep editing'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          onClose();
-        }
-      });
+      setShowDiscardDialog(true);
       return; // Don't close yet - wait for user response
     }
     
@@ -102,14 +90,17 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     onClose();
   };
 
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Please check all required fields', {
+        description: 'Validation Error'
       });
       return;
     }
@@ -131,11 +122,8 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Age category has been updated successfully.',
-          timer: 1500
+        toast.success('Age category has been updated successfully', {
+          description: 'Updated!'
         });
       } else {
         // Create new category
@@ -150,11 +138,8 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Added!',
-          text: 'Age category has been added successfully.',
-          timer: 1500
+        toast.success('Age category has been added successfully', {
+          description: 'Added!'
         });
       }
       
@@ -162,10 +147,8 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
       if (onClose) onClose();
     } catch (error) {
       console.error('Error saving age category:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save age category'
+      toast.error(error.message || 'Failed to save age category', {
+        description: 'Error'
       });
     } finally {
       setIsSaving(false);
@@ -330,6 +313,26 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
           </div>
         </div>
       </motion.div>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDiscardDialog(false)}>
+              No, keep editing
+            </Button>
+            <Button variant="danger" onClick={confirmDiscard}>
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

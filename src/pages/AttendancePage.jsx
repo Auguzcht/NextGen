@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import useImageCache from '../hooks/useImageCache.jsx';
-import { Card, Button, Table, Input, Badge } from '../components/ui';
+import { Card, Button, Table, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
 import QRScannerModal from '../components/common/QRScannerModal';
-import Swal from 'sweetalert2';
 
 const AttendancePage = () => {
+  const { toast } = useToast();
+  const { user } = useAuth();
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
   const [checkedInList, setCheckedInList] = useState([]);
@@ -18,6 +20,7 @@ const AttendancePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [error, setError] = useState(null);
+  const [showCheckOutAllDialog, setShowCheckOutAllDialog] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedChildren, setSelectedChildren] = useState([]);
@@ -181,7 +184,7 @@ const AttendancePage = () => {
           *,
           age_categories (category_name)
         `)
-        .or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%`)
+        .or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%,nickname.ilike.%${debouncedSearchQuery}%`)
         .eq('is_active', true)
         .limit(5); // Limit to 5 results for better UX
 
@@ -214,8 +217,7 @@ const AttendancePage = () => {
     if (selectedChildren.length === 0) return;
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const staffEmail = session?.user?.email || 'Unknown Staff';
+      const staffName = user ? `${user.first_name} ${user.last_name}` : 'Unknown Staff';
       const now = new Date();
       const localTime = now.toTimeString().split(' ')[0];
       
@@ -239,7 +241,7 @@ const AttendancePage = () => {
               .from('attendance')
               .update({
                 check_in_time: localTime,
-                checked_in_by: staffEmail
+                checked_in_by: staffName
               })
               .eq('attendance_id', existingCheckIn.attendance_id);
           } else {
@@ -251,7 +253,7 @@ const AttendancePage = () => {
                 service_id: selectedService,
                 attendance_date: selectedDate,
                 check_in_time: localTime,
-                checked_in_by: staffEmail
+                checked_in_by: staffName
               });
           }
           successCount++;
@@ -270,19 +272,8 @@ const AttendancePage = () => {
       
       // Show success message
       if (successCount > 0) {
-        Swal.fire({
-          icon: 'success',
-          title: `${successCount} ${successCount === 1 ? 'child' : 'children'} checked in`,
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 2000,
-          timerProgressBar: true,
-          iconColor: '#1ca7bc',
-          customClass: {
-            popup: 'swal-nextgen-toast',
-            title: 'swal-nextgen-title'
-          }
+        toast.success(`${successCount} ${successCount === 1 ? 'child' : 'children'} checked in`, {
+          duration: 2000
         });
       }
       
@@ -303,8 +294,7 @@ const AttendancePage = () => {
     }
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const staffEmail = session?.user?.email || 'Unknown Staff';
+      const staffName = user ? `${user.first_name} ${user.last_name}` : 'Unknown Staff';
       
       // Get current local time
       const now = new Date();
@@ -329,7 +319,7 @@ const AttendancePage = () => {
           .from('attendance')
           .update({
             check_in_time: localTime,
-            checked_in_by: staffEmail
+            checked_in_by: staffName
           })
           .eq('attendance_id', existingCheckIn.attendance_id);
       } else {
@@ -341,7 +331,7 @@ const AttendancePage = () => {
             service_id: selectedService,
             attendance_date: selectedDate,
             check_in_time: localTime,
-            checked_in_by: staffEmail
+            checked_in_by: staffName
           });
       }
       
@@ -367,8 +357,7 @@ const AttendancePage = () => {
     if (!attendanceId) return;
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const staffEmail = session?.user?.email || 'Unknown Staff';
+      const staffName = user ? `${user.first_name} ${user.last_name}` : 'Unknown Staff';
       
       // Get current local time
       const now = new Date();
@@ -378,7 +367,7 @@ const AttendancePage = () => {
         .from('attendance')
         .update({ 
           check_out_time: localTime,
-          checked_out_by: staffEmail
+          checked_out_by: staffName
         })
         .eq('attendance_id', attendanceId);
 
@@ -389,6 +378,37 @@ const AttendancePage = () => {
     } catch (error) {
       console.error('Error checking out child:', error);
       setError(`Failed to check out child: ${error.message}`);
+    }
+  };
+
+  const handleCheckOutAll = async () => {
+    try {
+      const staffName = user ? `${user.first_name} ${user.last_name}` : 'Unknown Staff';
+      const now = new Date();
+      const localTime = now.toTimeString().split(' ')[0];
+      
+      const childrenToCheckOut = checkedInList.filter(item => !item.check_out_time);
+      
+      for (const item of childrenToCheckOut) {
+        await supabase
+          .from('attendance')
+          .update({ 
+            check_out_time: localTime,
+            checked_out_by: staffName
+          })
+          .eq('attendance_id', item.attendance_id);
+      }
+      
+      setCheckInSuccess(prev => !prev);
+      setShowCheckOutAllDialog(false);
+      
+      toast.success('All Children Checked Out', {
+        duration: 2000
+      });
+    } catch (error) {
+      console.error('Error checking out all children:', error);
+      setError('Failed to check out all children');
+      setShowCheckOutAllDialog(false);
     }
   };
 
@@ -432,6 +452,24 @@ const AttendancePage = () => {
     }
     
     return age;
+  };
+
+  // Convert email to readable name for display (handles old email data)
+  const formatStaffName = (value) => {
+    if (!value) return 'Unknown';
+    
+    // If it's an email address (contains @), convert it to a readable name
+    if (value.includes('@')) {
+      const emailPart = value.split('@')[0];
+      // Split by dots or underscores and capitalize each part
+      const nameParts = emailPart.split(/[._]/).map(part => 
+        part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      );
+      return nameParts.join(' ');
+    }
+    
+    // Otherwise, return the name as-is (it's already a full name)
+    return value;
   };
 
   // Search results component
@@ -594,7 +632,7 @@ const AttendancePage = () => {
       cell: (row) => (
         <div className="text-gray-900">
           <div>{formatTime(row.check_in_time)}</div>
-          <div className="text-xs text-gray-500">by {row.checked_in_by || 'Unknown'}</div>
+          <div className="text-xs text-gray-500">by {formatStaffName(row.checked_in_by)}</div>
         </div>
       ),
       width: "150px"
@@ -604,7 +642,7 @@ const AttendancePage = () => {
       cell: (row) => row.check_out_time ? (
         <div className="text-gray-900">
           <div>{formatTime(row.check_out_time)}</div>
-          <div className="text-xs text-gray-500">by {row.checked_out_by || 'Unknown'}</div>
+          <div className="text-xs text-gray-500">by {formatStaffName(row.checked_out_by)}</div>
         </div>
       ) : (
         <span className="text-gray-500">-</span>
@@ -670,24 +708,11 @@ const AttendancePage = () => {
           // Checked in but not out - perform check out
           await handleCheckOut(existingCheckIn.attendance_id);
           
-          // Show success message as an error with positive styling
+          // Show success message
           setError(null);
-          // Use Swal (SweetAlert2) with NextGen styling
-          Swal.fire({
-            icon: 'success',
-            title: `${childData.first_name} checked OUT`,
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 2000,
-            timerProgressBar: true,
-            width: 'auto',
-            padding: '0.75em',
-            iconColor: '#e66300', // nextgen-orange-dark
-            customClass: {
-              popup: 'swal-nextgen-toast',
-              title: 'swal-nextgen-title'
-            }
+          toast.success(`${childData.first_name} checked OUT`, {
+            duration: 2000,
+            variant: 'nextgen'
           });
         }
       } else {
@@ -696,22 +721,8 @@ const AttendancePage = () => {
         
         // Show success message
         setError(null);
-        // Use Swal with NextGen styling
-        Swal.fire({
-          icon: 'success',
-          title: `${childData.first_name} checked IN`,
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 2000,
-          timerProgressBar: true,
-          width: 'auto',
-          padding: '0.75em',
-          iconColor: '#1ca7bc', // nextgen-blue-dark
-          customClass: {
-            popup: 'swal-nextgen-toast',
-            title: 'swal-nextgen-title'
-          }
+        toast.success(`${childData.first_name} checked IN`, {
+          duration: 2000
         });
       }
     
@@ -810,7 +821,7 @@ const AttendancePage = () => {
                       <Input
                         type="text"
                         id="search-input"
-                        placeholder="Search by name or ID..."
+                        placeholder="Search by name, ID, or nickname..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         disabled={!selectedService}
@@ -872,55 +883,8 @@ const AttendancePage = () => {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={async () => {
-                        const result = await Swal.fire({
-                          title: 'Check Out All Children?',
-                          text: `This will check out ${checkedInList.filter(item => !item.check_out_time).length} children.`,
-                          icon: 'warning',
-                          showCancelButton: true,
-                          confirmButtonColor: '#e66300',
-                          cancelButtonColor: '#6b7280',
-                          confirmButtonText: 'Yes, check out all',
-                          cancelButtonText: 'Cancel'
-                        });
-                        
-                        if (result.isConfirmed) {
-                          try {
-                            const { data: { session } } = await supabase.auth.getSession();
-                            const staffEmail = session?.user?.email || 'Unknown Staff';
-                            const now = new Date();
-                            const localTime = now.toTimeString().split(' ')[0];
-                            
-                            const childrenToCheckOut = checkedInList.filter(item => !item.check_out_time);
-                            
-                            for (const item of childrenToCheckOut) {
-                              await supabase
-                                .from('attendance')
-                                .update({ 
-                                  check_out_time: localTime,
-                                  checked_out_by: staffEmail
-                                })
-                                .eq('attendance_id', item.attendance_id);
-                            }
-                            
-                            setCheckInSuccess(prev => !prev);
-                            
-                            Swal.fire({
-                              icon: 'success',
-                              title: 'All Children Checked Out',
-                              toast: true,
-                              position: 'top-end',
-                              showConfirmButton: false,
-                              timer: 2000,
-                              timerProgressBar: true,
-                              iconColor: '#1ca7bc'
-                            });
-                          } catch (error) {
-                            console.error('Error checking out all children:', error);
-                            setError('Failed to check out all children');
-                          }
-                        }
-                      }}
+                      onClick={() => setShowCheckOutAllDialog(true)}
+                      className="ml-2"
                     >
                       Check Out All
                     </Button>
@@ -950,6 +914,33 @@ const AttendancePage = () => {
         onClose={() => setShowScannerModal(false)}
         onScanSuccess={handleQRScanSuccess}
       />
+      
+      {/* Check Out All Dialog */}
+      <Dialog open={showCheckOutAllDialog} onOpenChange={setShowCheckOutAllDialog}>
+        <DialogContent onClose={() => setShowCheckOutAllDialog(false)}>
+          <DialogHeader>
+            <DialogTitle>Check Out All Children?</DialogTitle>
+            <DialogDescription>
+              This will check out {checkedInList.filter(item => !item.check_out_time).length} children.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCheckOutAllDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleCheckOutAll}
+            >
+              Yes, check out all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

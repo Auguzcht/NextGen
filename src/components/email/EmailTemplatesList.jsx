@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const EmailTemplatesList = ({ templates, onRefresh, onEdit }) => {
+  const { toast } = useToast();
   const [updatingId, setUpdatingId] = useState(null);
 
   const toggleActiveStatus = async (templateId, currentStatus) => {
@@ -23,10 +23,8 @@ const EmailTemplatesList = ({ templates, onRefresh, onEdit }) => {
       onRefresh();
     } catch (error) {
       console.error('Error updating template status:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: `Error updating template status: ${error.message}`
+      toast.error('Error', {
+        description: `Error updating template status: ${error.message}`
       });
     } finally {
       setUpdatingId(null);
@@ -186,14 +184,23 @@ const EmailTemplatesList = ({ templates, onRefresh, onEdit }) => {
                       Edit
                     </Button>
                     <Button
-                      variant={template.is_active ? "danger" : "success"}
+                      variant="ghost"
                       size="xs"
                       onClick={() => toggleActiveStatus(template.template_id, template.is_active)}
                       disabled={updatingId === template.template_id}
-                      isLoading={updatingId === template.template_id}
-                    >
-                      {template.is_active ? 'Deactivate' : 'Activate'}
-                    </Button>
+                      icon={
+                        template.is_active ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )
+                      }
+                      title={template.is_active ? 'Deactivate' : 'Activate'}
+                    />
                   </div>
                 </td>
               </motion.tr>

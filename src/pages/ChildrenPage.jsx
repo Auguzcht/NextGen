@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import supabase from '../services/supabase.js';
 import useImageCache from '../hooks/useImageCache.jsx';
 import AddChildForm from '../components/children/AddChildForm.jsx';
-import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
+import { Card, Button, Badge, Table, Input, Modal, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 import ChildDetailView from '../components/children/ChildDetailView.jsx';
 import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
 import PrintableIDCard from '../components/children/PrintableIDCard';
 
 const ChildrenPage = () => {
+  const { toast } = useToast();
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -28,6 +28,8 @@ const ChildrenPage = () => {
   const [showPrintableID, setShowPrintableID] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
+  const [showToggleDialog, setShowToggleDialog] = useState(false);
+  const [childToToggle, setChildToToggle] = useState(null);
   
   // Sorting state
   const [sortBy, setSortBy] = useState('registration_date');
@@ -428,45 +430,37 @@ const ChildrenPage = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleToggleActive = async (child) => {
-    const isActivating = !child.is_active;
+  const handleToggleActive = (child) => {
+    setChildToToggle(child);
+    setShowToggleDialog(true);
+  };
+
+  const confirmToggleActive = async () => {
+    if (!childToToggle) return;
     
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: isActivating
-        ? "This will reactivate the child's record and they will appear in active lists."
-        : "This will deactivate the child's record. They will not appear in active lists but can be reactivated later.",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: isActivating ? '#10b981' : '#f59e0b',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: isActivating ? 'Yes, reactivate' : 'Yes, deactivate',
-      cancelButtonText: 'Cancel'
-    });
+    const isActivating = !childToToggle.is_active;
+    
+    try {
+      const { error } = await supabase
+        .from('children')
+        .update({ is_active: isActivating })
+        .eq('child_id', childToToggle.child_id);
 
-    if (result.isConfirmed) {
-      try {
-        const { error } = await supabase
-          .from('children')
-          .update({ is_active: isActivating })
-          .eq('child_id', child.child_id);
+      if (error) throw error;
 
-        if (error) throw error;
-
-        Swal.fire(
-          isActivating ? 'Reactivated!' : 'Deactivated!',
-          `The child has been ${isActivating ? 'reactivated' : 'deactivated'}.`,
-          'success'
-        );
-        fetchChildren();
-      } catch (error) {
-        Swal.fire(
-          'Error!',
-          `Failed to ${isActivating ? 'reactivate' : 'deactivate'} child.`,
-          'error'
-        );
-        console.error('Error deactivating child:', error);
-      }
+      toast.success(
+        isActivating ? 'Reactivated!' : 'Deactivated!',
+        { description: `The child has been ${isActivating ? 'reactivated' : 'deactivated'}.` }
+      );
+      
+      setShowToggleDialog(false);
+      setChildToToggle(null);
+      fetchChildren();
+    } catch (error) {
+      toast.error('Error!', {
+        description: `Failed to ${isActivating ? 'reactivate' : 'deactivate'} child.`
+      });
+      console.error('Error deactivating child:', error);
     }
   };
 
@@ -476,11 +470,9 @@ const ChildrenPage = () => {
     setSelectedChild(null);
     
     // Show success message after list is refreshed
-    Swal.fire({
-      icon: 'success',
-      title: 'Updated!',
-      text: 'Child information has been updated.',
-      timer: 1500
+    toast.success('Updated!', {
+      description: 'Child information has been updated.',
+      duration: 1500
     });
   };
 
@@ -669,6 +661,39 @@ const ChildrenPage = () => {
           onClose={() => setShowPrintableID(false)}
         />
       )}
+
+      {/* Deactivate/Reactivate Confirmation Dialog */}
+      <Dialog open={showToggleDialog} onOpenChange={setShowToggleDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              {childToToggle && !childToToggle.is_active ? (
+                "This will reactivate the child's record and they will appear in active lists."
+              ) : (
+                "This will deactivate the child's record. They will not appear in active lists but can be reactivated later."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowToggleDialog(false);
+                setChildToToggle(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={childToToggle && !childToToggle.is_active ? "success" : "warning"}
+              onClick={confirmToggleActive}
+            >
+              {childToToggle && !childToToggle.is_active ? "Yes, reactivate" : "Yes, deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

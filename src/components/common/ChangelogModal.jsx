@@ -1,13 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import { CHANGELOG, CURRENT_VERSION } from '../../utils/changelog';
+import { 
+  Bot, Users, Shield, Mail, Calendar, Library, ClipboardCheck, 
+  UserCheck, Palette, Server, Bug, Zap 
+} from 'lucide-react';
 
 const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
   const [selectedVersion, setSelectedVersion] = useState(version);
   const [viewMode, setViewMode] = useState('single'); // 'single' or 'timeline'
+  const scrollContainerRef = useRef(null);
   
   // Memoize version data lookup
   const versionData = useMemo(() => 
@@ -23,6 +28,16 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
     }
   }, [version]);
 
+  // Scroll to top when view mode or selected version changes
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  }, [viewMode, selectedVersion]);
+
   const getTypeBadge = (type) => {
     const types = {
       major: { variant: 'danger', label: 'Major Release' },
@@ -31,6 +46,32 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
       feature: { variant: 'success', label: 'New Feature' }
     };
     return types[type] || types.feature;
+  };
+
+  // Icon mapping for changelog categories
+  const getIconComponent = (iconName, size = 'default') => {
+    const iconMap = {
+      'Bot': Bot,
+      'Users': Users,
+      'Shield': Shield,
+      'Mail': Mail,
+      'Calendar': Calendar,
+      'Library': Library,
+      'ClipboardCheck': ClipboardCheck,
+      'UserCheck': UserCheck,
+      'Palette': Palette,
+      'Server': Server,
+      'Bug': Bug,
+      'Zap': Zap
+    };
+    const IconComponent = iconMap[iconName];
+    if (!IconComponent) return null;
+    const sizeClass = size === 'small' ? 'w-4 h-4' : 'w-6 h-6';
+    return (
+      <div className="flex-shrink-0">
+        <IconComponent className={`${sizeClass} text-nextgen-blue`} />
+      </div>
+    );
   };
 
   if (!isOpen) return null;
@@ -50,6 +91,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
 
         {/* Modal */}
         <motion.div
+          ref={scrollContainerRef}
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.98 }}
@@ -183,7 +225,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                           className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-xl p-5 shadow-sm"
                         >
                           <div className="flex items-center gap-3 mb-4">
-                            <div className="text-3xl">{category.icon}</div>
+                            <div className="flex-shrink-0">{getIconComponent(category.icon)}</div>
                             <h3 className="text-lg font-semibold text-gray-900">
                               {category.category}
                             </h3>
@@ -247,8 +289,8 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                             {/* Content */}
                             <div className="flex-1 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
                               {/* Version Header */}
-                              <div className="flex items-center justify-between mb-4">
-                                <div>
+                              <div className="flex items-start justify-between gap-4 mb-4">
+                                <div className="flex-1 min-w-0">
                                   <h3 className="text-xl font-bold text-gray-900">{version.title}</h3>
                                   <div className="flex items-center gap-3 mt-2">
                                     <Badge {...getTypeBadge(version.type)} size="sm">
@@ -268,9 +310,12 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                                     setSelectedVersion(version.version);
                                     setViewMode('single');
                                   }}
-                                  className="text-nextgen-blue hover:text-nextgen-blue-dark transition-colors text-sm font-medium"
+                                  className="flex-shrink-0 flex items-center gap-2 px-4 py-2 text-nextgen-blue hover:text-white hover:bg-nextgen-blue border border-nextgen-blue rounded-lg transition-all text-sm font-medium"
                                 >
-                                  View Details →
+                                  View Details
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
                                 </button>
                               </div>
                               
@@ -279,7 +324,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                                 {version.changes.slice(0, 4).map((category, categoryIndex) => (
                                   <div key={categoryIndex} className="bg-gray-50 rounded-lg p-3">
                                     <div className="flex items-center gap-2 mb-2">
-                                      <span className="text-lg">{category.icon}</span>
+                                      {getIconComponent(category.icon, 'small')}
                                       <span className="text-sm font-medium text-gray-900">{category.category}</span>
                                     </div>
                                     <p className="text-xs text-gray-600">

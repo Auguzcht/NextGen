@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { Card, Button } from '../ui';
+import { Card, Button, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 
 const CredentialManagement = ({ staffMembers, onRefresh }) => {
+  const { toast } = useToast();
   const [filter, setFilter] = useState('all'); // 'all', 'has_login', 'no_login', 'pending'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStaff, setSelectedStaff] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingGeneration, setPendingGeneration] = useState(null);
 
   // Calculate credential status for each staff member
   const staffWithStatus = useMemo(() => {
@@ -109,14 +112,21 @@ const CredentialManagement = ({ staffMembers, onRefresh }) => {
       : selectedStaff;
 
     if (staffIds.length === 0) {
-      alert('Please select at least one staff member');
+      toast.warning('No Staff Selected', {
+        description: 'Please select at least one staff member to generate credentials.'
+      });
       return;
     }
 
-    if (!confirm(`Generate and send credentials to ${staffIds.length} staff member(s)?`)) {
-      return;
-    }
+    // Show confirmation dialog
+    setPendingGeneration({ staffIds, bulkGenerate, count: staffIds.length });
+    setShowConfirmDialog(true);
+  };
 
+  const confirmGenerateCredentials = async () => {
+    if (!pendingGeneration) return;
+
+    setShowConfirmDialog(false);
     setIsGenerating(true);
     setResults(null);
 
@@ -124,7 +134,10 @@ const CredentialManagement = ({ staffMembers, onRefresh }) => {
       const response = await fetch('/api/staff/generate-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffIds, bulkGenerate })
+        body: JSON.stringify({ 
+          staffIds: pendingGeneration.staffIds, 
+          bulkGenerate: pendingGeneration.bulkGenerate 
+        })
       });
 
       const data = await response.json();
@@ -133,14 +146,23 @@ const CredentialManagement = ({ staffMembers, onRefresh }) => {
         setResults(data.results);
         setSelectedStaff([]);
         if (onRefresh) onRefresh();
+        
+        toast.success('Credentials Generated Successfully!', {
+          description: `Generated credentials for ${data.results.success.length} staff member(s).`
+        });
       } else {
-        alert(`Error: ${data.message || 'Failed to generate credentials'}`);
+        toast.error('Generation Failed', {
+          description: data.message || 'Failed to generate credentials. Please try again.'
+        });
       }
     } catch (error) {
       console.error('Generate credentials error:', error);
-      alert(`Error: ${error.message}`);
+      toast.error('Error Generating Credentials', {
+        description: error.message || 'An unexpected error occurred. Please try again.'
+      });
     } finally {
       setIsGenerating(false);
+      setPendingGeneration(null);
     }
   };
 
@@ -352,6 +374,40 @@ const CredentialManagement = ({ staffMembers, onRefresh }) => {
           <li>❌ <strong>No Login:</strong> No user account exists (needs credential generation)</li>
         </ul>
       </div>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate and Send Credentials?</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-3 text-left">
+                <p>
+                  This will generate login credentials and send email notifications to{' '}
+                  <strong>{pendingGeneration?.count || 0} staff member(s)</strong>.
+                </p>
+                <p className="text-sm text-gray-600">
+                  Each staff member will receive a welcome email with instructions to access their account.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmGenerateCredentials}
+            >
+              Yes, Generate Credentials
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

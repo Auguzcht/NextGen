@@ -2,13 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import supabase from '../../services/supabase.js';
 import { formatDate } from '../../utils/dateUtils.js';
-import { Table, Badge, Button, Card } from '../ui';
-import Swal from 'sweetalert2';
+import { Table, Button, Card, useToast } from '../ui';
 
 const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
+  const { toast } = useToast();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sendingEmail, setSendingEmail] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalReports, setTotalReports] = useState(0);
   const reportsPerPage = 8;
@@ -43,7 +42,6 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
           unique_children,
           first_timers,
           report_pdf_url,
-          email_sent_date,
           report_generated_by,
           staff:report_generated_by (
             staff_id,
@@ -60,139 +58,11 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
       
       setReports(data || []);
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load weekly reports',
-        confirmButtonColor: '#30cee4'
+      toast.error('Error', {
+        description: 'Failed to load weekly reports'
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSendEmail = async (reportId) => {
-    try {
-      setSendingEmail(true);
-      
-      Swal.fire({
-        title: 'Sending Email...',
-        html: 'Preparing weekly report for delivery',
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        willOpen: () => {
-          Swal.showLoading();
-        }
-      });
-      
-      // Get the report data
-      const report = reports.find(r => r.report_id === reportId);
-      if (!report) {
-        throw new Error('Report not found');
-      }
-      
-      // Fetch staff members with appropriate roles
-      const { data: staffMembers, error: staffError } = await supabase
-        .from('staff')
-        .select('staff_id, first_name, last_name, email, role')
-        .eq('is_active', true)
-        .in('role', ['Coordinator', 'Administrator', 'Team Leader']);
-      
-      if (staffError) throw staffError;
-      
-      if (!staffMembers || staffMembers.length === 0) {
-        throw new Error('No eligible staff members found to send report to');
-      }
-      
-      // Prepare recipients
-      const recipients = staffMembers.map(staff => ({
-        email: staff.email,
-        name: `${staff.first_name} ${staff.last_name}`,
-        staffId: staff.staff_id
-      }));
-      
-      // Import template function
-      const { createStaffWeeklyReportTemplate } = await import('../../utils/emailTemplates.js');
-      
-      // Generate email HTML
-      const emailHtml = createStaffWeeklyReportTemplate({
-        weekStartDate: report.week_start_date,
-        weekEndDate: report.week_end_date,
-        totalAttendance: report.total_attendance,
-        uniqueChildren: report.unique_children,
-        firstTimers: report.first_timers,
-        reportPdfUrl: report.report_pdf_url
-      });
-      
-      const subject = `Weekly Ministry Report: ${new Date(report.week_start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(report.week_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-      
-      // Call the batch email API endpoint
-      const response = await fetch('/api/email/send-batch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipients,
-          subject,
-          html: emailHtml,
-          text: `Weekly Ministry Report for ${new Date(report.week_start_date).toLocaleDateString()} - ${new Date(report.week_end_date).toLocaleDateString()}. Total Attendance: ${report.total_attendance}, Unique Children: ${report.unique_children}, First-Timers: ${report.first_timers}. ${report.report_pdf_url ? `View full report: ${report.report_pdf_url}` : ''}`,
-          templateId: null,
-          recipientType: 'staff'
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || `API responded with status: ${response.status}`);
-      }
-      
-      // Only update report with email sent date if at least one email was successful
-      if (data.data?.successful > 0) {
-        await supabase
-          .from('weekly_reports')
-          .update({ email_sent_date: new Date().toISOString() })
-          .eq('report_id', reportId);
-      }
-      
-      Swal.fire({
-        icon: data.data?.successful > 0 ? 'success' : 'error',
-        title: data.data?.successful > 0 ? 'Email Sent!' : 'Email Failed',
-        html: `
-          <div class="text-left">
-            <p class="mb-2"><strong>Successfully sent:</strong> ${data.data?.successful || 0} email(s)</p>
-            ${data.data?.failed > 0 ? `
-              <p class="mb-2 text-red-600"><strong>Failed:</strong> ${data.data.failed} email(s)</p>
-            ` : ''}
-            <p class="text-sm text-gray-600"><strong>Success Rate:</strong> ${data.data?.successRate || '0%'}</p>
-            ${data.data?.failures && data.data.failures.length > 0 ? `
-              <div class="mt-3 text-xs text-gray-500">
-                <p><strong>Failures:</strong></p>
-                <ul class="list-disc list-inside">
-                  ${data.data.failures.slice(0, 3).map(f => `<li>${f.email}: ${f.error}</li>`).join('')}
-                  ${data.data.failures.length > 3 ? `<li>... and ${data.data.failures.length - 3} more</li>` : ''}
-                </ul>
-              </div>
-            ` : ''}
-          </div>
-        `,
-        confirmButtonColor: '#30cee4',
-        timer: data.data?.successful > 0 ? 5000 : undefined
-      });
-      
-      fetchReports();
-    } catch (error) {
-      console.error('Error sending weekly report email:', error);
-      
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to send weekly report emails. Please check your email configuration.',
-        confirmButtonColor: '#30cee4'
-      });
-    } finally {
-      setSendingEmail(false);
     }
   };
 
@@ -200,33 +70,13 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
     if (!reportUrl) return;
     
     try {
-      if (reportUrl.startsWith('reports/weekly_')) {
-        const filename = reportUrl.split('/').pop();
-        const firebasePath = `NextGen/weekly-reports-pdf/${filename}`;
-        
-        const { storage } = await import('../../services/firebase.js');
-        const { ref, getDownloadURL } = await import('firebase/storage');
-        
-        try {
-          const storageRef = ref(storage, firebasePath);
-          const url = await getDownloadURL(storageRef);
-          window.open(url, '_blank');
-          return;
-        } catch (firebaseError) {
-          console.error('Firebase storage error:', firebaseError);
-          throw new Error('PDF not found in Firebase storage');
-        }
-      }
-      
+      // The URL is now stored as a full Firebase download URL, so just open it
       window.open(reportUrl, '_blank');
       
     } catch (error) {
       console.error('Error accessing report PDF:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Could not access the report PDF. It may not be uploaded yet.',
-        confirmButtonColor: '#30cee4'
+      toast.error('Error', {
+        description: 'Could not access the report PDF. It may not be uploaded yet.'
       });
     }
   };
@@ -258,16 +108,37 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
     {
       header: "Week Period",
       cell: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">
-            {formatDate(row.week_start_date, { month: 'short', day: 'numeric' })} - {formatDate(row.week_end_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+        <div className="font-medium text-gray-900">
+          {formatDate(row.week_start_date, { month: 'short', day: 'numeric' })} - {formatDate(row.week_end_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </div>
+      ),
+      width: "240px"
+    },
+    {
+      header: "Report Statistics",
+      cell: (row) => (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-nextgen-blue-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-gray-600">Total: <span className="font-semibold text-nextgen-blue-dark">{row.total_attendance}</span></span>
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            <span className="font-medium">{row.total_attendance}</span> attendance • <span className="font-medium">{row.first_timers}</span> first-timers • <span className="font-medium">{row.unique_children}</span> unique
+          <div className="flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span className="text-xs text-gray-600">Unique: <span className="font-semibold text-nextgen-blue">{row.unique_children}</span></span>
+          </div>
+          <div className="flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+            <span className="text-xs text-gray-600">First-timers: <span className="font-semibold text-green-700">{row.first_timers}</span></span>
           </div>
         </div>
       ),
-      width: "280px"
+      width: "240px"
     },
     {
       header: "Generated By",
@@ -304,76 +175,87 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
       width: "200px"
     },
     {
-      header: "Email Status",
-      cell: (row) => (
-        row.email_sent_date ? (
-          <div className="flex items-center gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            <span className="text-sm text-green-700">
-              Sent {formatDate(row.email_sent_date, { month: 'short', day: 'numeric' })}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-sm text-yellow-700">
-              Not sent
-            </span>
-          </div>
-        )
-      ),
-      width: "180px"
-    },
-    {
       header: "Actions",
       cell: (row) => (
-        <div className="flex justify-end items-end space-x-2">
+        <div className="flex justify-end items-center space-x-2">
           {row.report_pdf_url ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => handleViewReport(row.report_pdf_url)}
-              className="text-nextgen-blue"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              }
-            >
-              View PDF
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => handleViewReport(row.report_pdf_url)}
+                className="text-nextgen-blue hover:text-nextgen-blue-dark"
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                }
+              >
+                View
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={async () => {
+                  const toastId = toast.loading('Preparing download...');
+                  
+                  try {
+                    // Fetch the PDF as a blob
+                    const response = await fetch(row.report_pdf_url);
+                    if (!response.ok) throw new Error('Failed to fetch PDF');
+                    
+                    const blob = await response.blob();
+                    
+                    // Create object URL and trigger download
+                    const blobUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = `weekly-report-${row.week_start_date}.pdf`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // Clean up the blob URL
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+                    
+                    // Dismiss loading toast and show success
+                    toast.dismiss(toastId);
+                    toast.success('Download Started', {
+                      description: 'Your report is being downloaded'
+                    });
+                  } catch (error) {
+                    console.error('Download error:', error);
+                    // Dismiss loading toast and show error
+                    toast.dismiss(toastId);
+                    toast.error('Download Failed', {
+                      description: 'Could not download the report. Please try again.'
+                    });
+                  }
+                }}
+                className="text-nextgen-blue hover:text-nextgen-blue-dark"
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                }
+              >
+                Download
+              </Button>
+            </>
           ) : (
             <span className="text-gray-400 text-xs flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
-              No PDF
+              No PDF Available
             </span>
           )}
-          
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => handleSendEmail(row.report_id)}
-            disabled={sendingEmail || row.email_sent_date}
-            className={row.email_sent_date ? "text-gray-400 cursor-not-allowed" : "text-green-600"}
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            }
-          >
-            {row.email_sent_date ? 'Sent' : 'Send Email'}
-          </Button>
         </div>
       ),
-      width: "240px"
+      width: "220px"
     }
-  ], [sendingEmail]);
+  ], [toast]);
 
   const renderPagination = () => {
     if (totalPages <= 1) return null;

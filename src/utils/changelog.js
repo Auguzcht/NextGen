@@ -1,9 +1,204 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.11.0';
+export const CURRENT_VERSION = '1.2.0';
 
 export const CHANGELOG = [
+  {
+    version: '1.2.0',
+    date: '2026-02-15',
+    title: 'Major Update: AI Chatbot Enhancement, UI/UX Refinement & System Stability',
+    type: 'major',
+    changes: [
+      {
+        category: 'AI Chatbot System',
+        icon: 'Bot',
+        updates: [
+          'Implemented advanced RAG-based chatbot with LangChain pipeline for improved context understanding',
+          'Added refined layered architecture for AI responses with better accuracy',
+          'Enhanced chatbot context memory and conversation flow',
+          'Improved AI response quality with better prompt engineering',
+          'Added support for complex ministry-related queries',
+          'Implemented intelligent document retrieval for FAQ responses',
+          'Enhanced chatbot UI with better loading states and feedback',
+          'Added conversation history tracking for better user experience'
+        ]
+      },
+      {
+        category: 'Children Management',
+        icon: 'Users',
+        updates: [
+          'Added nickname field to children table for better identification',
+          'Implemented nickname display in child profiles and lists',
+          'Enhanced search functionality to include nickname field in queries (Attendance & Children pages)',
+          'Improved image caching in sessionStorage for faster photo loading',
+          'Added nickname support in QR code email generation',
+          'Enhanced AddChildForm to support age range validation',
+          'Improved child profile display with nickname badges',
+          'Added nickname to attendance check-in search results',
+          'Optimized child photo loading with better error handling'
+        ]
+      },
+      {
+        category: 'Authentication & Security',
+        icon: 'Shield',
+        updates: [
+          'Implemented global password tracking in AuthContext for secure reset flows',
+          'Fixed Supabase auth reset password token hashing issues',
+          'Enhanced reset password page flow with proper redirects to login',
+          'Added profile settings modal for user account management',
+          'Fixed reset email logic race conditions',
+          'Improved password reset token validation and expiration handling',
+          'Enhanced logout confirmation with Dialog component (removed alert dialogs)',
+          'Added secure session management with proper cleanup',
+          'Improved authentication error handling and user feedback'
+        ]
+      },
+      {
+        category: 'Email & Notifications',
+        icon: 'Mail',
+        updates: [
+          'Implemented child QR code email sending functionality',
+          'Fixed QR code rendering issues in email templates',
+          'Added credential batch sending for volunteer access',
+          'Enhanced email template system with better formatting',
+          'Improved email delivery tracking and error handling',
+          'Added email validation to filter invalid/placeholder addresses',
+          'Enhanced QR modal display with better positioning',
+          'Implemented bulk email sending with progress feedback',
+          'Added email retry logic for failed sends'
+        ]
+      },
+      {
+        category: 'Calendar & Scheduling',
+        icon: 'Calendar',
+        updates: [
+          'Fixed calendar mapping for accurate event exports',
+          'Corrected timezone mapping for proper booking placements in schedule component',
+          'Implemented hybrid webhook + polling approach with Supabase Edge Function',
+          'Added automatic Vercel cron job for calendar sync',
+          'Enhanced Cal.com webhook handling with better error recovery',
+          'Fixed Cal.com payload parsing (startTime vs start field)',
+          'Added detailed logging for webhook payload debugging',
+          'Improved calendar event synchronization reliability',
+          'Enhanced booking conflict detection and resolution'
+        ]
+      },
+      {
+        category: 'Materials Management',
+        icon: 'Library',
+        updates: [
+          'Added pagination to materials library (10 items per page)',
+          'Implemented debounced search with 300ms delay for better performance',
+          'Enhanced filter section with contained bordered design',
+          'Added responsive grid layout for filter controls',
+          'Fixed badge wrapping issues by moving to separate lines',
+          'Standardized badge sizes (xs for link types, sm for categories)',
+          'Implemented Clear button with proper disabled states',
+          'Added material count and page info display',
+          'Enhanced table styling with consistent borders',
+          'Improved search to include title, description, and category',
+          'Added age group and category filtering',
+          'Implemented smooth page navigation with ellipsis pagination'
+        ]
+      },
+      {
+        category: 'Attendance System',
+        icon: 'ClipboardCheck',
+        updates: [
+          'Improved attendance query performance and accuracy',
+          'Enhanced QR modal functionality for quick check-ins',
+          'Added nickname search support in attendance check-in',
+          'Improved check-in/check-out flow with better validation',
+          'Enhanced attendance history display',
+          'Added bulk check-in capabilities',
+          'Improved QR code scanner integration',
+          'Enhanced attendance reporting accuracy'
+        ]
+      },
+      {
+        category: 'Staff & Volunteer Access',
+        icon: 'UserCheck',
+        updates: [
+          'Implemented volunteer access system with role-based permissions',
+          'Added credential generation and batch sending for volunteers',
+          'Removed non-existent role_at_service column, standardized to physical_role',
+          'Enhanced staff assignment workflow',
+          'Improved volunteer onboarding process',
+          'Added volunteer access tracking and logging',
+          'Enhanced staff permissions management'
+        ]
+      },
+      {
+        category: 'User Interface & Experience',
+        icon: 'Palette',
+        updates: [
+          'Replaced all alert dialogs with modern Dialog components',
+          'Enhanced logout confirmation with shadcn Dialog',
+          'Improved form input consistency across all pages',
+          'Added better loading states and spinners',
+          'Enhanced mobile responsiveness throughout the app',
+          'Improved table layouts with better column sizing',
+          'Added smooth transitions and animations',
+          'Enhanced error message display with toast notifications',
+          'Improved filter section designs (EmailLogs, Materials)',
+          'Added consistent height (42px) for all form inputs',
+          'Enhanced button sizing and spacing',
+          'Improved badge consistency and readability'
+        ]
+      },
+      {
+        category: 'Infrastructure & DevOps',
+        icon: 'Server',
+        updates: [
+          'Enhanced Vercel function configuration for API routes',
+          'Fixed Vercel cron endpoint configuration and rewrites',
+          'Set framework to null to prevent auto-detection interference',
+          'Improved Edge Function deployment process',
+          'Enhanced webhook endpoint reliability',
+          'Added better error logging and monitoring',
+          'Improved environment variable management',
+          'Enhanced build process optimization'
+        ]
+      },
+      {
+        category: 'Bug Fixes',
+        icon: 'Bug',
+        updates: [
+          'Fixed file upload ref import naming conflicts',
+          'Resolved reset password page authentication flow',
+          'Fixed QR code email rendering in various email clients',
+          'Corrected age range validation in child registration',
+          'Fixed calendar event timezone inconsistencies',
+          'Resolved webhook payload parsing errors',
+          'Fixed email batch sending with invalid addresses',
+          'Corrected database column references (removed created_at)',
+          'Fixed profile image loading race conditions',
+          'Resolved session storage caching issues',
+          'Fixed pagination reset when filters change',
+          'Corrected search input height inconsistencies',
+          'Fixed Clear button clickability in filter sections'
+        ]
+      },
+      {
+        category: 'Performance Optimization',
+        icon: 'Zap',
+        updates: [
+          'Optimized database queries for faster page loads',
+          'Implemented debounced search across all search inputs',
+          'Enhanced image caching with sessionStorage',
+          'Improved component render optimization',
+          'Reduced unnecessary re-renders in forms',
+          'Enhanced pagination performance',
+          'Optimized filter operations',
+          'Improved webhook processing speed',
+          'Enhanced API response times'
+        ]
+      }
+    ],
+    summary: 'Version 1.2.0 represents a significant evolution of NextGen with 34 commits focusing on intelligent automation, user experience refinement, and system reliability. The new AI chatbot provides ministry staff with instant, context-aware assistance. Enhanced authentication flows, comprehensive email systems, and improved calendar integration streamline daily operations. The modernized UI with consistent Dialog components, refined materials management with pagination, and system-wide performance optimizations create a more polished and efficient platform for ministry management.',
+    breaking: false
+  },
   {
     version: '1.11.0',
     date: '2025-12-08',

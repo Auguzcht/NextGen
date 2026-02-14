@@ -1,15 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import supabase from '../../services/supabase.js';
-import { Card, Button, Input, Badge, Alert } from '../ui';
+import { Card, Button, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
 import FileUpload from '../common/FileUpload.jsx';
-import Swal from 'sweetalert2';
 import { debounce } from 'lodash';
 
 // Add isEdit and initialData props
 const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
+  
+  // Dialog states
+  const [showSaveDraftDialog, setShowSaveDraftDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  
   // Map the initialData to match form structure
   const mapInitialData = (data) => {
     if (!data) return null;
@@ -400,20 +405,7 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     if (!isEdit) {
       // Ask user if they want to save their draft
       if (formHasData() && !isFormEmpty()) {
-        Swal.fire({
-          title: 'Save Draft?',
-          text: 'Do you want to save your progress as a draft for later?',
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: 'Save Draft',
-          cancelButtonText: 'Discard'
-        }).then((result) => {
-          if (!result.isConfirmed) {
-            // Clear draft data
-            clearFormCache();
-          }
-          onClose();
-        });
+        setShowSaveDraftDialog(true);
       } else {
         // If form is empty, just clear and close
         clearFormCache();
@@ -422,22 +414,29 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     } else {
       // If editing, show confirmation dialog like in GuardianForm
       if (formData.firstName || formData.lastName || formData.middleName || imageUrl !== initialData?.photo_url) {
-        Swal.fire({
-          title: 'Discard Changes?',
-          text: 'Any unsaved changes will be lost.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Yes, discard',
-          cancelButtonText: 'No, keep editing'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            onClose();
-          }
-        });
+        setShowDiscardDialog(true);
       } else {
         onClose();
       }
     }
+  };
+
+  const confirmSaveDraft = () => {
+    // Keep draft data in localStorage
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardDraft = () => {
+    // Clear draft data
+    clearFormCache();
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardChanges = () => {
+    setShowDiscardDialog(false);
+    onClose();
   };
 
   // Helper to check if the form has any data
@@ -499,10 +498,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
     e.preventDefault();
     
     if (!validate()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Validation Error', {
+        description: 'Please check all required fields'
       });
       return;
     }
@@ -778,10 +775,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
 
     } catch (error) {
       console.error(error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message
+      toast.error('Error', {
+        description: error.message
       });
 
       // Clean up photo if needed
@@ -925,10 +920,8 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                         setImagePath(result.path);
                       }}
                       onUploadError={(error) => {
-                        Swal.fire({
-                          icon: 'error',
-                          title: 'Upload Error',
-                          text: error.message
+                        toast.error('Upload Error', {
+                          description: error.message
                         });
                       }}
                       onDeleteComplete={async () => {
@@ -951,11 +944,9 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                           }
                         }
                         
-                        Swal.fire({
-                          icon: 'success',
-                          title: 'Photo Removed',
-                          text: 'Photo has been removed successfully',
-                          timer: 1500
+                        toast.success('Photo Removed', {
+                          description: 'Photo has been removed successfully',
+                          duration: 1500
                         });
                       }}
                       accept="image/*"
@@ -1279,6 +1270,58 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
           </div>
         </div>
       </motion.div>
+
+      {/* Save Draft Dialog */}
+      <Dialog open={showSaveDraftDialog} onOpenChange={setShowSaveDraftDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Draft?</DialogTitle>
+            <DialogDescription>
+              Do you want to save your progress as a draft for later?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={confirmDiscardDraft}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmSaveDraft}
+            >
+              Save Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscardDialog(false)}
+            >
+              No, keep editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDiscardChanges}
+            >
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

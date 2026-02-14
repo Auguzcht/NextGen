@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
 import ServiceNotesForm from './ServiceNotesForm.jsx';
-import { Button, Table, Modal, Badge } from '../ui';
+import { Button, Table, Modal, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
 import { formatDate } from '../../utils/dateUtils.js';
 
 const ServiceNotesManager = ({ services }) => {
+  const { toast } = useToast();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNotesForm, setShowNotesForm] = useState(false);
   const [selectedNote, setSelectedNote] = useState(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState(null);
 
   useEffect(() => {
     fetchServiceNotes();
@@ -38,19 +41,35 @@ const ServiceNotesManager = ({ services }) => {
   };
 
   const handleDelete = async (noteId) => {
-    if (!confirm('Are you sure you want to delete this service note?')) return;
+    setNoteToDelete(noteId);
+    setShowDeleteDialog(true);
+  };
 
+  const confirmDelete = async () => {
+    if (!noteToDelete) return;
+
+    setShowDeleteDialog(false);
+    
     try {
       const { error } = await supabase
         .from('service_notes')
         .delete()
-        .eq('note_id', noteId);
+        .eq('note_id', noteToDelete);
 
       if (error) throw error;
+      
+      toast.success('Service Note Deleted', {
+        description: 'The service note has been successfully deleted.'
+      });
+      
       fetchServiceNotes();
     } catch (error) {
       console.error('Error deleting note:', error);
-      alert('Error deleting service note');
+      toast.error('Deletion Failed', {
+        description: 'Failed to delete service note. Please try again.'
+      });
+    } finally {
+      setNoteToDelete(null);
     }
   };
 
@@ -336,6 +355,36 @@ const ServiceNotesManager = ({ services }) => {
             }}
           />
         )}
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Service Note?</DialogTitle>
+              <DialogDescription>
+                <div className="space-y-3 text-left">
+                  <p>
+                    Are you sure you want to delete this service note? This action cannot be undone.
+                  </p>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDelete}
+              >
+                Yes, Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

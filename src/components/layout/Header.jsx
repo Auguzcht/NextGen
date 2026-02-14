@@ -7,6 +7,7 @@ import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../services/firebase';
 import NotificationDropdown from './NotificationDropdown';
 import ProfileSettingsModal from './ProfileSettingsModal';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Button } from '../ui';
 
 // Define logo path directly from public folder
 const NextGenLogo = '/NextGen-Logo.png';
@@ -54,6 +55,7 @@ const Header = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [profileImageUrl, setProfileImageUrl] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -203,8 +205,14 @@ const Header = () => {
   });
 
   // Handle logout - update to use logout from context
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setShowUserMenu(false);
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = async () => {
     try {
+      setShowLogoutDialog(false);
       await logout(); // Use logout instead of signOut
       // No need for navigate - logout will redirect to login page
     } catch (error) {
@@ -429,6 +437,32 @@ const Header = () => {
         isOpen={showProfileSettings}
         onClose={() => setShowProfileSettings(false)}
       />
+
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign Out</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to sign out? You'll need to log in again to access the system.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowLogoutDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmLogout}
+            >
+              Yes, sign out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.header>
   );
 };

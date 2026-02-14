@@ -19,13 +19,41 @@ const supabaseServiceKey = getEnv('VITE_SUPABASE_SERVICE_KEY');
 let _supabase = null;
 let _supabaseAdmin = null;
 
+// Custom storage adapter that respects "remember me" preference
+const customStorage = {
+  getItem: (key) => {
+    // Check sessionStorage first (for non-remember sessions), then localStorage
+    return sessionStorage.getItem(key) || localStorage.getItem(key);
+  },
+  setItem: (key, value) => {
+    // Check if we should use sessionStorage (remember me = false)
+    const rememberMe = sessionStorage.getItem('auth-remember-me') === 'true' || 
+                      localStorage.getItem('auth-remember-me') === 'true';
+    
+    if (rememberMe) {
+      localStorage.setItem(key, value);
+      // Clean up sessionStorage to avoid conflicts
+      sessionStorage.removeItem(key);
+    } else {
+      sessionStorage.setItem(key, value);
+      // Clean up localStorage to avoid conflicts
+      localStorage.removeItem(key);
+    }
+  },
+  removeItem: (key) => {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
+};
+
 // Regular client for most operations (limited by RLS)
 const getSupabase = () => {
   if (!_supabase) {
     _supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: true,
-        persistSession: true
+        persistSession: true,
+        storage: customStorage
       }
     });
   }

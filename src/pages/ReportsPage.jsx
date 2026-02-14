@@ -6,16 +6,17 @@ import ReportChart from '../components/reports/ReportChart.jsx';
 import AttendancePatternChart from '../components/reports/AttendancePatternChart.jsx';
 import ServiceComparisonChart from '../components/reports/ServiceComparisonChart.jsx';
 import WeeklyReportsList from '../components/reports/WeeklyReportsList.jsx';
-import { Card, Button, Input, Badge, NextGenChart } from '../components/ui';
+import { Card, Button, Input, Badge, NextGenChart, useToast } from '../components/ui';
 import { formatDate, getMonthDateRange, getWeekDateRange } from '../utils/dateUtils.js';
-import Swal from 'sweetalert2';
 import { generateWeeklyReportPDF } from '../utils/pdfGenerator.js';
 import { storage } from '../services/firebase.js';
 import { ref, getDownloadURL } from 'firebase/storage';
 
 const ReportsPage = () => {
   const { user, staffProfile } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(true);
   const [reportType, setReportType] = useState('dashboard');
   const [timeRange, setTimeRange] = useState('weekly');
   const [reportData, setReportData] = useState({
@@ -83,30 +84,22 @@ const ReportsPage = () => {
     { label: 'Last 3 months', value: 'last3months' },
   ];
 
-  // Fix 1: Improve the fetchWithCache function to properly include filter parameters
+  // Improved caching with localStorage persistence
   const fetchWithCache = useCallback(async (key, fetchFn) => {
-    // Create a more specific cache key including all filter parameters
     const cacheKey = `${key}_${startDate}_${endDate}_${timeRange}`;
-    
-    // Clear cache when date range changes
-    if (startDate !== dataCache.lastStartDate || endDate !== dataCache.lastEndDate) {
-      // Only keep non-data cache properties
-      const { lastStartDate, lastEndDate, ...rest } = dataCache;
-      setDataCache({
-        lastStartDate: startDate,
-        lastEndDate: endDate
-      });
-    }
-    
     const cachedItem = dataCache[cacheKey];
     
+    // Return cached data if valid
     if (cachedItem && (Date.now() - cachedItem.timestamp) < CACHE_DURATION) {
+      console.log(`Using cached data for ${key}`);
       return cachedItem.data;
     }
     
-    // Always fetch fresh data when filters change
+    // Fetch fresh data
+    console.log(`Fetching fresh data for ${key}`);
     const data = await fetchFn();
     
+    // Update cache
     setDataCache(prev => ({
       ...prev,
       [cacheKey]: {
@@ -116,20 +109,15 @@ const ReportsPage = () => {
     }));
     
     return data;
-  }, [dataCache, startDate, endDate, timeRange]); // Add timeRange as dependency
+  }, [startDate, endDate, timeRange, dataCache]);
 
-  // Fix 2: Make fetchReportData depend on filters directly
-  // Update the fetchReportData function to prevent jittering
+  // Optimized fetchReportData with proper loading states
   const fetchReportData = useCallback(async () => {
-    // Don't set loading to true immediately - this is what causes jitter
-    // Instead, keep the old data visible while loading new data in background
-    
     try {
+      // Show loading for cards and charts
+      setChartLoading(true);
       
-      // Generate analytics for the current date range to ensure data availability
-      await generateAnalyticsForCurrentRange(startDate, endDate);
-      
-      // Fetch all data types in parallel
+      // Fetch all data types in parallel from raw attendance data
       const [attendanceData, growthData, ageData, rawData, registeredCount, totalStats] = await Promise.all([
         fetchWithCache('attendance', () => fetchAttendanceData(startDate, endDate)),
         fetchWithCache('growth', () => fetchGrowthData(startDate, endDate)),
@@ -139,8 +127,7 @@ const ReportsPage = () => {
         fetchWithCache('totalStats', () => fetchTotalStats(startDate, endDate)),
       ]);
       
-      
-      // Now set data for each report type all at once
+      // Set data all at once
       setReportData({
         attendance: attendanceData || [],
         growth: growthData || [],
@@ -150,94 +137,118 @@ const ReportsPage = () => {
         totalStats: totalStats
       });
       
-      // Also update chart data in the same render cycle
-      updateChartData(reportType, attendanceData || [], growthData || [], ageData || []);
-      
       // Fetch weekly reports
       await fetchWeeklyReports();
       
-      // Only set loading to false after everything is ready
+      // Turn off all loading states - let the useEffect handle chart updates
       setLoading(false);
     } catch (error) {
       console.error('Error fetching report data:', error);
       setLoading(false);
+      setChartLoading(false);
     }
   }, [startDate, endDate, timeRange, reportType, fetchWithCache]);
 
-  // Fix 3: Update the useEffect to use the memoized fetchReportData
+  // Optimized useEffect with proper debouncing and loading states
   useEffect(() => {
+    const isInitialLoad = reportData.attendance.length === 0 && reportData.growth.length === 0;
     
-    // Set a short loading state only on initial load
-    if (reportData.attendance.length === 0 && reportData.growth.length === 0) {
-      setLoading(true);
-    }
+    // Always show loading when filters change
+    setLoading(true);
+    setChartLoading(true);
     
-    // Use a timeout to prevent rapid filter changes from causing jitter
+    // Debounce filter changes to prevent excessive re-renders
     const timer = setTimeout(() => {
       fetchReportData();
-    }, 300);
+    }, isInitialLoad ? 0 : 500); // No delay for initial load, 500ms for filter changes
     
     return () => clearTimeout(timer);
-  }, [startDate, endDate, timeRange]); // Remove fetchReportData from dependencies to prevent excess renders
+  }, [startDate, endDate, timeRange]); // fetchReportData not included to prevent loop
 
-  // Add another effect for report type changes
+  // Update charts when data is ready or report type changes
   useEffect(() => {
-    // Update chart data when report type changes without refetching all data
-    if (!loading && reportData.attendance.length > 0) {
-      updateChartData(reportType, reportData.attendance, reportData.growth, reportData.age);
-    }
-  }, [reportType]);
-
-  // Function to generate analytics for the current date range
-  const generateAnalyticsForCurrentRange = async (start, end) => {
-    
-    try {
-      const { data, error } = await supabase.rpc('generate_analytics_for_date_range', {
-        p_start_date: start,
-        p_end_date: end
+    // Only update charts if we have data and we're not in the middle of a data fetch
+    if (!loading && (reportData.attendance.length > 0 || reportData.growth.length > 0 || reportData.age.length > 0)) {
+      // Use requestAnimationFrame to ensure DOM is ready
+      const frame = requestAnimationFrame(() => {
+        updateChartData(reportType, reportData.attendance, reportData.growth, reportData.age);
+        setChartLoading(false);
       });
       
-      if (error) {
-        console.error('Error generating analytics:', error);
-        throw error;
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('Failed to generate analytics:', error);
-      throw error;
+      return () => cancelAnimationFrame(frame);
     }
-  };
+  }, [reportType, reportData.attendance, reportData.growth, reportData.age, loading]);
+
+  // NOTE: Analytics are now calculated on-demand from raw attendance data
+  // No need to pre-generate analytics - removed deprecated function
 
   // Fix 4: Update API functions to accept date parameters directly
   const fetchAttendanceData = async (start, end) => {
     
-    // Query from attendance_analytics table
+    // Query RAW attendance data instead of analytics to avoid aggregation issues
     const { data, error } = await supabase
-      .from('attendance_analytics')
+      .from('attendance')
       .select(`
-        report_date,
+        attendance_date,
         service_id,
-        total_attendance,
-        first_timers,
-        services (service_name)
+        child_id,
+        services (service_name),
+        children (
+          child_id,
+          birthdate
+        )
       `)
-      .gte('report_date', start)
-      .lte('report_date', end)
-      .order('report_date', { ascending: true });
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
+      .order('attendance_date', { ascending: true });
 
     if (error) {
       console.error('Error fetching attendance data:', error);
       throw error;
     }
     
+    // Aggregate by date and service to avoid counting duplicates
+    const aggregated = {};
+    const firstTimersByDate = {};
     
-    // Transform to match expected format
-    const result = (data || []).map(record => ({
-      attendance_date: record.report_date,
-      service_name: record.services?.service_name || 'Unknown Service',
-      total_children: record.total_attendance,
-      first_timers: record.first_timers
+    // First pass: collect all children who attended before the start date
+    const { data: historicalData } = await supabase
+      .from('attendance')
+      .select('child_id')
+      .lt('attendance_date', start);
+    
+    const historicalChildren = new Set(historicalData?.map(r => r.child_id) || []);
+    
+    // Second pass: aggregate by date and service
+    (data || []).forEach(record => {
+      const date = record.attendance_date;
+      const service = record.services?.service_name || 'Unknown';
+      const key = `${date}_${service}`;
+      
+      if (!aggregated[key]) {
+        aggregated[key] = {
+          attendance_date: date,
+          service_name: service,
+          children: new Set(),
+          firstTimers: new Set()
+        };
+      }
+      
+      const childId = record.child_id;
+      aggregated[key].children.add(childId);
+      
+      // Check if this is a first-timer
+      if (!historicalChildren.has(childId)) {
+        aggregated[key].firstTimers.add(childId);
+      }
+    });
+    
+    // Transform to expected format
+    const result = Object.values(aggregated).map(agg => ({
+      attendance_date: agg.attendance_date,
+      service_name: agg.service_name,
+      total_children: agg.children.size,
+      first_timers: agg.firstTimers.size
     }));
     
     return result;
@@ -253,6 +264,7 @@ const ReportsPage = () => {
           first_name,
           last_name,
           gender,
+          birthdate,
           age_category_id,
           age_categories (category_name)
         ),
@@ -268,52 +280,137 @@ const ReportsPage = () => {
     return data || [];
   };
 
+  // Fetch ALL historical attendance data for calculating attendance patterns
+  const fetchAllAttendanceHistory = async () => {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000; // Fetch in batches
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`
+          child_id,
+          attendance_date
+        `)
+        .order('attendance_date', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (error) {
+        console.error('Error fetching attendance history page', page, ':', error);
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        allData = allData.concat(data);
+        page++;
+        hasMore = data.length === pageSize; // Continue if we got a full page
+      } else {
+        hasMore = false;
+      }
+    }
+
+    console.log(`Fetched ${allData.length} total attendance records for pattern analysis`);
+    return allData;
+  };
+
   const fetchGrowthData = async (start, end) => {
     
-    // Query from attendance_analytics table grouped by month
+    // Query raw attendance data with service information
     const { data, error } = await supabase
-      .from('attendance_analytics')
+      .from('attendance')
       .select(`
-        *,
+        attendance_date,
+        child_id,
+        service_id,
         services (service_name)
       `)
-      .gte('report_date', start)
-      .lte('report_date', end)
-      .order('report_date', { ascending: true });
+      .gte('attendance_date', start)
+      .lte('attendance_date', end)
+      .order('attendance_date', { ascending: true });
 
     if (error) {
       console.error('Error fetching growth data:', error);
       throw error;
     }
     
-    
-    if (data && data.length > 0) {
-      // Data validation successful
+    if (!data || data.length === 0) {
+      return [];
     }
     
-    // Use individual records instead of grouping to preserve growth percentages
-    const result = (data || []).map(record => {
-      const growthValue = record.attendance_growth_percent;
+    // Determine grouping strategy based on date range
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    
+    // Use weekly grouping for short ranges (< 60 days), monthly for longer
+    const useWeeklyGrouping = daysDiff < 60;
+    
+    // Group data by appropriate time period and service
+    const periodData = {};
+    
+    data.forEach(record => {
+      let periodKey;
+      if (useWeeklyGrouping) {
+        // Group by week (ISO week: Sunday to Saturday)
+        const date = new Date(record.attendance_date);
+        const sunday = new Date(date);
+        sunday.setDate(date.getDate() - date.getDay()); // Go back to Sunday
+        periodKey = sunday.toISOString().split('T')[0]; // Use Sunday's date as key
+      } else {
+        // Group by month
+        periodKey = record.attendance_date.substring(0, 7); // YYYY-MM
+      }
       
-      // Try multiple ways to parse the growth value
-      let parsedGrowth = 0;
-      if (growthValue !== null && growthValue !== undefined) {
-        if (typeof growthValue === 'string') {
-          parsedGrowth = parseFloat(growthValue);
-        } else if (typeof growthValue === 'number') {
-          parsedGrowth = growthValue;
-        }
+      const serviceName = record.services?.service_name || 'Unknown';
+      const key = `${periodKey}_${serviceName}`;
+      
+      if (!periodData[key]) {
+        periodData[key] = {
+          period: periodKey,
+          service_name: serviceName,
+          children: new Set(),
+          dates: new Set()
+        };
+      }
+      
+      periodData[key].children.add(record.child_id);
+      periodData[key].dates.add(record.attendance_date);
+    });
+    
+    // Convert to array and calculate attendance
+    const periodStats = Object.values(periodData).map(item => ({
+      period: item.period,
+      service_name: item.service_name,
+      attendance: item.children.size,
+      total_checkins: item.dates.size
+    }));
+    
+    // Sort by period\n    periodStats.sort((a, b) => a.period.localeCompare(b.period));
+    
+    // Calculate growth percentages by comparing to previous period for each service
+    const result = periodStats.map((current, index) => {
+      // Find previous period data for the same service
+      const previous = periodStats
+        .filter(m => m.service_name === current.service_name && m.period < current.period)
+        .sort((a, b) => b.period.localeCompare(a.period))[0];
+      
+      let growth_percent = 0;
+      if (previous && previous.attendance > 0) {
+        growth_percent = ((current.attendance - previous.attendance) / previous.attendance) * 100;
       }
       
       return {
-        month: record.report_date.substring(0, 7), // YYYY-MM
-        service_name: record.services?.service_name || 'Unknown',
-        monthly_attendance: record.total_attendance,
-        new_registrations: record.first_timers,
-        growth_percent: parsedGrowth
+        month: current.period, // Keep as 'month' for compatibility but can be week or month
+        service_name: current.service_name,
+        monthly_attendance: current.attendance,
+        new_registrations: 0, // Would need separate registration tracking
+        growth_percent: Math.round(growth_percent * 10) / 10, // Round to 1 decimal
+        period_type: useWeeklyGrouping ? 'week' : 'month'
       };
     }).sort((a, b) => {
-      // Sort by month first, then by service name
+      // Sort by period first, then by service name
       if (a.month !== b.month) {
         return a.month.localeCompare(b.month);
       }
@@ -325,68 +422,75 @@ const ReportsPage = () => {
 
   const fetchAgeDistributionData = async (start, end) => {
     
-    // Query from attendance_analytics table
+    // Query raw attendance data with children's birthdates
     const { data, error } = await supabase
-      .from('attendance_analytics')
+      .from('attendance')
       .select(`
-        report_date,
+        attendance_date,
         service_id,
-        age_4_5_count,
-        age_6_7_count,
-        age_8_9_count,
-        age_10_12_count,
-        services (service_name)
+        child_id,
+        services (service_name),
+        children (
+          birthdate
+        )
       `)
-      .gte('report_date', start)
-      .lte('report_date', end);
+      .gte('attendance_date', start)
+      .lte('attendance_date', end);
 
     if (error) {
       console.error('Error fetching age data:', error);
       throw error;
     }
     
+    // Calculate age and aggregate by date, service, and age category
+    const aggregated = {};
+    
+    (data || []).forEach(record => {
+      const date = record.attendance_date;
+      const serviceName = record.services?.service_name || 'Unknown';
+      const birthdate = record.children?.birthdate;
+      
+      if (!birthdate) return;
+      
+      // Calculate age at time of attendance
+      const attendanceDate = new Date(date);
+      const birth = new Date(birthdate);
+      let age = attendanceDate.getFullYear() - birth.getFullYear();
+      const monthDiff = attendanceDate.getMonth() - birth.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && attendanceDate.getDate() < birth.getDate())) {
+        age--;
+      }
+      
+      // Determine age category
+      let category = null;
+      if (age >= 4 && age <= 5) category = '4-5 YO';
+      else if (age >= 6 && age <= 7) category = '6-7 YO';
+      else if (age >= 8 && age <= 9) category = '8-9 YO';
+      else if (age >= 10 && age <= 12) category = '10-12 YO';
+      
+      if (!category) return;
+      
+      const key = `${date}_${serviceName}_${category}`;
+      
+      if (!aggregated[key]) {
+        aggregated[key] = {
+          attendance_date: date,
+          service_name: serviceName,
+          age_category: category,
+          children: new Set()
+        };
+      }
+      
+      aggregated[key].children.add(record.child_id);
+    });
     
     // Transform to expected format
-    const ageData = [];
-    (data || []).forEach(record => {
-      const serviceName = record.services?.service_name || 'Unknown';
-      
-      if (record.age_4_5_count > 0) {
-        ageData.push({
-          attendance_date: record.report_date,
-          service_name: serviceName,
-          age_category: '4-5 YO',
-          count: record.age_4_5_count
-        });
-      }
-      
-      if (record.age_6_7_count > 0) {
-        ageData.push({
-          attendance_date: record.report_date,
-          service_name: serviceName,
-          age_category: '6-7 YO',
-          count: record.age_6_7_count
-        });
-      }
-      
-      if (record.age_8_9_count > 0) {
-        ageData.push({
-          attendance_date: record.report_date,
-          service_name: serviceName,
-          age_category: '8-9 YO',
-          count: record.age_8_9_count
-        });
-      }
-      
-      if (record.age_10_12_count > 0) {
-        ageData.push({
-          attendance_date: record.report_date,
-          service_name: serviceName,
-          age_category: '10-12 YO',
-          count: record.age_10_12_count
-        });
-      }
-    });
+    const ageData = Object.values(aggregated).map(agg => ({
+      attendance_date: agg.attendance_date,
+      service_name: agg.service_name,
+      age_category: agg.age_category,
+      count: agg.children.size
+    }));
     
     return ageData;
   };
@@ -414,7 +518,7 @@ const ReportsPage = () => {
   const fetchTotalStats = async (start = null, end = null) => {
     
     try {
-      // Get total children count (filtered by registration date if date range provided)
+      // Get total registered children count (filtered by registration date if date range provided)
       let childrenQuery = supabase.from('children').select('*', { count: 'exact', head: true });
       
       if (start && end) {
@@ -423,7 +527,7 @@ const ReportsPage = () => {
           .lte('registration_date', end);
       }
       
-      const { count: totalChildren, error: childrenError } = await childrenQuery;
+      const { count: newRegistrations, error: childrenError } = await childrenQuery;
         
       if (childrenError) throw childrenError;
       
@@ -440,27 +544,52 @@ const ReportsPage = () => {
         
       if (attendanceError) throw attendanceError;
       
-      // Get unique children count for the date range
-      let uniqueChildrenQuery = supabase.from('attendance').select('child_id', { count: 'exact', head: true });
+      // Get unique children who attended in the date range (DISTINCT count)
+      let uniqueChildrenData = await supabase
+        .from('attendance')
+        .select('child_id')
+        .gte('attendance_date', start)
+        .lte('attendance_date', end);
       
-      if (start && end) {
-        uniqueChildrenQuery = uniqueChildrenQuery
-          .gte('attendance_date', start)
-          .lte('attendance_date', end);
-      }
+      if (uniqueChildrenData.error) throw uniqueChildrenData.error;
       
-      const { count: uniqueChildren, error: uniqueError } = await uniqueChildrenQuery;
+      const uniqueChildrenSet = new Set(uniqueChildrenData.data?.map(r => r.child_id) || []);
+      const uniqueChildren = uniqueChildrenSet.size;
       
-      if (uniqueError) throw uniqueError;
+      // Calculate first-time attendees (children who never attended before the start date)
+      // Get all children who attended in the range
+      let currentAttendance = await supabase
+        .from('attendance')
+        .select('child_id')
+        .gte('attendance_date', start)
+        .lte('attendance_date', end);
+      
+      if (currentAttendance.error) throw currentAttendance.error;
+      
+      const childrenInRange = new Set(currentAttendance.data?.map(r => r.child_id) || []);
+      
+      // Get all children who attended BEFORE the start date
+      let previousAttendance = await supabase
+        .from('attendance')
+        .select('child_id')
+        .lt('attendance_date', start);
+      
+      if (previousAttendance.error) throw previousAttendance.error;
+      
+      const childrenBefore = new Set(previousAttendance.data?.map(r => r.child_id) || []);
+      
+      // First-timers are children in range who were NOT in the previous attendance
+      const firstTimers = new Set([...childrenInRange].filter(id => !childrenBefore.has(id)));
       
       return {
-        totalChildren: totalChildren || 0,
+        newRegistrations: newRegistrations || 0,
         totalAttendance: totalAttendance || 0,
-        uniqueChildren: uniqueChildren || 0
+        uniqueChildren: uniqueChildren,
+        firstTimers: firstTimers.size
       };
     } catch (err) {
       console.error('Error fetching total stats:', err);
-      return { totalChildren: 0, totalAttendance: 0, uniqueChildren: 0 };
+      return { newRegistrations: 0, totalAttendance: 0, uniqueChildren: 0, firstTimers: 0 };
     }
   };
 
@@ -476,36 +605,9 @@ const ReportsPage = () => {
       
       console.log('Fetched weekly reports from Supabase:', data);
       
-      // Convert Firebase storage paths to download URLs
-      if (data && data.length > 0) {
-        const reportsWithUrls = await Promise.all(
-          data.map(async (report) => {
-            if (report.report_pdf_url) {
-              console.log('Processing report:', report.report_id, 'URL:', report.report_pdf_url);
-              
-              // Check if it's a Firebase storage path (not already a full URL)
-              if (report.report_pdf_url.startsWith('NextGen/')) {
-                try {
-                  console.log('Converting storage path to download URL:', report.report_pdf_url);
-                  const storageRef = ref(storage, report.report_pdf_url);
-                  const downloadUrl = await getDownloadURL(storageRef);
-                  console.log('Download URL obtained:', downloadUrl);
-                  return { ...report, report_pdf_url: downloadUrl };
-                } catch (err) {
-                  console.error('Error getting download URL for report:', report.report_id, err);
-                  return report; // Return original if error
-                }
-              }
-            }
-            return report;
-          })
-        );
-        console.log('Reports with converted URLs:', reportsWithUrls);
-        setWeeklyReports(reportsWithUrls);
-        console.log('State updated. First report URL:', reportsWithUrls[0]?.report_pdf_url);
-      } else {
-        setWeeklyReports(data || []);
-      }
+      // No URL conversion needed - the database now stores full Firebase URLs
+      setWeeklyReports(data || []);
+      
     } catch (err) {
       console.error('Error fetching weekly reports:', err);
       setWeeklyReports([]);
@@ -517,6 +619,10 @@ const ReportsPage = () => {
 
   // Update your handleGenerateReport function to include PDF generation
   const handleGenerateReport = async () => {
+    const loadingToastId = toast.loading('Generating Weekly Report...', {
+      description: 'Creating analytics and generating PDF with charts'
+    });
+
     try {
       setLoading(true);
       
@@ -527,28 +633,41 @@ const ReportsPage = () => {
         throw new Error('Unable to identify current staff member');
       }
       
-      // Generate the weekly analytics in the database
-      const { data, error } = await supabase.rpc('generate_weekly_analytics');
+      // Calculate current week's date range (Sunday to Saturday)
+      const today = new Date();
+      const currentDay = today.getDay();
+      const weekStartDate = new Date(today);
+      weekStartDate.setDate(today.getDate() - currentDay); // Go back to Sunday
+      weekStartDate.setHours(0, 0, 0, 0);
       
-      if (error) throw error;
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setDate(weekStartDate.getDate() + 6); // Saturday
+      weekEndDate.setHours(23, 59, 59, 999);
       
-      // Get the most recently created report and update with current staff_id
-      const { data: reportData, error: reportError } = await supabase
+      // Calculate stats from raw attendance data
+      const stats = await fetchTotalStats(
+        weekStartDate.toISOString().split('T')[0],
+        weekEndDate.toISOString().split('T')[0]
+      );
+      
+      // Create a new weekly_reports record with calculated stats
+      const { data: newReport, error: insertError } = await supabase
         .from('weekly_reports')
-        .select('report_id, week_start_date, week_end_date, report_generated_by')
-        .order('report_id', { ascending: false })
-        .limit(1);
-        
-      if (reportError) throw reportError;
+        .insert({
+          week_start_date: weekStartDate.toISOString().split('T')[0],
+          week_end_date: weekEndDate.toISOString().split('T')[0],
+          total_attendance: stats.totalAttendance || 0,
+          unique_children: stats.uniqueChildren || 0,
+          first_timers: stats.firstTimers || 0,
+          report_generated_by: currentStaffId
+        })
+        .select('report_id, week_start_date, week_end_date')
+        .single();
       
-      if (reportData && reportData.length > 0) {
-        const report = reportData[0];
-        
-        // Update the report with the current user's staff_id
-        await supabase
-          .from('weekly_reports')
-          .update({ report_generated_by: currentStaffId })
-          .eq('report_id', report.report_id);
+      if (insertError) throw insertError;
+      
+      if (newReport) {
+        const report = newReport;
         
         // Get the start/end dates from the newly created report
         const startDate = report.week_start_date;
@@ -568,6 +687,7 @@ const ReportsPage = () => {
           fetchRawAttendanceData,
           fetchGrowthData,
           fetchWithCache,
+          fetchAllAttendanceHistory,  // Pass the new function for ALL historical data
           true  // Always attempt to capture charts from canvas
         );
       }
@@ -578,18 +698,18 @@ const ReportsPage = () => {
       // Increment report refresh trigger to update the WeeklyReportsList
       setReportRefreshTrigger(prev => prev + 1);
       
-      Swal.fire({
-        icon: 'success',
+      toast.update(loadingToastId, {
+        variant: 'success',
         title: 'Success!',
-        text: 'Weekly report generated and PDF created successfully',
-        confirmButtonColor: '#30cee4'
+        description: 'Weekly report generated and PDF created successfully',
+        duration: 5000
       });
     } catch (error) {      
-      Swal.fire({
-        icon: 'error',
+      toast.update(loadingToastId, {
+        variant: 'destructive',
         title: 'Error',
-        text: `Error generating report: ${error.message}`,
-        confirmButtonColor: '#30cee4'
+        description: `Error generating report: ${error.message}`,
+        duration: 5000
       });
     } finally {
       setLoading(false);
@@ -662,11 +782,8 @@ const ReportsPage = () => {
     }
     
     if (!dataToExport || dataToExport.length === 0) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'No Data',
-        text: 'There is no data available to export',
-        confirmButtonColor: '#30cee4'
+      toast.warning('No Data', {
+        description: 'There is no data available to export'
       });
       return;
     }
@@ -693,13 +810,9 @@ const ReportsPage = () => {
     document.body.removeChild(link);
     
     // Show success notification
-    Swal.fire({
-      icon: 'success',
-      title: 'Export Complete',
-      text: `Data exported to ${filename}`,
-      timer: 1500,
-      timerProgressBar: true,
-      showConfirmButton: false
+    toast.success('Export Complete', {
+      description: `Data exported to ${filename}`,
+      duration: 1500
     });
   };
 
@@ -1376,15 +1489,15 @@ const ReportsPage = () => {
             </svg>
           </div>
           <div className="ml-5">
-            <p className="text-sm font-medium text-gray-500">Children</p>
+            <p className="text-sm font-medium text-gray-500">Unique Children</p>
             <p className="text-2xl font-semibold text-nextgen-blue-dark">
               {loading ? (
                 <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
               ) : (
-                reportData.totalStats?.totalChildren || 0
+                reportData.totalStats?.uniqueChildren || 0
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">In date range</p>
+            <p className="text-xs text-gray-500 mt-1">Who attended</p>
           </div>
         </div>
       </div>
@@ -1411,10 +1524,10 @@ const ReportsPage = () => {
               {loading ? (
                 <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
               ) : (
-                reportData.registeredCount || 0
+                reportData.totalStats?.firstTimers || 0
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">New registrations</p>
+            <p className="text-xs text-gray-500 mt-1">Never attended before</p>
           </div>
         </div>
       </div>
@@ -1441,10 +1554,10 @@ const ReportsPage = () => {
               {loading ? (
                 <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
               ) : (
-                reportData.attendance?.reduce((sum, item) => sum + item.total_children, 0) || 0
+                reportData.totalStats?.totalAttendance || 0
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">In date range</p>
+            <p className="text-xs text-gray-500 mt-1">Check-ins recorded</p>
           </div>
         </div>
       </div>
@@ -1499,9 +1612,9 @@ const ReportsPage = () => {
                           <p className="text-sm text-gray-500">How frequently children attend services</p>
                         </div>
                         
-                        {loading || !reportData.raw?.length ? (
+                        {chartLoading || !reportData.raw?.length ? (
                           <div className="flex justify-center items-center h-64">
-                            {loading ? (
+                            {chartLoading ? (
                               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
                             ) : (
                               <p className="text-gray-500">No attendance data available</p>
@@ -1568,9 +1681,9 @@ const ReportsPage = () => {
                           <p className="text-sm text-gray-500">Attendance and growth by service</p>
                         </div>
                         
-                        {loading || !reportData.growth?.length ? (
+                        {chartLoading || !reportData.growth?.length ? (
                           <div className="flex justify-center items-center h-64">
-                            {loading ? (
+                            {chartLoading ? (
                               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
                             ) : (
                               <p className="text-gray-500">No service data available</p>
@@ -1751,7 +1864,9 @@ const ReportsPage = () => {
                                             window.open(urlToOpen, '_blank', 'noopener,noreferrer');
                                           } catch (error) {
                                             console.error('Error opening PDF:', error);
-                                            alert('Error opening PDF. Please try again.');
+                                            toast.error('PDF Error', {
+                                              description: 'Unable to open PDF. Please try again.'
+                                            });
                                           }
                                         }}
                                         className="text-nextgen-blue hover:text-nextgen-blue-dark flex items-center cursor-pointer"
@@ -1807,7 +1922,7 @@ const ReportsPage = () => {
                     reportType === 'growth' ? 'Growth Trend Analysis' : 'Age Distribution'}
                   </h3>
                   
-                  {loading ? (
+                  {chartLoading ? (
                     <div className="flex justify-center py-12">
                       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-nextgen-blue"></div>
                     </div>

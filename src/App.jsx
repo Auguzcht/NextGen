@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { NavigationProvider, useNavigation } from './context/NavigationContext.jsx';
+import { ToastProvider } from './components/ui';
 import LoadingScreen from './components/common/LoadingScreen.jsx';
 import ChangelogModal from './components/common/ChangelogModal.jsx';
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
@@ -10,7 +11,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
-import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CURRENT_VERSION, shouldShowChangelog, markChangelogAsShown } from './utils/changelog.js';
 import AIChatWidget from './components/ai/AIChatWidget.jsx';
@@ -216,12 +216,19 @@ const RedirectHandler = () => {
 };
 
 function AppContent() {
-  const { loading, initialized } = useAuth();
+  const authContext = useAuth();
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Handle case where auth context is not ready
+  if (!authContext) {
+    return <LoadingScreen isInitialLoadingComplete={false} />;
+  }
+  
+  const { loading } = authContext;
   
   // Only show loading screen once during initial auth initialization
   useEffect(() => {
-    if (initialized && !initialLoadComplete) {
+    if (!loading && !initialLoadComplete) {
       // Give a brief moment for auth to settle
       const timer = setTimeout(() => {
         setInitialLoadComplete(true);
@@ -229,7 +236,7 @@ function AppContent() {
       
       return () => clearTimeout(timer);
     }
-  }, [initialized, initialLoadComplete]);
+  }, [loading, initialLoadComplete]);
   
   // Show initial loading screen ONLY during first load
   if (!initialLoadComplete) {
@@ -318,31 +325,10 @@ function App() {
   return (
     <Router basename={basePath}>
       <AuthProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </AuthProvider>
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          // Optional: customize your toast styles
-          duration: 4000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
-          success: {
-            duration: 3000,
-            theme: {
-              primary: '#4aed88',
-            },
-          },
-          error: {
-            duration: 5000,
-            theme: {
-              primary: '#ff4b4b',
-            },
-          },
-        }} 
-      />
     </Router>
   );
 }

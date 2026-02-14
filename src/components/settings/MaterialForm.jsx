@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import supabase from '../../services/supabase.js';
 import googleDrive from '../../services/googleDrive.js';
 import FileUpload, { MultiFileUpload } from '../common/FileUpload.jsx';
-import { Input, Button, Badge } from '../ui';
+import { Input, Button, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, ageCategories = [] }) => {
+  const { toast } = useToast();
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [formData, setFormData] = useState(() => {
     if (isEdit && initialData) {
       return {
@@ -183,20 +184,7 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
     
     // Only prompt if there's data AND it's not editing an existing material
     if (hasData && !isEdit) {
-      Swal.fire({
-        title: 'Discard Changes?',
-        text: 'Any unsaved changes will be lost.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, discard',
-        cancelButtonText: 'No, keep editing'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          onClose();
-        }
-      });
+      setShowDiscardDialog(true);
       return; // Don't close yet - wait for user response
     }
     
@@ -204,14 +192,17 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
     onClose();
   };
 
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Please check all required fields', {
+        description: 'Validation Error'
       });
       return;
     }
@@ -226,16 +217,6 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
       if (uploadMethod === 'upload' && stagedFiles.length > 0) {
         // Create folder name from material title
         const folderName = formData.title.trim();
-        
-        // Show progress
-        Swal.fire({
-          title: 'Uploading to Google Drive...',
-          html: `Uploading ${stagedFiles.length} file(s) to folder: <strong>${folderName}</strong>`,
-          allowOutsideClick: false,
-          didOpen: () => {
-            Swal.showLoading();
-          }
-        });
 
         // Create the folder first (only once for all files)
         const folder = await googleDrive.createFolder(folderName);
@@ -267,8 +248,6 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
         
         // Store the folder URL (all files are in this one folder)
         finalFileUrl = `https://drive.google.com/drive/folders/${folderId}`;
-        
-        Swal.close();
       } else if (uploadMethod === 'upload' && existingFiles.length > 0 && stagedFiles.length === 0) {
         // Keep existing files if no new files uploaded
         finalFileUrl = formData.file_url;
@@ -295,11 +274,8 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Material has been updated successfully.',
-          timer: 1500
+        toast.success('Material has been updated successfully', {
+          description: 'Updated!'
         });
       } else {
         // Create new material
@@ -309,11 +285,8 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Added!',
-          text: `Material "${formData.title}" has been added successfully.`,
-          timer: 1500
+        toast.success(`Material "${formData.title}" has been added successfully`, {
+          description: 'Added!'
         });
       }
       
@@ -321,10 +294,8 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
       if (onClose) onClose();
     } catch (error) {
       console.error('Error saving material:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save material'
+      toast.error(error.message || 'Failed to save material', {
+        description: 'Error'
       });
     } finally {
       setIsSaving(false);
@@ -503,10 +474,8 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
                         handleMultipleFilesStaged(filesData);
                       }}
                       onUploadError={(error) => {
-                        Swal.fire({
-                          icon: 'error',
-                          title: 'Upload Error',
-                          text: error.message
+                        toast.error(error.message, {
+                          description: 'Upload Error'
                         });
                       }}
                       accept="*/*"
@@ -757,6 +726,26 @@ const MaterialForm = ({ onClose, onSuccess, isEdit = false, initialData = null, 
           </div>
         </div>
       </motion.div>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDiscardDialog(false)}>
+              No, keep editing
+            </Button>
+            <Button variant="danger" onClick={confirmDiscard}>
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

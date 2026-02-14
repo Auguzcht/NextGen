@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Input } from '../ui';
+import { Button, Input, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { createPortal } from 'react-dom';
 
 const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
@@ -81,18 +82,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
                      formData.location.trim() !== '';
       
       if (hasData) {
-        Swal.fire({
-          title: 'Discard Changes?',
-          text: 'Any unsaved changes will be lost.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Yes, discard',
-          cancelButtonText: 'No, keep editing'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            onClose();
-          }
-        });
+        setShowDiscardDialog(true);
       } else {
         onClose();
       }
@@ -101,14 +91,17 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
     }
   };
 
+  const confirmDiscard = () => {
+    setShowDiscardDialog(false);
+    onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Please check all required fields', {
+        description: 'Validation Error'
       });
       return;
     }
@@ -131,11 +124,8 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Service has been updated successfully.',
-          timer: 1500
+        toast.success('Service has been updated successfully', {
+          description: 'Updated!'
         });
       } else {
         const { error } = await supabase
@@ -151,11 +141,8 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
         
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Added!',
-          text: 'Service has been added successfully.',
-          timer: 1500
+        toast.success('Service has been added successfully', {
+          description: 'Added!'
         });
       }
       
@@ -163,10 +150,8 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
       if (onClose) onClose();
     } catch (error) {
       console.error('Error saving service:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save service'
+      toast.error(error.message || 'Failed to save service', {
+        description: 'Error'
       });
     } finally {
       setIsSaving(false);
@@ -362,6 +347,26 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
           </div>
         </div>
       </motion.div>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDiscardDialog(false)}>
+              No, keep editing
+            </Button>
+            <Button variant="danger" onClick={confirmDiscard}>
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

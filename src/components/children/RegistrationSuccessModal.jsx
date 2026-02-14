@@ -1,30 +1,28 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Button, Modal } from '../ui';
+import { Button, Modal, useToast } from '../ui';
 import QRCode from '../common/QRCode';
 import PropTypes from 'prop-types';
-import Swal from 'sweetalert2';
 
 const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => {
+  const { toast } = useToast();
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   
   if (!childData) return null;
 
   const handleSendEmail = async () => {
     if (!childData.guardianEmail) {
-      await Swal.fire({
-        icon: 'error',
-        title: 'No Email Address',
-        text: 'Guardian email address is not available.',
-        confirmButtonColor: '#30CEE4',
-        customClass: {
-          container: 'swal-high-z-index'
-        }
+      toast.error('No Email Address', {
+        description: 'Guardian email address is not available.'
       });
       return;
     }
 
     setIsSendingEmail(true);
+
+    const loadingToastId = toast.loading('Sending QR Code Email...', {
+      description: `Sending QR code to ${childData.guardianEmail}`
+    });
 
     try {
       const response = await fetch('/api/email/send-child-qr', {
@@ -47,28 +45,22 @@ const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => 
       const result = await response.json();
 
       if (response.ok && result.success) {
-        await Swal.fire({
-          icon: 'success',
+        toast.update(loadingToastId, {
+          variant: 'success',
           title: 'Email Sent!',
-          text: `QR code has been sent to ${childData.guardianEmail}`,
-          confirmButtonColor: '#30CEE4',
-          customClass: {
-            container: 'swal-high-z-index'
-          }
+          description: `QR code has been sent to ${childData.guardianEmail}`,
+          duration: 5000
         });
       } else {
         throw new Error(result.error || 'Failed to send email');
       }
     } catch (error) {
       console.error('Error sending email:', error);
-      await Swal.fire({
-        icon: 'error',
+      toast.update(loadingToastId, {
+        variant: 'destructive',
         title: 'Failed to Send',
-        text: 'Could not send email. Please try again later.',
-        confirmButtonColor: '#30CEE4',
-        customClass: {
-          container: 'swal-high-z-index'
-        }
+        description: 'Could not send email. Please try again later.',
+        duration: 5000
       });
     } finally {
       setIsSendingEmail(false);

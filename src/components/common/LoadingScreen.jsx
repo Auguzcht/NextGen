@@ -17,7 +17,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (!isExiting) {
-        console.log('LoadingScreen - Safety timeout triggered, forcing exit');
+        // console.log('LoadingScreen - Safety timeout triggered, forcing exit');
         setForceExit(true);
         setIsExiting(true);
         finishLoading && finishLoading();
@@ -46,7 +46,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   // Exit strategy based on auth state
   const handleAuthBasedExit = useCallback(() => {
     if (initialized) {
-      console.log('LoadingScreen - Auth initialized, preparing to exit');
+      // console.log('LoadingScreen - Auth initialized, preparing to exit');
       
       // Faster exit - no delay needed
       setIsExiting(true);
@@ -64,7 +64,7 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
     // If not initialized after reasonable time, force it
     const forcedInitTimer = setTimeout(() => {
       if (!initialized) {
-        console.log('LoadingScreen - Forcing initialization after delay');
+        // console.log('LoadingScreen - Forcing initialization after delay');
         setIsExiting(true);
         finishLoading && finishLoading();
       }

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { Card, Button, Alert, Badge } from '../components/ui';
+import { Card, Button, Badge, AlertNew, AlertTitle, AlertDescription } from '../components/ui';
 import { motion } from 'framer-motion';
 
 const Dashboard = () => {
@@ -234,29 +234,31 @@ const Dashboard = () => {
     }
   };
 
-  // Get staff name from email
-  const getStaffNameFromEmail = (email) => {
-    if (!email) return 'Unknown';
-    // Try to get name from email (before @)
-    const namePart = email.split('@')[0];
-    // Format it with proper capitalization
-    return namePart
-      .split('.')
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ');
+  // Get staff name - handles both email addresses (old data) and full names (new data)
+  const getStaffName = (value) => {
+    if (!value) return 'Unknown';
+    
+    // If it's an email address (contains @), convert it to a readable name
+    if (value.includes('@')) {
+      const emailPart = value.split('@')[0];
+      // Split by dots or underscores and capitalize each part
+      const nameParts = emailPart.split(/[._]/).map(part => 
+        part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      );
+      return nameParts.join(' ');
+    }
+    
+    // Otherwise, return the name as-is (it's already a full name)
+    return value;
   };
 
   return (
     <div className="page-container">
       {error && (
-        <Alert 
-          variant="error" 
-          title="Error" 
-          dismissible 
-          className="mb-6"
-        >
-          {error}
-        </Alert>
+        <AlertNew variant="destructive" className="mb-6">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </AlertNew>
       )}
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -521,7 +523,7 @@ const Dashboard = () => {
                           {formatTime(activity.check_in_time)}
                         </span>
                         <span className="text-xs text-gray-500">
-                          by {getStaffNameFromEmail(activity.checked_in_by)}
+                          by {getStaffName(activity.checked_in_by)}
                         </span>
                       </>
                     ) : (

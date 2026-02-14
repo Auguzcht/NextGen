@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast } from '../ui';
 import { motion } from 'framer-motion';
 
 const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredentials }) => {
+  const { toast } = useToast();
   const [updatingId, setUpdatingId] = useState(null);
 
   const toggleActiveStatus = async (staffId, currentStatus) => {
@@ -19,7 +20,9 @@ const StaffList = ({ staffMembers, onRefresh, onView, onEdit, onCreateCredential
       onRefresh();
     } catch (error) {
       console.error('Error updating staff status:', error);
-      alert(`Error updating staff status: ${error.message}`);
+      toast.error('Status Update Failed', {
+        description: error.message || 'Failed to update staff status. Please try again.'
+      });
     } finally {
       setUpdatingId(null);
     }

@@ -17,6 +17,7 @@ import { formatDate } from './dateUtils.js';
  * @param {Function} fetchRawAttendanceData - Function to fetch raw attendance data
  * @param {Function} fetchGrowthData - Function to fetch growth data
  * @param {Function} fetchWithCache - Function to fetch data with caching
+ * @param {Function} fetchAllAttendanceHistory - Function to fetch ALL historical attendance data (for patterns)
  * @param {boolean} shouldCaptureCharts - Whether to attempt canvas chart capture
  * @returns {Promise<string>} The URL of the uploaded PDF
  */
@@ -32,6 +33,7 @@ export const generateWeeklyReportPDF = async (
   fetchRawAttendanceData,
   fetchGrowthData,
   fetchWithCache,
+  fetchAllAttendanceHistory,
   shouldCaptureCharts = false
 ) => {
   try {
@@ -313,79 +315,159 @@ export const generateWeeklyReportPDF = async (
       console.log('Chart capture disabled, using fallback charts');
     }
     
-    // Process service breakdown from analytics data
+    // ==========================================
+    // FIXED AGGREGATION: Process from RAW attendance data
+    // ==========================================
     const serviceData = {};
     let totalAttendance = 0;
     let uniqueChildren = new Set();
+    let firstTimeAttendees = new Set();
     
-    // Aggregate attendance and first timers from attendanceData (analytics)
-    if (attendanceData) {
-      attendanceData.forEach(record => {
-        const serviceName = record.service_name || 'Unknown';
-        if (!serviceData[serviceName]) {
-          serviceData[serviceName] = { 
-            attendance: 0, 
-            firstTimers: 0,
-            age4_5: 0,
-            age6_7: 0,
-            age8_9: 0,
-            age10_12: 0
-          };
-        }
-        
-        serviceData[serviceName].attendance += record.total_children || 0;
-        serviceData[serviceName].firstTimers += record.first_timers || 0;
-        totalAttendance += record.total_children || 0;
-      });
-    }
+    // Helper function to calculate age from birthdate
+    const calculateAge = (birthdate, referenceDate) => {
+      if (!birthdate) return null;
+      const birth = new Date(birthdate);
+      const reference = new Date(referenceDate);
+      let age = reference.getFullYear() - birth.getFullYear();
+      const monthDiff = reference.getMonth() - birth.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && reference.getDate() < birth.getDate())) {
+        age--;
+      }
+      return age;
+    };
     
-    // Aggregate age distribution from ageData
-    if (ageData) {
-      ageData.forEach(record => {
-        const serviceName = record.service_name || 'Unknown';
-        if (!serviceData[serviceName]) {
-          serviceData[serviceName] = { 
-            attendance: 0, 
-            firstTimers: 0,
-            age4_5: 0,
-            age6_7: 0,
-            age8_9: 0,
-            age10_12: 0
-          };
-        }
-        
-        const ageCategory = record.age_category;
-        const count = record.count || 0;
-        
-        if (ageCategory.includes('4-5')) {
-          serviceData[serviceName].age4_5 += count;
-        } else if (ageCategory.includes('6-7')) {
-          serviceData[serviceName].age6_7 += count;
-        } else if (ageCategory.includes('8-9')) {
-          serviceData[serviceName].age8_9 += count;
-        } else if (ageCategory.includes('10-12')) {
-          serviceData[serviceName].age10_12 += count;
-        }
-      });
-    }
-    
-    // Count unique children from rawData
-    if (rawData) {
-      rawData.forEach(item => {
-        uniqueChildren.add(item.child_id);
-      });
-    }
-    
-    console.log('Processed service data:', serviceData);
-    
-    // Process attendance patterns - look at ALL attendance, not just this week
-    const childAttendanceMap = {};
-    if (rawData) {
+    // Aggregate everything from rawData (single source of truth)
+    if (rawData && rawData.length > 0) {
+      console.log(`Processing ${rawData.length} raw attendance records for the week...`);
+      
       rawData.forEach(record => {
+        const serviceName = record.services?.service_name || 'Unknown';
+        const childId = record.children?.child_id || record.child_id;
+        const birthdate = record.children?.birthdate;
+        const attendanceDate = record.attendance_date;
+        
+        // Initialize service data structure
+        if (!serviceData[serviceName]) {
+          serviceData[serviceName] = { 
+            attendance: 0, 
+            uniqueChildren: new Set(),
+            firstTimers: new Set(),
+            age4_5: new Set(),
+            age6_7: new Set(),
+            age8_9: new Set(),
+            age10_12: new Set()
+          };
+        }
+        
+        // Count total attendance records
+        totalAttendance++;
+        serviceData[serviceName].attendance++;
+        
+        // Track unique children (across all services)
+        if (childId) {
+          uniqueChildren.add(childId);
+          serviceData[serviceName].uniqueChildren.add(childId);
+          
+          // Calculate age for age distribution
+          if (birthdate && attendanceDate) {
+            const age = calculateAge(birthdate, attendanceDate);
+            if (age !== null) {
+              if (age >= 4 && age <= 5) {
+                serviceData[serviceName].age4_5.add(childId);
+              } else if (age >= 6 && age <= 7) {
+                serviceData[serviceName].age6_7.add(childId);
+              } else if (age >= 8 && age <= 9) {
+                serviceData[serviceName].age8_9.add(childId);
+              } else if (age >= 10 && age <= 12) {
+                serviceData[serviceName].age10_12.add(childId);
+              }
+            }
+          }
+        }
+      });
+      
+      // Convert Sets to counts for each service
+      Object.keys(serviceData).forEach(serviceName => {
+        const service = serviceData[serviceName];
+        service.uniqueChildrenCount = service.uniqueChildren.size;
+        service.age4_5_count = service.age4_5.size;
+        service.age6_7_count = service.age6_7.size;
+        service.age8_9_count = service.age8_9.size;
+        service.age10_12_count = service.age10_12.size;
+      });
+    }
+    
+    // Identify first-time attendees (children who never attended before this week)
+    // This requires checking against ALL historical attendance data
+    const allHistoricalAttendance = await fetchAllAttendanceHistory();
+    const historicalAttendanceMap = new Map();
+    
+    if (allHistoricalAttendance && allHistoricalAttendance.length > 0) {
+      allHistoricalAttendance.forEach(record => {
+        const childId = record.child_id;
+        const attendanceDate = new Date(record.attendance_date);
+        const weekStart = new Date(startDate);
+        
+        // Only count attendance BEFORE this week
+        if (attendanceDate < weekStart) {
+          if (!historicalAttendanceMap.has(childId)) {
+            historicalAttendanceMap.set(childId, true);
+          }
+        }
+      });
+    }
+    
+    // Now identify first-timers by service
+    if (rawData && rawData.length > 0) {
+      rawData.forEach(record => {
+        const serviceName = record.services?.service_name || 'Unknown';
+        const childId = record.children?.child_id || record.child_id;
+        
+        if (childId && !historicalAttendanceMap.has(childId)) {
+          firstTimeAttendees.add(childId);
+          if (serviceData[serviceName]) {
+            serviceData[serviceName].firstTimers.add(childId);
+          }
+        }
+      });
+      
+      // Convert first-timer Sets to counts
+      Object.keys(serviceData).forEach(serviceName => {
+        serviceData[serviceName].firstTimerCount = serviceData[serviceName].firstTimers.size;
+      });
+    }
+    
+    console.log('Processed service data:', {
+      totalAttendance,
+      uniqueChildren: uniqueChildren.size,
+      firstTimeAttendees: firstTimeAttendees.size,
+      serviceBreakdown: Object.keys(serviceData).map(name => ({
+        service: name,
+        attendance: serviceData[name].attendance,
+        uniqueChildren: serviceData[name].uniqueChildrenCount,
+        firstTimers: serviceData[name].firstTimerCount
+      }))
+    });
+    
+    // Process attendance patterns - look at ALL historical attendance data, not just this week
+    // This shows each child's overall engagement pattern (lifetime attendance count)
+    // Reuse the allHistoricalAttendance data we already fetched above
+    
+    const childAttendanceMap = {};
+    if (allHistoricalAttendance) {
+      allHistoricalAttendance.forEach(record => {
         if (!childAttendanceMap[record.child_id]) {
           childAttendanceMap[record.child_id] = 0;
         }
         childAttendanceMap[record.child_id]++;
+      });
+    }
+    
+    // Get list of children who attended THIS WEEK to filter the patterns
+    const childrenThisWeek = new Set();
+    if (rawData) {
+      rawData.forEach(record => {
+        childrenThisWeek.add(record.child_id);
       });
     }
     
@@ -396,30 +478,48 @@ export const generateWeeklyReportPDF = async (
       { label: 'Frequent (8+)', count: 0 }
     ];
     
-    Object.values(childAttendanceMap).forEach(count => {
+    // Only count patterns for children who attended this week
+    childrenThisWeek.forEach(childId => {
+      const count = childAttendanceMap[childId] || 0;
       if (count === 1) attendancePatterns[0].count++;
       else if (count >= 2 && count <= 3) attendancePatterns[1].count++;
       else if (count >= 4 && count <= 7) attendancePatterns[2].count++;
-      else attendancePatterns[3].count++;
+      else if (count >= 8) attendancePatterns[3].count++;
     });
     
     console.log('Attendance patterns:', attendancePatterns);
     
-    // Process age distribution - from ageData
+    // Process age distribution - aggregate from service data we already calculated
     const ageDistribution = [];
-    if (ageData && ageData.length > 0) {
-      const ageGroups = {};
-      ageData.forEach(item => {
-        const category = item.age_category;
-        if (!ageGroups[category]) {
-          ageGroups[category] = 0;
-        }
-        ageGroups[category] += item.count || 0;
-      });
-      
-      Object.entries(ageGroups).forEach(([category, count]) => {
-        ageDistribution.push({ category, count });
-      });
+    
+    // Calculate totals across all services (using Sets to avoid double-counting children in multiple services)
+    const allAgeGroups = {
+      age4_5: new Set(),
+      age6_7: new Set(),
+      age8_9: new Set(),
+      age10_12: new Set()
+    };
+    
+    // Collect all unique children per age group across all services
+    Object.values(serviceData).forEach(service => {
+      service.age4_5.forEach(childId => allAgeGroups.age4_5.add(childId));
+      service.age6_7.forEach(childId => allAgeGroups.age6_7.add(childId));
+      service.age8_9.forEach(childId => allAgeGroups.age8_9.add(childId));
+      service.age10_12.forEach(childId => allAgeGroups.age10_12.add(childId));
+    });
+    
+    // Convert to array format for PDF rendering
+    if (allAgeGroups.age4_5.size > 0) {
+      ageDistribution.push({ category: '4-5 years', count: allAgeGroups.age4_5.size });
+    }
+    if (allAgeGroups.age6_7.size > 0) {
+      ageDistribution.push({ category: '6-7 years', count: allAgeGroups.age6_7.size });
+    }
+    if (allAgeGroups.age8_9.size > 0) {
+      ageDistribution.push({ category: '8-9 years', count: allAgeGroups.age8_9.size });
+    }
+    if (allAgeGroups.age10_12.size > 0) {
+      ageDistribution.push({ category: '10-12 years', count: allAgeGroups.age10_12.size });
     }
     
     console.log('Age distribution:', ageDistribution);
@@ -641,7 +741,7 @@ export const generateWeeklyReportPDF = async (
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(28);
     pdf.setTextColor(...colors.orange); // Orange value
-    pdf.text((registeredCount || 0).toString(), margin + cardWidth * 2 + 15, yPosition + 22);
+    pdf.text(firstTimeAttendees.size.toString(), margin + cardWidth * 2 + 15, yPosition + 22);
     
     yPosition += cardHeight + 15;
     
@@ -685,7 +785,14 @@ export const generateWeeklyReportPDF = async (
       xPos += colWidths[0];
       
       pdf.setFont('helvetica', 'normal');
-      const values = [data.attendance, data.firstTimers, data.age4_5, data.age6_7, data.age8_9, data.age10_12];
+      const values = [
+        data.attendance, 
+        data.firstTimerCount || 0, 
+        data.age4_5_count || 0, 
+        data.age6_7_count || 0, 
+        data.age8_9_count || 0, 
+        data.age10_12_count || 0
+      ];
       values.forEach((val, i) => {
         pdf.text(val.toString(), xPos, yPosition + 5);
         xPos += colWidths[i + 1];
@@ -705,18 +812,26 @@ export const generateWeeklyReportPDF = async (
     
     const totals = [
       totalAttendance,
-      registeredCount || 0,
-      Object.values(serviceData).reduce((sum, d) => sum + d.age4_5, 0),
-      Object.values(serviceData).reduce((sum, d) => sum + d.age6_7, 0),
-      Object.values(serviceData).reduce((sum, d) => sum + d.age8_9, 0),
-      Object.values(serviceData).reduce((sum, d) => sum + d.age10_12, 0)
+      firstTimeAttendees.size,
+      Object.values(serviceData).reduce((sum, d) => sum + (d.age4_5_count || 0), 0),
+      Object.values(serviceData).reduce((sum, d) => sum + (d.age6_7_count || 0), 0),
+      Object.values(serviceData).reduce((sum, d) => sum + (d.age8_9_count || 0), 0),
+      Object.values(serviceData).reduce((sum, d) => sum + (d.age10_12_count || 0), 0)
     ];
     
     totals.forEach((val, i) => {
       pdf.text(val.toString(), xPos, yPosition + 5);
       xPos += colWidths[i + 1];
     });
-    yPosition += 15;
+    yPosition += 10;
+    
+    // Add footnote explaining first-timer calculation
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(...colors.gray.medium);
+    pdf.text('* First-timer counts per service may overlap if a child attends multiple services.', margin, yPosition);
+    pdf.text('  Total represents unique first-time attendees across all services.', margin, yPosition + 3);
+    yPosition += 10;
     
     // Page 2: Attendance Patterns
     pdf.addPage();
@@ -938,12 +1053,12 @@ export const generateWeeklyReportPDF = async (
       
       // Largest Group
       pdf.setFillColor(255, 255, 255);
-      pdf.setDrawColor(228, 228, 231);
+      pdf.setDrawColor(...colors.primary); // Primary (Blue) border
       pdf.roundedRect(margin, yPosition, insightWidth, 30, 2, 2, 'FD');
       
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
-      pdf.setTextColor(113, 113, 122);
+      pdf.setTextColor(...colors.primary); // Primary (Blue) label
       pdf.text('LARGEST GROUP', margin + 5, yPosition + 6);
       
       pdf.setFont('helvetica', 'bold');
@@ -961,11 +1076,13 @@ export const generateWeeklyReportPDF = async (
       
       // Total Reach
       pdf.setFillColor(255, 255, 255);
+      pdf.setDrawColor(...colors.orange); // Orange border
       pdf.roundedRect(margin + insightWidth + 5, yPosition, insightWidth, 30, 2, 2, 'FD');
       
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
       pdf.setTextColor(113, 113, 122);
+      pdf.setTextColor(...colors.orange); // Orange label
       pdf.text('TOTAL REACH', margin + insightWidth + 10, yPosition + 6);
       
       pdf.setFont('helvetica', 'bold');
@@ -1062,15 +1179,30 @@ export const generateWeeklyReportPDF = async (
         
         yPosition += ageChartHeight + 10;
       }
+    } else {
+      // No age distribution data
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(11);
+      pdf.setTextColor(113, 113, 122);
+      pdf.text('No attendance data available for this period', margin, yPosition);
+      yPosition += 20;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(161, 161, 170);
+      pdf.text('Age demographics will appear once children attend services during the reporting period.', margin, yPosition);
+      yPosition += 30;
     }
     
     // Page 4: New Registrations
     pdf.addPage();
     yPosition = margin;
     
+    const totalNewRegistrations = (newRegistrations || []).length;
+    
     drawSectionHeader(
       'New Registrations & Growth',
-      `${(newRegistrations || []).length} new children joined the ministry this week`
+      `${totalNewRegistrations} new children joined the ministry this week`
     );
     
     if (newRegistrations && newRegistrations.length > 0) {
@@ -1092,12 +1224,12 @@ export const generateWeeklyReportPDF = async (
       });
       yPosition += 8;
       
-      // Registration rows
+      // Registration rows - SHOW ALL, not just 15
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(63, 63, 70);
       
-      newRegistrations.slice(0, 15).forEach((child, index) => {
+      newRegistrations.forEach((child, index) => {
         if (checkPageBreak(8)) {
           // Redraw headers on new page
           pdf.setFillColor(250, 250, 250);
@@ -1150,9 +1282,11 @@ export const generateWeeklyReportPDF = async (
     yPosition += 10;
     
     // New Guardians
+    const totalNewGuardians = (newGuardians || []).length;
+    
     drawSectionHeader(
       'New Guardians',
-      `${(newGuardians || []).length} new guardians added to the system`
+      `${totalNewGuardians} new guardians added to the system during this reporting period`
     );
     
     if (newGuardians && newGuardians.length > 0) {
@@ -1177,7 +1311,7 @@ export const generateWeeklyReportPDF = async (
       pdf.setFontSize(9);
       pdf.setTextColor(63, 63, 70);
       
-      newGuardians.slice(0, 15).forEach((item, index) => {
+      newGuardians.forEach((item, index) => {
         if (checkPageBreak(8)) {
           pdf.setFillColor(250, 250, 250);
           pdf.rect(margin, yPosition, pageWidth - margin * 2, 8, 'F');
@@ -1238,12 +1372,12 @@ export const generateWeeklyReportPDF = async (
       
       // Growth insights
       pdf.setFillColor(255, 255, 255);
-      pdf.setDrawColor(228, 228, 231);
+      pdf.setDrawColor(...colors.primary); // Primary (Blue) border
       pdf.roundedRect(margin, yPosition, insightWidth, 30, 2, 2, 'FD');
       
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
-      pdf.setTextColor(113, 113, 122);
+      pdf.setTextColor(...colors.primary); // Primary (Blue) label
       pdf.text('HIGHEST ATTENDANCE', margin + 5, yPosition + 6);
       
       pdf.setFont('helvetica', 'bold');
@@ -1259,11 +1393,12 @@ export const generateWeeklyReportPDF = async (
       
       // Fastest Growing
       pdf.setFillColor(255, 255, 255);
+      pdf.setDrawColor(...colors.orange); // Orange border
       pdf.roundedRect(margin + insightWidth + 5, yPosition, insightWidth, 30, 2, 2, 'FD');
       
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
-      pdf.setTextColor(113, 113, 122);
+      pdf.setTextColor(...colors.orange); // Orange label
       pdf.text('FASTEST GROWING', margin + insightWidth + 10, yPosition + 6);
       
       pdf.setFont('helvetica', 'bold');
@@ -1298,6 +1433,23 @@ export const generateWeeklyReportPDF = async (
           console.warn('Error adding service comparison chart image:', imgError);
         }
       }
+    } else {
+      // Add note about growth trends not being available
+      yPosition += 10;
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(113, 113, 122);
+      pdf.text('Growth Trends & Insights', margin, yPosition);
+      yPosition += 10;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(161, 161, 170);
+      pdf.text('Growth trends require attendance data from multiple reporting periods.', margin, yPosition);
+      yPosition += 6;
+      pdf.text('This section will appear in future reports as historical data accumulates.', margin, yPosition);
+      yPosition += 15;
     }
     
     // Footer on last page
@@ -1342,14 +1494,14 @@ export const generateWeeklyReportPDF = async (
     const pdfUrl = await getDownloadURL(storageRef);
     console.log('PDF URL obtained:', pdfUrl);
     
-    // Update the existing weekly_reports entry with the Firebase storage path
-    // Use the actual storage path (with timestamp) so it can be found later
+    // Update the existing weekly_reports entry with the FULL Firebase download URL
+    // This avoids the need for URL conversion logic later
     console.log('Updating weekly_reports entry with report_id:', reportId);
     
     const { error: updateError } = await supabase
       .from('weekly_reports')
       .update({
-        report_pdf_url: storagePath  // Use the actual Firebase storage path
+        report_pdf_url: pdfUrl  // Store the full Firebase download URL with token
       })
       .eq('report_id', reportId);
     
@@ -1358,7 +1510,7 @@ export const generateWeeklyReportPDF = async (
       throw updateError;
     }
     
-    console.log('Supabase record updated successfully with path:', storagePath);
+    console.log('Supabase record updated successfully with full URL:', pdfUrl);
     console.log('PDF generation complete. URL:', pdfUrl);
     
     return pdfUrl;

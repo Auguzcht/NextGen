@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button, Modal, Alert } from '../ui';
+import { Button, Modal, AlertNew, AlertTitle, AlertDescription } from '../ui';
 import PropTypes from 'prop-types';
 import QrScanner from 'qr-scanner';
 
@@ -365,9 +365,9 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
               exit={{ opacity: 0, height: 0 }}
               className="mb-4"
             >
-              <Alert variant="danger" dismissible onDismiss={() => setError(null)}>
-                {error}
-              </Alert>
+              <AlertNew variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </AlertNew>
             </motion.div>
           )}
           
@@ -378,9 +378,9 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
               exit={{ opacity: 0, height: 0 }}
               className="mb-4"
             >
-              <Alert variant="success">
-                {success}
-              </Alert>
+              <AlertNew variant="success">
+                <AlertDescription>{success}</AlertDescription>
+              </AlertNew>
             </motion.div>
           )}
         </AnimatePresence>

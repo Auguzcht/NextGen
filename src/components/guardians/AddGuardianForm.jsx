@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Card, Button, Input, Badge, Alert } from '../ui';
+import { Card, Button, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [children, setChildren] = useState([]);
   const [childrenSearchQuery, setChildrenSearchQuery] = useState('');
   // Add a state to track if this is a restored draft
   const [isRestoredDraft, setIsRestoredDraft] = useState(false);
+  
+  // Dialog states
+  const [showSaveDraftDialog, setShowSaveDraftDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   
   // Initialize form data with either initialData, cached data, or defaults
   const [formData, setFormData] = useState(() => {
@@ -274,10 +278,8 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
     e.preventDefault();
     
     if (!validate()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Validation Error', {
+        description: 'Please check all required fields'
       });
       return;
     }
@@ -399,11 +401,9 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
       // Only show success message for new guardians, not edits
       // (for edits, the parent component will handle the success message)
       if (!isEdit) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Guardian Added',
-          text: 'New guardian has been added successfully.',
-          timer: 1500
+        toast.success('Guardian Added', {
+          description: 'New guardian has been added successfully.',
+          duration: 1500
         });
       }
       
@@ -411,10 +411,8 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
       onClose();
     } catch (error) {
       console.error('Error with guardian:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: `Failed to ${isEdit ? 'update' : 'add'} guardian: ${error.message}`
+      toast.error('Error', {
+        description: `Failed to ${isEdit ? 'update' : 'add'} guardian: ${error.message}`
       });
     } finally {
       setLoading(false);
@@ -439,20 +437,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
     // If not editing, ask user if they want to save their draft
     if (!isEdit) {
       if (formHasData() && !isFormEmpty()) {
-        Swal.fire({
-          title: 'Save Draft?',
-          text: 'Do you want to save your progress as a draft for later?',
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: 'Save Draft',
-          cancelButtonText: 'Discard'
-        }).then((result) => {
-          if (!result.isConfirmed) {
-            // Clear draft data
-            clearFormCache();
-          }
-          onClose();
-        });
+        setShowSaveDraftDialog(true);
       } else {
         // If form is empty, just clear and close
         clearFormCache();
@@ -461,22 +446,29 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
     } else {
       // Simple confirmation before closing if editing an existing guardian
       if (formData.firstName || formData.lastName || formData.phone || formData.email) {
-        Swal.fire({
-          title: 'Discard Changes?',
-          text: 'Any unsaved changes will be lost.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Yes, discard',
-          cancelButtonText: 'No, keep editing'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            onClose();
-          }
-        });
+        setShowDiscardDialog(true);
       } else {
         onClose();
       }
     }
+  };
+
+  const confirmSaveDraft = () => {
+    // Keep draft data in localStorage
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardDraft = () => {
+    // Clear draft data
+    clearFormCache();
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardChanges = () => {
+    setShowDiscardDialog(false);
+    onClose();
   };
 
   return (
@@ -769,6 +761,58 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
           </form>
         </div>
       </motion.div>
+
+      {/* Save Draft Dialog */}
+      <Dialog open={showSaveDraftDialog} onOpenChange={setShowSaveDraftDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Draft?</DialogTitle>
+            <DialogDescription>
+              Do you want to save your progress as a draft for later?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={confirmDiscardDraft}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmSaveDraft}
+            >
+              Save Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscardDialog(false)}
+            >
+              No, keep editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDiscardChanges}
+            >
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

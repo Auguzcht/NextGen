@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
 import StaffAssignmentForm from './StaffAssignmentForm.jsx';
-import { Card, Table, Button, Badge } from '../ui';
+import { Card, Table, Button, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const StaffAssignmentsList = ({ onAddClick }) => {
+  const { toast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [assignmentToDelete, setAssignmentToDelete] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -51,10 +53,8 @@ const StaffAssignmentsList = ({ onAddClick }) => {
       setAssignments(Object.values(grouped));
     } catch (error) {
       console.error('Error fetching assignments:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load assignments'
+      toast.error('Failed to load assignments', {
+        description: 'Error'
       });
     } finally {
       setLoading(false);
@@ -62,20 +62,16 @@ const StaffAssignmentsList = ({ onAddClick }) => {
   };
 
   const handleDeleteAssignment = async (assignmentIds, staffName, serviceNames, date) => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      html: `Remove <strong>${staffName}</strong> from <strong>${serviceNames}</strong> on <strong>${formatDate(date)}</strong>?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc2626',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, remove',
-      cancelButtonText: 'Cancel'
-    });
+    setAssignmentToDelete({ assignmentIds, staffName, serviceNames, date });
+    setShowDeleteDialog(true);
+  };
 
-    if (result.isConfirmed) {
-      setDeletingId(assignmentIds[0]);
-      try {
+  const confirmDelete = async () => {
+    const { assignmentIds } = assignmentToDelete;
+    setShowDeleteDialog(false);
+    setDeletingId(assignmentIds[0]);
+
+    try {
         // Delete all assignments in the group
         const { error } = await supabase
           .from('staff_assignments')
@@ -84,25 +80,19 @@ const StaffAssignmentsList = ({ onAddClick }) => {
 
         if (error) throw error;
         
-        Swal.fire({
-          icon: 'success',
-          title: 'Removed!',
-          text: 'Assignment(s) have been removed.',
-          timer: 1500
+        toast.success('Assignment(s) have been removed', {
+          description: 'Removed!'
         });
         
         fetchAssignments();
       } catch (error) {
         console.error('Error deleting assignment:', error);
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: 'Failed to remove assignment'
+        toast.error('Failed to remove assignment', {
+          description: 'Error'
         });
       } finally {
         setDeletingId(null);
       }
-    }
   };
 
   const formatDate = (dateStr) => {
@@ -328,6 +318,32 @@ const StaffAssignmentsList = ({ onAddClick }) => {
           fetchAssignments();
         }}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              {assignmentToDelete && (
+                <>
+                  Remove <strong>{assignmentToDelete.staffName}</strong> from{' '}
+                  <strong>{assignmentToDelete.serviceNames}</strong> on{' '}
+                  <strong>{formatDate(assignmentToDelete.date)}</strong>?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDelete}>
+              Yes, remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
-import Swal from 'sweetalert2';
+import { useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 
 /**
  * Batch Credential Creation Modal
@@ -11,6 +11,9 @@ import Swal from 'sweetalert2';
  * but don't have login credentials (no user_id)
  */
 const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) => {
+  const { toast } = useToast();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [pendingCreate, setPendingCreate] = useState({ createAll: false, staffIds: [] });
   const [selectedStaff, setSelectedStaff] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,30 +60,19 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
       : selectedStaff;
 
     if (staffIds.length === 0) {
-      await Swal.fire({
-        icon: 'warning',
-        title: 'No Staff Selected',
-        text: 'Please select at least one staff member to create credentials for.',
-        confirmButtonColor: '#30cee4'
+      toast.error('Please select at least one staff member to create credentials for', {
+        description: 'No Staff Selected'
       });
       return;
     }
 
-    const confirmed = await Swal.fire({
-      title: 'Create Supabase Accounts?',
-      html: `
-        <p>This will create Supabase authentication accounts for <strong>${staffIds.length}</strong> staff member(s).</p>
-        <p class="text-sm text-gray-600 mt-2">Each staff member will receive a password reset email to set their password.</p>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#30cee4',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, Create Accounts',
-      cancelButtonText: 'Cancel'
-    });
+    setPendingCreate({ createAll, staffIds });
+    setShowCreateDialog(true);
+  };
 
-    if (!confirmed.isConfirmed) return;
+  const confirmCreateCredentials = async () => {
+    const { staffIds, createAll } = pendingCreate;
+    setShowCreateDialog(false);
 
     setIsCreating(true);
     setResults(null);
@@ -101,22 +93,12 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
         setResults(data.results);
         setSelectedStaff([]);
         
-        await Swal.fire({
-          icon: data.results.failed.length > 0 ? 'warning' : 'success',
-          title: 'Accounts Created & Emails Sent',
-          html: `
-            <div class="text-left">
-              <p class="mb-2"><strong>✅ Success:</strong> ${data.results.success.length} account(s) created</p>
-              ${data.results.failed.length > 0 ? `<p class="text-red-600"><strong>❌ Failed:</strong> ${data.results.failed.length} account(s)</p>` : ''}
-              <p class="text-sm text-gray-600 mt-3">
-                <svg class="inline h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Password reset emails sent via Supabase to all successful accounts.
-              </p>
-            </div>
-          `,
-          confirmButtonColor: '#30cee4'
+        const successMessage = data.results.failed.length > 0
+          ? `✅ Success: ${data.results.success.length} account(s) created\n❌ Failed: ${data.results.failed.length} account(s)`
+          : `✅ Success: ${data.results.success.length} account(s) created`;
+
+        toast.success(successMessage, {
+          description: 'Accounts Created & Emails Sent'
         });
 
         if (onSuccess) onSuccess();
@@ -125,11 +107,8 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
       }
     } catch (error) {
       console.error('Create credentials error:', error);
-      await Swal.fire({
-        icon: 'error',
-        title: 'Creation Failed',
-        text: error.message || 'Failed to create credentials. Please try again.',
-        confirmButtonColor: '#ef4444'
+      toast.error(error.message || 'Failed to create credentials. Please try again.', {
+        description: 'Creation Failed'
       });
     } finally {
       setIsCreating(false);
@@ -389,6 +368,31 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
             </div>
           </div>
         </motion.div>
+
+        {/* Create Credentials Confirmation Dialog */}
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Supabase Accounts?</DialogTitle>
+              <DialogDescription>
+                This will create Supabase authentication accounts for{' '}
+                <strong>{pendingCreate.staffIds.length}</strong> staff member(s).
+                <br />
+                <span className="text-sm text-gray-600">
+                  Each staff member will receive a password reset email to set their password.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={confirmCreateCredentials}>
+                Yes, Create Accounts
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AnimatePresence>
   );

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
+import Button from '../ui/Button';
 
 const ProfilePicture = ({ 
   imageUrl, 
@@ -12,6 +13,7 @@ const ProfilePicture = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const sizes = {
     sm: 'w-20 h-20',
@@ -34,25 +36,13 @@ const ProfilePicture = ({
     }
   };
 
-  const handleDelete = async () => {
-    const result = await Swal.fire({
-      title: 'Remove Photo?',
-      text: 'Are you sure you want to remove your profile photo?',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, remove it',
-      cancelButtonText: 'Cancel',
-      didOpen: () => {
-        const swalContainer = document.querySelector('.swal2-container');
-        if (swalContainer) swalContainer.style.zIndex = '10000';
-      }
-    });
+  const handleDelete = () => {
+    setShowDeleteDialog(true);
+  };
 
-    if (result.isConfirmed) {
-      onDelete();
-    }
+  const confirmDelete = () => {
+    setShowDeleteDialog(false);
+    onDelete();
   };
 
   const hasImage = imageUrl && !imageError;
@@ -163,6 +153,32 @@ const ProfilePicture = ({
           </svg>
         </motion.button>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Photo?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove your profile photo?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+            >
+              Yes, remove it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

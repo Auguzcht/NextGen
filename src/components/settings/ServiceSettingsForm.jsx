@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import supabase from '../../services/supabase.js';
 import ServiceForm from './ServiceForm.jsx';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
+  const { toast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
@@ -17,20 +19,15 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
   };
 
   const handleDeleteService = async (service) => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      html: `This will delete <strong>${service.service_name}</strong> and all associated attendance records.<br><br>This action cannot be undone.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, delete it',
-      cancelButtonText: 'Cancel'
-    });
+    setServiceToDelete(service);
+    setShowDeleteDialog(true);
+  };
 
-    if (!result.isConfirmed) return;
-    
+  const confirmDelete = async () => {
+    const service = serviceToDelete;
+    setShowDeleteDialog(false);
     setDeletingId(service.service_id);
+
     try {
       const { error } = await supabase
         .from('services')
@@ -39,20 +36,15 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
         
       if (error) throw error;
       
-      Swal.fire({
-        icon: 'success',
-        title: 'Deleted!',
-        text: 'Service has been deleted.',
-        timer: 1500
+      toast.success('Service has been deleted', {
+        description: 'Deleted!'
       });
       
       onUpdate();
     } catch (error) {
       console.error('Error deleting service:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to delete service'
+      toast.error(error.message || 'Failed to delete service', {
+        description: 'Error'
       });
     } finally {
       setDeletingId(null);
@@ -214,6 +206,34 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
           onSuccess={handleEditSuccess}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              {serviceToDelete && (
+                <>
+                  This will delete <strong>{serviceToDelete.service_name}</strong> and all
+                  associated attendance records.
+                  <br />
+                  <br />
+                  This action cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDelete}>
+              Yes, delete it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

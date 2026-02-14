@@ -9,10 +9,11 @@ import Input from '../ui/Input';
 import Badge from '../ui/Badge';
 import Modal from '../ui/Modal';
 import ProfilePicture from '../common/ProfilePicture';
-import Swal from 'sweetalert2';
+import { useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 
 const ProfileSettingsModal = ({ isOpen, onClose }) => {
   const { user, refreshUser, setIsUpdatingPassword } = useAuth();
+  const { toast } = useToast();
   const fileUploadRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
@@ -20,6 +21,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -175,62 +177,24 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields',
-        customClass: {
-          container: 'swal-high-z-index'
-        },
-        didOpen: () => {
-          // Ensure SweetAlert appears above modal
-          const swalContainer = document.querySelector('.swal2-container');
-          if (swalContainer) {
-            swalContainer.style.zIndex = '10000';
-          }
-        }
+      toast.error('Please check all required fields', {
+        description: 'Validation Error'
       });
       return;
     }
 
     // Check if any changes were made
     if (!hasChanges()) {
-      Swal.fire({
-        icon: 'info',
-        title: 'No Changes',
-        text: 'No changes were made to your profile.',
-        didOpen: () => {
-          const swalContainer = document.querySelector('.swal2-container');
-          if (swalContainer) {
-            swalContainer.style.zIndex = '10000';
-          }
-        }
-      });
+      toast.info('No changes were made to your profile');
       return;
     }
 
     // Confirm before saving
-    const result = await Swal.fire({
-      title: 'Save Changes?',
-      text: 'Are you sure you want to update your profile?',
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#1e40af',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, save changes',
-      cancelButtonText: 'Cancel',
-      didOpen: () => {
-        const swalContainer = document.querySelector('.swal2-container');
-        if (swalContainer) {
-          swalContainer.style.zIndex = '10000';
-        }
-      }
-    });
+    setShowSaveDialog(true);
+  };
 
-    if (!result.isConfirmed) {
-      return;
-    }
-    
+  const confirmSaveChanges = async () => {
+    setShowSaveDialog(false);
     setIsLoading(true);
     
     try {
@@ -308,16 +272,8 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           await new Promise(resolve => setTimeout(resolve, 500));
           setIsUpdatingPassword(false);
 
-          await Swal.fire({
-            icon: 'success',
-            title: 'Profile & Password Updated',
-            text: 'Your profile and password have been updated successfully!',
-            timer: 2000,
-            allowOutsideClick: false,
-            didOpen: () => {
-              const swalContainer = document.querySelector('.swal2-container');
-              if (swalContainer) swalContainer.style.zIndex = '10000';
-            }
+          toast.success('Your profile and password have been updated successfully!', {
+            description: 'Profile & Password Updated'
           });
         } catch (passwordError) {
           console.error('Password update error:', passwordError);
@@ -325,16 +281,8 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           throw passwordError;
         }
       } else {
-        await Swal.fire({
-          icon: 'success',
-          title: 'Profile Updated',
-          text: 'Your profile has been updated successfully!',
-          timer: 2000,
-          allowOutsideClick: false,
-          didOpen: () => {
-            const swalContainer = document.querySelector('.swal2-container');
-            if (swalContainer) swalContainer.style.zIndex = '10000';
-          }
+        toast.success('Your profile has been updated successfully!', {
+          description: 'Profile Updated'
         });
       }
 
@@ -361,14 +309,8 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
 
     } catch (error) {
       console.error('Error updating profile:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Update Failed',
-        text: error.message || 'Failed to update profile. Please try again.',
-        didOpen: () => {
-          const swalContainer = document.querySelector('.swal2-container');
-          if (swalContainer) swalContainer.style.zIndex = '10000';
-        }
+      toast.error(error.message || 'Failed to update profile. Please try again.', {
+        description: 'Update Failed'
       });
     } finally {
       setIsLoading(false);
@@ -434,25 +376,12 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                     setImageUrl(url);
                     setImagePath(snapshot.ref.fullPath);
                     
-                    Swal.fire({
-                      icon: 'success',
-                      title: 'Photo Updated',
-                      text: 'Profile photo has been updated successfully',
-                      timer: 1500,
-                      didOpen: () => {
-                        const swalContainer = document.querySelector('.swal2-container');
-                        if (swalContainer) swalContainer.style.zIndex = '10000';
-                      }
+                    toast.success('Profile photo has been updated successfully', {
+                      description: 'Photo Updated'
                     });
                   } catch (error) {
-                    Swal.fire({
-                      icon: 'error',
-                      title: 'Upload Error',
-                      text: error.message,
-                      didOpen: () => {
-                        const swalContainer = document.querySelector('.swal2-container');
-                        if (swalContainer) swalContainer.style.zIndex = '10000';
-                      }
+                    toast.error(error.message, {
+                      description: 'Upload Error'
                     });
                   } finally {
                     setIsLoading(false);
@@ -461,15 +390,8 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                 onDelete={async () => {
                   setImageUrl('');
                   setImagePath('');
-                  Swal.fire({
-                    icon: 'success',
-                    title: 'Photo Removed',
-                    text: 'Profile photo has been removed',
-                    timer: 1500,
-                    didOpen: () => {
-                      const swalContainer = document.querySelector('.swal2-container');
-                      if (swalContainer) swalContainer.style.zIndex = '10000';
-                    }
+                  toast.success('Profile photo has been removed', {
+                    description: 'Photo Removed'
                   });
                 }}
                 userGradient={`bg-gradient-to-br from-nextgen-blue to-nextgen-blue-dark`}
@@ -722,6 +644,26 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
             </Button>
           </div>
         </form>
+
+        {/* Save Confirmation Dialog */}
+        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Save Changes?</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to update your profile?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowSaveDialog(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={confirmSaveChanges}>
+                Yes, save changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </Modal>
   );
 };

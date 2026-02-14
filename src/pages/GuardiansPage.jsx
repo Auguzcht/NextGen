@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import supabase from '../services/supabase.js';
 import useImageCache from '../hooks/useImageCache.jsx';
 import AddGuardianForm from '../components/guardians/AddGuardianForm.jsx';
-import { Card, Button, Badge, Table, Input, Modal } from '../components/ui';
+import { Card, Button, Badge, Table, Input, Modal, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const GuardiansPage = () => {
+  const { toast } = useToast();
   const [guardians, setGuardians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -18,6 +18,10 @@ const GuardiansPage = () => {
   const itemsPerPage = 10;
   const [selectedGuardian, setSelectedGuardian] = useState(null);
   const [viewMode, setViewMode] = useState(null); // 'view' or 'edit'
+  
+  // Dialog states
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [guardianToDeactivate, setGuardianToDeactivate] = useState(null);
   
   // Sorting state
   const [sortBy, setSortBy] = useState('first_name');
@@ -147,11 +151,9 @@ const GuardiansPage = () => {
     setSelectedGuardian(null);
     
     // Show success message after list is refreshed
-    Swal.fire({
-      icon: 'success',
-      title: 'Updated!',
-      text: 'Guardian information has been updated.',
-      timer: 1500
+    toast.success('Updated!', {
+      description: 'Guardian information has been updated.',
+      duration: 1500
     });
   };
 
@@ -189,72 +191,64 @@ const GuardiansPage = () => {
     setViewMode('edit');
   };
 
-  const handleDeactivateGuardian = async (guardian) => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: "This will remove this guardian. This action cannot be undone.",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, remove',
-      cancelButtonText: 'Cancel'
-    });
+  const handleDeactivateGuardian = (guardian) => {
+    setGuardianToDeactivate(guardian);
+    setShowDeactivateDialog(true);
+  };
 
-    if (result.isConfirmed) {
-      try {
-        // First check if this guardian is the only guardian for any child
-        const { data: childGuardians, error: checkError } = await supabase
+  const confirmDeactivateGuardian = async () => {
+    if (!guardianToDeactivate) return;
+
+    try {
+      // First check if this guardian is the only guardian for any child
+      const { data: childGuardians, error: checkError } = await supabase
+        .from('child_guardian')
+        .select('child_id')
+        .eq('guardian_id', guardianToDeactivate.guardian_id);
+        
+      if (checkError) throw checkError;
+      
+      // Create an array of child IDs associated with this guardian
+      const childIds = childGuardians.map(cg => cg.child_id);
+      
+      // For each child, check if they have other guardians
+      for (const childId of childIds) {
+        const { count, error: countError } = await supabase
           .from('child_guardian')
-          .select('child_id')
-          .eq('guardian_id', guardian.guardian_id);
+          .select('*', { count: 'exact' })
+          .eq('child_id', childId);
           
-        if (checkError) throw checkError;
+        if (countError) throw countError;
         
-        // Create an array of child IDs associated with this guardian
-        const childIds = childGuardians.map(cg => cg.child_id);
-        
-        // For each child, check if they have other guardians
-        for (const childId of childIds) {
-          const { count, error: countError } = await supabase
-            .from('child_guardian')
-            .select('*', { count: 'exact' })
-            .eq('child_id', childId);
-            
-          if (countError) throw countError;
-          
-          if (count <= 1) {
-            Swal.fire(
-              'Cannot Remove',
-              'This guardian is the only guardian for at least one child. Please add another guardian for the child first.',
-              'error'
-            );
-            return;
-          }
+        if (count <= 1) {
+          toast.error('Cannot Remove', {
+            description: 'This guardian is the only guardian for at least one child. Please add another guardian for the child first.'
+          });
+          setShowDeactivateDialog(false);
+          setGuardianToDeactivate(null);
+          return;
         }
-        
-        // If we get here, it's safe to delete the guardian
-        const { error: deleteError } = await supabase
-          .from('guardians')
-          .delete()
-          .eq('guardian_id', guardian.guardian_id);
-          
-        if (deleteError) throw deleteError;
-        
-        Swal.fire(
-          'Removed!',
-          'The guardian has been removed.',
-          'success'
-        );
-        fetchGuardians();
-      } catch (error) {
-        Swal.fire(
-          'Error!',
-          'Failed to remove guardian: ' + error.message,
-          'error'
-        );
-        console.error('Error removing guardian:', error);
       }
+      
+      // If we get here, it's safe to delete the guardian
+      const { error: deleteError } = await supabase
+        .from('guardians')
+        .delete()
+        .eq('guardian_id', guardianToDeactivate.guardian_id);
+        
+      if (deleteError) throw deleteError;
+      
+      toast.success('Removed!', {
+        description: 'The guardian has been removed.'
+      });
+      setShowDeactivateDialog(false);
+      setGuardianToDeactivate(null);
+      fetchGuardians();
+    } catch (error) {
+      toast.error('Error!', {
+        description: `Failed to remove guardian: ${error.message}`
+      });
+      console.error('Error removing guardian:', error);
     }
   };
 
@@ -706,6 +700,35 @@ const GuardiansPage = () => {
           onSuccess={handleEditSuccess}
         />
       )}
+
+      {/* Deactivate Guardian Confirmation Dialog */}
+      <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              This will remove this guardian. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeactivateDialog(false);
+                setGuardianToDeactivate(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeactivateGuardian}
+            >
+              Yes, remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

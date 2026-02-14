@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, Badge, Button } from '../ui';
-import Swal from 'sweetalert2';
+import { Card, Badge, Button, useToast } from '../ui';
 import StaffScheduleDetailModal from './StaffScheduleDetailModal.jsx';
 import { fetchStaffAssignments, transformAssignmentsToEvents } from '../../services/staffAssignmentService.js';
 import { downloadCalendarCSV, exportCalendarAsImage } from '../../services/calcomApi.js';
@@ -11,6 +10,7 @@ const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const StaffScheduleCalendar = () => {
+  const { toast } = useToast();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,10 +81,8 @@ const StaffScheduleCalendar = () => {
       setEvents(allEvents);
     } catch (error) {
       console.error('Error fetching staff assignments:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load volunteer schedule. Please refresh the page.'
+      toast.error('Failed to load volunteer schedule. Please refresh the page.', {
+        description: 'Error'
       });
     } finally {
       setLoading(false);
@@ -95,19 +93,13 @@ const StaffScheduleCalendar = () => {
     try {
       downloadCalendarCSV(events, currentMonth);
       
-      Swal.fire({
-        icon: 'success',
-        title: 'Exported!',
-        text: 'Schedule has been downloaded as CSV',
-        timer: 2000,
-        showConfirmButton: false
+      toast.success('Schedule has been downloaded as CSV', {
+        description: 'Exported!'
       });
     } catch (error) {
       console.error('Export error:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Export Failed',
-        text: 'Could not export schedule'
+      toast.error('Could not export schedule', {
+        description: 'Export Failed'
       });
     }
   };
@@ -115,39 +107,21 @@ const StaffScheduleCalendar = () => {
   const handleExportImage = async () => {
     try {
       if (!events || events.length === 0) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'No Data',
-          text: 'No bookings to export'
+        toast.error('No bookings to export', {
+          description: 'No Data'
         });
         return;
       }
 
-      // Show loading
-      Swal.fire({
-        title: 'Generating styled schedule...',
-        text: 'Please wait while we create the image',
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        }
-      });
-
       await exportCalendarAsImage(events, currentMonth);
       
-      Swal.fire({
-        icon: 'success',
-        title: 'Exported!',
-        text: 'Styled schedule has been downloaded as PNG',
-        timer: 2000,
-        showConfirmButton: false
+      toast.success('Styled schedule has been downloaded as PNG', {
+        description: 'Exported!'
       });
     } catch (error) {
       console.error('Image export error:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Export Failed',
-        text: error.message || 'Could not export schedule as image'
+      toast.error(error.message || 'Could not export schedule as image', {
+        description: 'Export Failed'
       });
     }
   };

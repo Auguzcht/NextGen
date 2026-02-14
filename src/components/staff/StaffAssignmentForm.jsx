@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Input } from '../ui';
+import { Button, Input, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
 
 const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initialData = null }) => {
+  const { toast } = useToast();
+  const [showSaveDraftDialog, setShowSaveDraftDialog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [staff, setStaff] = useState([]);
@@ -101,10 +102,8 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
       // No default service selection for checkboxes
     } catch (error) {
       console.error('Error fetching data:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load staff and services data'
+      toast.error('Failed to load staff and services data', {
+        description: 'Error'
       });
     } finally {
       setLoading(false);
@@ -187,32 +186,29 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
   const handleClose = () => {
     if (!isEdit && formHasData()) {
-      Swal.fire({
-        title: 'Save Draft?',
-        text: 'Do you want to save your progress as a draft for later?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Save Draft',
-        cancelButtonText: 'Discard'
-      }).then((result) => {
-        if (!result.isConfirmed) {
-          clearFormCache();
-        }
-        onClose();
-      });
+      setShowSaveDraftDialog(true);
     } else {
       onClose();
     }
+  };
+
+  const confirmSaveDraft = () => {
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardDraft = () => {
+    clearFormCache();
+    setShowSaveDraftDialog(false);
+    onClose();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Please check all required fields', {
+        description: 'Validation Error'
       });
       return;
     }
@@ -235,11 +231,8 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
         if (error) throw error;
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'Assignment has been updated successfully.',
-          timer: 1500
+        toast.success('Assignment has been updated successfully', {
+          description: 'Updated!'
         });
       } else {
         // Check if assignment already exists (only for new assignments)
@@ -277,11 +270,8 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
         
         if (error) throw error;
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Success!',
-          text: 'Staff member has been assigned successfully.',
-          timer: 1500
+        toast.success('Staff member has been assigned successfully', {
+          description: 'Success!'
         });
 
         // Clear form cache on successful submission
@@ -292,10 +282,8 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
       onClose();
     } catch (error) {
       console.error('Error saving assignment:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save assignment'
+      toast.error(error.message || 'Failed to save assignment', {
+        description: 'Error'
       });
     } finally {
       setSubmitting(false);
@@ -592,6 +580,26 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
           </div>
         </div>
       </motion.div>
+
+      {/* Save Draft Dialog */}
+      <Dialog open={showSaveDraftDialog} onOpenChange={setShowSaveDraftDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Draft?</DialogTitle>
+            <DialogDescription>
+              Do you want to save your progress as a draft for later?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={confirmDiscardDraft}>
+              Discard
+            </Button>
+            <Button variant="primary" onClick={confirmSaveDraft}>
+              Save Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

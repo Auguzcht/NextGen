@@ -5,13 +5,13 @@ import StaffForm from '../components/staff/StaffForm.jsx';
 import StaffDetailView from '../components/staff/StaffDetailView.jsx';
 import SendCredentialsModal from '../components/staff/SendCredentialsModal.jsx';
 import BatchCredentialCreation from '../components/staff/BatchCredentialCreation.jsx';
-import { Card, Button, Badge, Table, Input } from '../components/ui';
+import { Card, Button, Badge, Table, Input, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
-import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const StaffManagementPage = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [staffMembers, setStaffMembers] = useState([]);
   const [allStaff, setAllStaff] = useState([]); // Full staff list for modals
   const [loading, setLoading] = useState(true);
@@ -27,6 +27,10 @@ const StaffManagementPage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSendCredentialsModalOpen, setIsSendCredentialsModalOpen] = useState(false);
   const [isBatchCredentialModalOpen, setIsBatchCredentialModalOpen] = useState(false);
+  
+  // Dialog states
+  const [showToggleDialog, setShowToggleDialog] = useState(false);
+  const [staffToToggle, setStaffToToggle] = useState(null);
   
   // Sorting state
   const [sortBy, setSortBy] = useState('first_name');
@@ -237,45 +241,37 @@ const StaffManagementPage = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleToggleActive = async (staff) => {
-    const isActivating = !staff.is_active;
+  const handleToggleActive = (staff) => {
+    setStaffToToggle(staff);
+    setShowToggleDialog(true);
+  };
+
+  const confirmToggleActive = async () => {
+    if (!staffToToggle) return;
     
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: isActivating 
-        ? "This will reactivate the staff member and allow them to log in."
-        : "This will deactivate the staff member and prevent them from logging in.",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: isActivating ? '#10b981' : '#f59e0b',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: isActivating ? 'Yes, reactivate' : 'Yes, deactivate',
-      cancelButtonText: 'Cancel'
-    });
+    const isActivating = !staffToToggle.is_active;
+    
+    try {
+      const { error } = await supabase
+        .from('staff')
+        .update({ is_active: isActivating })
+        .eq('staff_id', staffToToggle.staff_id);
 
-    if (result.isConfirmed) {
-      try {
-        const { error } = await supabase
-          .from('staff')
-          .update({ is_active: isActivating })
-          .eq('staff_id', staff.staff_id);
+      if (error) throw error;
 
-        if (error) throw error;
-
-        Swal.fire(
-          isActivating ? 'Reactivated!' : 'Deactivated!',
-          `The staff member has been ${isActivating ? 'reactivated' : 'deactivated'}.`,
-          'success'
-        );
-        fetchStaffMembers();
-      } catch (error) {
-        Swal.fire(
-          'Error!',
-          `Failed to ${isActivating ? 'reactivate' : 'deactivate'} staff member.`,
-          'error'
-        );
-        console.error('Error toggling staff status:', error);
-      }
+      toast.success(
+        isActivating ? 'Reactivated!' : 'Deactivated!',
+        { description: `The staff member has been ${isActivating ? 'reactivated' : 'deactivated'}.` }
+      );
+      
+      setShowToggleDialog(false);
+      setStaffToToggle(null);
+      fetchStaffMembers();
+    } catch (error) {
+      toast.error('Error!', {
+        description: `Failed to ${isActivating ? 'reactivate' : 'deactivate'} staff member.`
+      });
+      console.error('Error toggling staff status:', error);
     }
   };
 
@@ -284,11 +280,9 @@ const StaffManagementPage = () => {
     setIsEditModalOpen(false);
     setSelectedStaff(null);
     
-    Swal.fire({
-      icon: 'success',
-      title: 'Updated!',
-      text: 'Staff information has been updated.',
-      timer: 1500
+    toast.success('Updated!', {
+      description: 'Staff information has been updated.',
+      duration: 1500
     });
   };
 
@@ -720,6 +714,39 @@ const StaffManagementPage = () => {
           fetchAllStaff();
         }}
       />
+
+      {/* Toggle Active/Inactive Confirmation Dialog */}
+      <Dialog open={showToggleDialog} onOpenChange={setShowToggleDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              {staffToToggle && !staffToToggle.is_active ? (
+                "This will reactivate the staff member and allow them to log in."
+              ) : (
+                "This will deactivate the staff member and prevent them from logging in."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowToggleDialog(false);
+                setStaffToToggle(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={staffToToggle && !staffToToggle.is_active ? "success" : "warning"}
+              onClick={confirmToggleActive}
+            >
+              {staffToToggle && !staffToToggle.is_active ? "Yes, reactivate" : "Yes, deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

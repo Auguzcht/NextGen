@@ -1167,6 +1167,164 @@ app.all('/api/calcom/webhook', async (req, res) => {
   }
 });
 
+// Generate staff credentials (create Supabase auth accounts)
+app.post('/api/staff/generate-credentials', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const { staffIds, bulkGenerate = false } = req.body;
+
+    if (!staffIds || !Array.isArray(staffIds) || staffIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Staff IDs are required'
+      });
+    }
+
+    // Get staff members from database
+    const { data: staffMembers, error: staffError } = await supabase
+      .from('staff')
+      .select('*')
+      .in('staff_id', staffIds);
+
+    if (staffError) {
+      throw staffError;
+    }
+
+    if (!staffMembers || staffMembers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No staff members found'
+      });
+    }
+
+    // Initialize Supabase Admin client
+    const supabaseAdmin = createClient(
+      process.env.VITE_SUPABASE_URL,
+      process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    const results = {
+      success: [],
+      failed: [],
+      total: staffMembers.length
+    };
+
+    // Process each staff member
+    for (const staff of staffMembers) {
+      try {
+        // Skip if already has auth account
+        if (staff.user_id) {
+          results.failed.push({
+            staff_id: staff.staff_id,
+            email: staff.email,
+            name: `${staff.first_name} ${staff.last_name}`,
+            error: 'Already has auth account'
+          });
+          continue;
+        }
+
+        // Create auth user with Supabase Admin
+        const { data: authUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+          email: staff.email,
+          email_confirm: true,
+          user_metadata: {
+            first_name: staff.first_name,
+            last_name: staff.last_name,
+            role: staff.role
+          }
+        });
+
+        if (createError) {
+          throw createError;
+        }
+
+        // Update staff record with user_id
+        const { error: updateError } = await supabase
+          .from('staff')
+          .update({
+            user_id: authUser.user.id,
+            credentials_sent_at: new Date().toISOString()
+          })
+          .eq('staff_id', staff.staff_id);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        // Generate password reset link
+        const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: staff.email,
+          options: {
+            redirectTo: `${process.env.VITE_APP_URL || 'http://localhost:3002'}/nextgen/reset-password`
+          }
+        });
+
+        if (resetError) {
+          throw resetError;
+        }
+
+        // Send welcome email with credentials via send-credentials endpoint
+        const emailResponse = await fetch('http://localhost:3001/api/email/send-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staffMembers: [{
+              ...staff,
+              user_id: authUser.user.id,
+              password_reset_link: resetData.properties.action_link
+            }],
+            eventType: 'new_account'
+          })
+        });
+
+        const emailResult = await emailResponse.json();
+
+        if (!emailResult.success) {
+          console.warn(`Warning: Email failed to send to ${staff.email}`);
+        }
+
+        results.success.push({
+          staff_id: staff.staff_id,
+          email: staff.email,
+          name: `${staff.first_name} ${staff.last_name}`,
+          user_id: authUser.user.id
+        });
+
+      } catch (error) {
+        console.error(`Error creating credentials for ${staff.email}:`, error);
+        results.failed.push({
+          staff_id: staff.staff_id,
+          email: staff.email,
+          name: `${staff.first_name} ${staff.last_name}`,
+          error: error.message
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Created ${results.success.length} out of ${results.total} accounts`,
+      results: results
+    });
+
+  } catch (error) {
+    console.error('Generate credentials error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate credentials'
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Development API server is running' });
@@ -1192,7 +1350,9 @@ app.listen(PORT, () => {
   console.log(`   - POST /api/email/send-credentials`);
   console.log(`   - POST /api/email/send-child-qr`);
   console.log(`   - GET/POST /api/email/config`);
-  console.log(`📅 Cal.com API endpoints available at http://localhost:${PORT}/api/calcom/*`);
+  console.log(`� Staff API endpoints available at http://localhost:${PORT}/api/staff/*`);
+  console.log(`   - POST /api/staff/generate-credentials`);
+  console.log(`�📅 Cal.com API endpoints available at http://localhost:${PORT}/api/calcom/*`);
   console.log(`   - POST /api/calcom/bookings`);
   console.log(`   - POST /api/calcom/webhook\n`);
 });

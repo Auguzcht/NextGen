@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
 import supabase from '../../services/supabase';
-import { Button, Input, Alert, Spinner } from '../ui';
-import Swal from 'sweetalert2';
+import { Button, Input, Spinner, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, AlertNew, AlertTitle, AlertDescription } from '../ui';
+import { Mail } from 'lucide-react';
 
 const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -15,10 +15,13 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [showForgotDialog, setShowForgotDialog] = useState(false);
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+  const { toast } = useToast();
   
   // Get the redirect path from location state or default to dashboard
   const from = location.state?.from?.pathname || '/dashboard';
@@ -67,7 +70,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
   }, [loginSuccess, navigate, from]);
 
   const handleLogin = async (e) => {
-    e.preventDefault();
+    e?.preventDefault(); // Make preventDefault optional for programmatic calls
     
     if (loading) return;
     
@@ -98,95 +101,78 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
     }
   };
 
-  const handleForgotPassword = async () => {
-    const { value: emailInput } = await Swal.fire({
-      title: 'Forgot Password',
-      html: `
-        <p class="text-gray-600 mb-4">Enter your email address and we'll send you instructions to reset your password.</p>
-        <input id="swal-input-email" class="swal2-input" placeholder="Email address" type="email" value="${email}">
-      `,
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: 'Send Reset Link',
-      confirmButtonColor: '#30CEE4',
-      cancelButtonColor: '#6b7280',
-      preConfirm: () => {
-        const emailValue = document.getElementById('swal-input-email').value;
-        if (!emailValue) {
-          Swal.showValidationMessage('Please enter your email address');
-          return false;
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
-          Swal.showValidationMessage('Please enter a valid email address');
-          return false;
-        }
-        return emailValue;
+  // Handle Enter key press
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !loading) {
+      e.preventDefault();
+      handleLogin(e);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    setForgotPasswordEmail(email);
+    setShowForgotDialog(true);
+  };
+
+  const handleSendResetLink = async () => {
+    if (!forgotPasswordEmail) {
+      toast.error('Please enter your email address');
+      return;
+    }
+    
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotPasswordEmail)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      setForgotPasswordLoading(true);
+      
+      // Check if email exists in staff table (case-insensitive)
+      const { data: staffData, error: staffError } = await supabase
+        .from('staff')
+        .select('email, is_active')
+        .ilike('email', forgotPasswordEmail)
+        .single();
+
+      if (staffError || !staffData) {
+        toast.error('Account Not Found', {
+          description: 'No account found with this email address. Please check your email and try again.'
+        });
+        setForgotPasswordLoading(false);
+        return;
       }
-    });
 
-    if (emailInput) {
-      try {
-        // Show loading state
-        Swal.fire({
-          title: 'Verifying Account...',
-          html: 'Please wait while we verify your account.',
-          allowOutsideClick: false,
-          didOpen: () => {
-            Swal.showLoading();
-          }
+      if (!staffData.is_active) {
+        toast.error('Account Inactive', {
+          description: 'Your account is inactive. Please contact your administrator.'
         });
-
-        // Check if email exists in staff table
-        const { data: staffData, error: staffError } = await supabase
-          .from('staff')
-          .select('email, is_active')
-          .eq('email', emailInput)
-          .single();
-
-        if (staffError || !staffData) {
-          await Swal.fire({
-            icon: 'error',
-            title: 'Account Not Found',
-            text: 'No account found with this email address. Please check your email and try again.',
-            confirmButtonColor: '#30CEE4'
-          });
-          return;
-        }
-
-        if (!staffData.is_active) {
-          await Swal.fire({
-            icon: 'error',
-            title: 'Account Inactive',
-            text: 'Your account is inactive. Please contact your administrator.',
-            confirmButtonColor: '#30CEE4'
-          });
-          return;
-        }
-
-        // Send password reset email using Supabase Auth
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(emailInput, {
-          redirectTo: `${window.location.origin}/reset-password`
-        });
-
-        if (resetError) {
-          throw resetError;
-        }
-
-        await Swal.fire({
-          icon: 'success',
-          title: 'Reset Link Sent!',
-          text: `We've sent password reset instructions to ${emailInput}. Please check your email.`,
-          confirmButtonColor: '#30CEE4'
-        });
-      } catch (error) {
-        console.error('Forgot password error:', error);
-        await Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: 'Failed to send reset link. Please try again later.',
-          confirmButtonColor: '#30CEE4'
-        });
+        setForgotPasswordLoading(false);
+        return;
       }
+
+      // Send password reset email using Supabase Auth
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+
+      if (resetError) {
+        throw resetError;
+      }
+
+      toast.success('Reset Link Sent!', {
+        description: `We've sent password reset instructions to ${forgotPasswordEmail}. Please check your email.`
+      });
+      
+      setShowForgotDialog(false);
+      setForgotPasswordEmail('');
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      toast.error('Error', {
+        description: 'Failed to send reset link. Please try again later.'
+      });
+    } finally {
+      setForgotPasswordLoading(false);
     }
   };
 
@@ -270,7 +256,10 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   transition={{ duration: 0.3 }}
                   className="mb-4"
                 >
-                  <Alert variant="error">{error}</Alert>
+                  <AlertNew variant="destructive">
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                  </AlertNew>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -278,6 +267,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
             <motion.form 
               className="space-y-4" 
               onSubmit={handleLogin}
+              onKeyDown={handleKeyDown}
               method="post"
               action="#"
               variants={formVariants}
@@ -300,6 +290,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   placeholder="Enter your email"
                   disabled={loading}
                 />
@@ -321,6 +312,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
                     placeholder="Enter your password"
                     disabled={loading}
                   />
@@ -415,6 +407,49 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Forgot Password Dialog */}
+      <Dialog open={showForgotDialog} onOpenChange={setShowForgotDialog}>
+        <DialogContent onClose={() => setShowForgotDialog(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-nextgen-blue" />
+              Forgot Password
+            </DialogTitle>
+            <DialogDescription>
+              Enter the email address associated with your account at registration and we'll send you instructions to reset your password.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div>
+            <Input
+              type="email"
+              placeholder="Email address"
+              value={forgotPasswordEmail}
+              onChange={(e) => setForgotPasswordEmail(e.target.value)}
+              disabled={forgotPasswordLoading}
+              className="w-full"
+            />
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowForgotDialog(false)}
+              disabled={forgotPasswordLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendResetLink}
+              disabled={forgotPasswordLoading}
+              isLoading={forgotPasswordLoading}
+            >
+              {forgotPasswordLoading ? 'Sending...' : 'Send Reset Link'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import supabase, { supabaseAdmin } from '../../services/supabase.js';
-import { Input, Button } from '../ui';
+import { Input, Button, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import Swal from 'sweetalert2';
 import FileUpload from '../common/FileUpload.jsx';
 import { ref, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
@@ -10,8 +9,13 @@ import { useAuth } from '../../context/AuthContext.jsx';
 
 const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) => {
   const { user } = useAuth();
+  const { toast } = useToast();
   // Add state to track if this is a restored draft
   const [isRestoredDraft, setIsRestoredDraft] = useState(false);
+  
+  // Dialog states
+  const [showSaveDraftDialog, setShowSaveDraftDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   
   // Initialize form data with either initialData, cached data, or defaults
   const [formData, setFormData] = useState(() => {
@@ -107,12 +111,9 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
     });
 
     // Show success notification
-    Swal.fire({
-      icon: 'success',
-      title: 'Password Generated',
-      text: 'A secure password has been generated and filled in both fields.',
-      timer: 2000,
-      showConfirmButton: false
+    toast.success('Password Generated', {
+      description: 'A secure password has been generated and filled in both fields.',
+      duration: 2000
     });
   };
   const [imageUrl, setImageUrl] = useState(() => {
@@ -304,19 +305,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
     if (!isEdit) {
       // Ask user if they want to save their draft
       if (formHasData() && !isFormEmpty()) {
-        Swal.fire({
-          title: 'Save Draft?',
-          text: 'Do you want to save your progress as a draft for later?',
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: 'Save Draft',
-          cancelButtonText: 'Discard'
-        }).then((result) => {
-          if (!result.isConfirmed) {
-            clearFormCache();
-          }
-          onClose();
-        });
+        setShowSaveDraftDialog(true);
       } else {
         clearFormCache();
         onClose();
@@ -324,32 +313,37 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
     } else {
       // If editing, show confirmation dialog
       if (formData.first_name || formData.last_name || formData.email || imageUrl !== initialData?.profile_image_url) {
-        Swal.fire({
-          title: 'Discard Changes?',
-          text: 'Any unsaved changes will be lost.',
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Yes, discard',
-          cancelButtonText: 'No, keep editing'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            onClose();
-          }
-        });
+        setShowDiscardDialog(true);
       } else {
         onClose();
       }
     }
   };
 
+  const confirmSaveDraft = () => {
+    // Keep draft data in localStorage
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardDraft = () => {
+    // Clear draft data
+    clearFormCache();
+    setShowSaveDraftDialog(false);
+    onClose();
+  };
+
+  const confirmDiscardChanges = () => {
+    setShowDiscardDialog(false);
+    onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Validation Error',
-        text: 'Please check all required fields'
+      toast.error('Validation Error', {
+        description: 'Please check all required fields'
       });
       return;
     }
@@ -390,11 +384,9 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               
               if (passwordError) throw passwordError;
               
-              await Swal.fire({
-                icon: 'success',
-                title: 'Updated!',
-                text: 'Staff member and password updated successfully.',
-                timer: 2000
+              toast.success('Updated!', {
+                description: 'Staff member and password updated successfully.',
+                duration: 2000
               });
             } else if (passwordData.password) {
               // User doesn't have auth account - create one with manual password
@@ -425,28 +417,21 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
               if (linkError) throw linkError;
 
-              await Swal.fire({
-                icon: 'success',
-                title: 'Updated!',
-                text: 'Staff member updated and login credentials created.',
-                confirmButtonColor: '#30cee4'
+              toast.success('Updated!', {
+                description: 'Staff member updated and login credentials created.'
               });
             }
           } catch (credentialError) {
             console.error('Credential update error:', credentialError);
-            await Swal.fire({
-              icon: 'warning',
-              title: 'Partial Success',
-              text: 'Staff member updated but credentials could not be ' + (initialData.user_id ? 'changed' : 'created') + '.',
-              timer: 3000
+            toast.warning('Partial Success', {
+              description: 'Staff member updated but credentials could not be ' + (initialData.user_id ? 'changed' : 'created') + '.',
+              duration: 3000
             });
           }
         } else {
-          await Swal.fire({
-            icon: 'success',
-            title: 'Updated!',
-            text: 'Staff member has been updated successfully.',
-            timer: 1500
+          toast.success('Updated!', {
+            description: 'Staff member has been updated successfully.',
+            duration: 1500
           });
         }
         
@@ -518,27 +503,20 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
             if (updateError) throw updateError;
 
-            await Swal.fire({
-              icon: 'success',
-              title: 'Success!',
-              text: 'Staff member added with login credentials.',
-              confirmButtonColor: '#30cee4'
+            toast.success('Success!', {
+              description: 'Staff member added with login credentials.'
             });
           } catch (authError) {
             console.error('Auth error:', authError);
-            await Swal.fire({
-              icon: 'warning',
-              title: 'Partial Success',
-              text: 'Staff member added but login credentials could not be created. You can create them later using "Generate Credentials".',
-              timer: 3000
+            toast.warning('Partial Success', {
+              description: 'Staff member added but login credentials could not be created. You can create them later using "Generate Credentials".',
+              duration: 3000
             });
           }
         } else {
-          await Swal.fire({
-            icon: 'success',
-            title: 'Added!',
-            text: 'Staff member has been added successfully.',
-            timer: 1500
+          toast.success('Added!', {
+            description: 'Staff member has been added successfully.',
+            duration: 1500
           });
         }
 
@@ -551,10 +529,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
       }
     } catch (error) {
       console.error('Error saving staff member:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save staff member'
+      toast.error('Error', {
+        description: error.message || 'Failed to save staff member'
       });
     } finally {
       setIsSaving(false);
@@ -671,10 +647,8 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                         setImagePath(result.path);
                       }}
                       onUploadError={(error) => {
-                        Swal.fire({
-                          icon: 'error',
-                          title: 'Upload Error',
-                          text: error.message
+                        toast.error('Upload Error', {
+                          description: error.message
                         });
                       }}
                       onDeleteComplete={async () => {
@@ -698,11 +672,9 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                           }
                         }
                         
-                        Swal.fire({
-                          icon: 'success',
-                          title: 'Photo Removed',
-                          text: 'Photo has been removed successfully',
-                          timer: 1500
+                        toast.success('Photo Removed', {
+                          description: 'Photo has been removed successfully',
+                          duration: 1500
                         });
                       }}
                       accept="image/*"
@@ -943,6 +915,58 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
           </div>
         </div>
       </motion.div>
+
+      {/* Save Draft Dialog */}
+      <Dialog open={showSaveDraftDialog} onOpenChange={setShowSaveDraftDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Draft?</DialogTitle>
+            <DialogDescription>
+              Do you want to save your progress as a draft for later?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={confirmDiscardDraft}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmSaveDraft}
+            >
+              Save Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Discard Changes Dialog */}
+      <Dialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Any unsaved changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscardDialog(false)}
+            >
+              No, keep editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDiscardChanges}
+            >
+              Yes, discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
