@@ -9,15 +9,28 @@ import PreloadLink from '../common/PreloadLink.jsx';
 const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
 
 const Sidebar = () => {
-  const { sidebarOpen } = useNavigation();
+  const { sidebarOpen, closeSidebar } = useNavigation();
   const { staffProfile, user, hasPermission, canView } = useAuth(); // Get RBAC functions
   const location = useLocation();
   const [logoError, setLogoError] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState(null);
   const [activeSubpage, setActiveSubpage] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
   
   // Use staffProfile if available, otherwise fall back to user
   const profile = staffProfile || user;
+  
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Reset logo error if sidebar is closed/opened
   useEffect(() => {
@@ -222,23 +235,69 @@ const Sidebar = () => {
   };
 
   return (
-    <AnimatePresence>
-      {sidebarOpen && (
-        <motion.aside
-          key="sidebar"
-          initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 260, opacity: 1 }}
-          exit={{ width: 0, opacity: 0 }}
-          transition={{ duration: 0.4, ease: "easeInOut" }}
-          className="fixed z-50 h-screen left-0 top-0 bottom-0 overflow-hidden bg-gradient-to-b from-nextgen-blue-dark to-indigo-900 text-white shadow-lg md:static md:z-auto"
-        >
-          {/* Border glow effect */}
+    <>
+      {/* Mobile overlay backdrop */}
+      <AnimatePresence>
+        {sidebarOpen && isMobile && (
           <motion.div
-            className="absolute inset-0 pointer-events-none"
-            initial="initial"
-            animate="animate"
-            variants={borderGlowVariants}
+            key="overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+            onClick={closeSidebar}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.aside
+            key="sidebar"
+            initial={isMobile ? { x: -260, opacity: 0 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0, opacity: 1 } : { width: 260, opacity: 1 }}
+            exit={isMobile ? { x: -260, opacity: 0 } : { width: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            drag={isMobile ? "x" : false}
+            dragConstraints={{ left: -260, right: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(e, { offset, velocity }) => {
+              if (isMobile && (offset.x < -100 || velocity.x < -500)) {
+                closeSidebar();
+              }
+            }}
+            className={`
+              ${isMobile ? 'fixed' : 'md:static'} 
+              z-50 h-screen left-0 top-0 bottom-0 w-[260px] overflow-hidden 
+              bg-gradient-to-b from-nextgen-blue-dark to-indigo-900 text-white shadow-2xl
+              md:z-auto
+            `}
+          >
+            {/* Border glow effect */}
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              initial="initial"
+              animate="animate"
+              variants={borderGlowVariants}
+            />
+            
+            {/* Mobile swipe indicator */}
+            {isMobile && (
+              <motion.div
+                className="absolute top-1/2 right-0 transform -translate-y-1/2 w-1 h-16 bg-nextgen-blue/30 rounded-l-full"
+                animate={{
+                  opacity: [0.3, 0.6, 0.3],
+                  scaleY: [1, 1.2, 1]
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+            )}
           
           {/* Logo header with animations */}
           <motion.div 
@@ -497,6 +556,7 @@ const Sidebar = () => {
         </motion.aside>
       )}
     </AnimatePresence>
+    </>
   );
 };
 

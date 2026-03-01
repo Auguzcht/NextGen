@@ -27,11 +27,11 @@ const Card = ({
 
   // Define variant styles using NextGen colors
   const variantStyles = {
-    default: 'bg-white dark:bg-gray-800',
-    primary: 'bg-gradient-to-br from-nextgen-blue/5 to-nextgen-blue/10 dark:from-nextgen-blue/10 dark:to-nextgen-blue/20',
-    secondary: 'bg-gradient-to-br from-nextgen-orange/5 to-nextgen-orange/10 dark:from-nextgen-orange/10 dark:to-nextgen-orange/20',
-    transparent: 'bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm',
-    highlight: bordered ? 'bg-white dark:bg-gray-800 border-nextgen-blue/30 dark:border-nextgen-blue/20' : 'bg-white dark:bg-gray-800'
+    default: 'bg-white',
+    primary: 'bg-gradient-to-br from-nextgen-blue/5 to-nextgen-blue/10',
+    secondary: 'bg-gradient-to-br from-nextgen-orange/5 to-nextgen-orange/10',
+    transparent: 'bg-white/80 backdrop-blur-sm',
+    highlight: bordered ? 'bg-white border-nextgen-blue/30' : 'bg-white'
   };
 
   // Define shadow styles
@@ -105,7 +105,7 @@ const Card = ({
     <Component
       className={`
         ${variantStyles[variant]} 
-        ${bordered ? 'border border-gray-200 dark:border-gray-700' : ''} 
+        ${bordered ? 'border border-gray-200' : ''} 
         ${getShadowStyle()}
         rounded-lg overflow-hidden
         ${hoverable ? 'cursor-pointer transform transition-all duration-200' : ''}
@@ -144,7 +144,7 @@ const Card = ({
       {/* Card title with icon support */}
       {title && (
         <HeaderComponent 
-          className={`px-4 py-3 border-b border-gray-200 dark:border-gray-700 font-medium flex items-center ${titleColor} ${titleClass}`}
+          className={`px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 font-medium flex items-center text-sm sm:text-base ${titleColor} ${titleClass}`}
           variants={animate ? titleVariants : undefined}
         >
           {icon && <span className="mr-2">{icon}</span>}
@@ -154,7 +154,7 @@ const Card = ({
       
       {/* Card content */}
       <ContentComponent 
-        className={`${padding ? 'p-4' : ''} relative z-10`}
+        className={`${padding ? 'p-3 sm:p-4' : ''} relative z-10`}
         variants={animate ? contentVariants : undefined}
       >
         {children}

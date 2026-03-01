@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Table = ({
   data = [],
@@ -19,8 +19,36 @@ const Table = ({
   onSort,
   sortBy,
   sortOrder,
+  mobileCollapsible = false,
+  mobileBreakpoint = 768,
   ...props
 }) => {
+  // State for mobile view and expanded rows
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [expandedRows, setExpandedRows] = useState(new Set());
+  
+  // Detect screen size
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobileView(window.innerWidth < mobileBreakpoint);
+    };
+    
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, [mobileBreakpoint]);
+  
+  // Toggle row expansion
+  const toggleRowExpansion = (rowId) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(rowId)) {
+      newExpanded.delete(rowId);
+    } else {
+      newExpanded.add(rowId);
+    }
+    setExpandedRows(newExpanded);
+  };
   // Size classes
   const sizeClasses = {
     sm: {
@@ -200,70 +228,239 @@ const Table = ({
     onSort(sortKey);
   };
 
+  // Get primary column (usually name) - first column with 'name' in header or accessor
+  const getPrimaryColumn = () => {
+    return columns.find(col => 
+      (typeof col.header === 'string' && col.header.toLowerCase().includes('name')) ||
+      (typeof col.accessor === 'string' && col.accessor.toLowerCase().includes('name'))
+    ) || columns[1] || columns[0]; // fallback to second or first column
+  };
+
+  // Get actions column
+  const getActionsColumn = () => {
+    return columns.find(col => 
+      typeof col.header === 'string' && col.header.toLowerCase() === 'actions'
+    );
+  };
+
+  // Render mobile collapsed row
+  const renderMobileRow = (row, rowIndex) => {
+    const rowId = row.id || rowIndex;
+    const isExpanded = expandedRows.has(rowId);
+    const primaryColumn = getPrimaryColumn();
+    const actionsColumn = getActionsColumn();
+    
+    // Get hidden columns (all except primary and actions)
+    const hiddenColumns = columns.filter(col => 
+      col !== primaryColumn && col !== actionsColumn
+    );
+
+    return (
+      <div key={`mobile-row-${rowId}`} className="border-b border-gray-200 last:border-b-0">
+        {/* Collapsed view - shows primary info + actions */}
+        <motion.div
+          className={`
+            p-4 flex items-center justify-between gap-3
+            ${highlightOnHover ? 'hover:bg-nextgen-blue/5 transition-colors cursor-pointer' : ''}
+            ${stripedRows && rowIndex % 2 ? 'bg-gray-50' : 'bg-white'}
+          `}
+          onClick={() => {
+            if (onRowClick) {
+              onRowClick(row);
+            }
+          }}
+        >
+          {/* Primary content (e.g., name with avatar) */}
+          <div className="flex-1 min-w-0">
+            {primaryColumn.cell ? primaryColumn.cell(row) : getCellValue(row, primaryColumn.accessor)}
+          </div>
+
+          {/* Right side: Actions + Expand button */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Actions */}
+            {actionsColumn && (
+              <div onClick={(e) => e.stopPropagation()}>
+                {actionsColumn.cell ? actionsColumn.cell(row) : getCellValue(row, actionsColumn.accessor)}
+              </div>
+            )}
+            
+            {/* Expand/Collapse button */}
+            {hiddenColumns.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleRowExpansion(rowId);
+                }}
+                className="p-1.5 rounded-md hover:bg-nextgen-blue/10 text-nextgen-blue transition-colors"
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              >
+                <motion.svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  animate={{ rotate: isExpanded ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </motion.svg>
+              </button>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Expanded view - shows all other columns */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden bg-gray-50"
+            >
+              <div className="px-4 py-3 space-y-2.5">
+                {hiddenColumns.map((column, colIndex) => (
+                  <div key={`detail-${rowId}-${colIndex}`} className="flex items-start gap-3">
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                      {column.header}
+                    </div>
+                    <div className="flex-1 text-sm text-gray-900">
+                      {column.cell ? column.cell(row) : getCellValue(row, column.accessor)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  // Render mobile view
+  const renderMobileView = () => {
+    if (isLoading) {
+      return (
+        <div className="divide-y divide-gray-200">
+          {[...Array(5)].map((_, index) => (
+            <div key={`skeleton-${index}`} className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
+                <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (data.length === 0) {
+      return (
+        <div className="px-6 py-12 text-center text-gray-500">
+          <div className="flex flex-col items-center justify-center">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-12 w-12 text-gray-300 mb-2" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={1} 
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+              />
+            </svg>
+            <p>{noDataMessage}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-gray-200">
+        {data.map((row, rowIndex) => renderMobileRow(row, rowIndex))}
+      </div>
+    );
+  };
+
   return (
     // Enhanced responsive container with proper width constraints
-    <div className="overflow-x-auto shadow-sm rounded-lg w-full">
-      <div className="inline-block min-w-full align-middle">
-        <div className="overflow-hidden">
-          <table className={tableClasses} {...props}>
-            <thead className={`${stickyHeader ? 'sticky top-0' : ''}`}>
-              <tr>
-                {columns.map((column, index) => (
-                  <th
-                    key={`header-${index}`}
-                    scope="col"
-                    className={`
-                      ${headerClasses} 
-                      ${column.className || ''} 
-                      ${sortable && column.sortable ? 'cursor-pointer select-none group hover:bg-gray-100 transition-colors' : ''}
-                    `}
-                    style={column.width ? { width: column.width } : {}}
-                    onClick={() => handleColumnClick(column)}
-                  >
-                    <div className="flex items-center">
-                      {column.header}
-                      {renderSortIndicator(column)}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            {isLoading ? (
-              renderSkeleton()
-            ) : data.length === 0 ? (
-              renderNoData()
-            ) : (
-              <tbody className="bg-white divide-y divide-gray-200">
-                {data.map((row, rowIndex) => (
-                  <motion.tr
-                    key={`row-${row.id || rowIndex}`}
-                    className={`
-                      ${selectedVariant.row}
-                      ${stripedRows && rowIndex % 2 ? 'bg-gray-50' : ''}
-                      ${onRowClick ? 'cursor-pointer' : ''}
-                    `}
-                    onClick={() => onRowClick && onRowClick(row)}
-                    initial="initial"
-                    whileHover={highlightOnHover ? "hover" : "initial"}
-                    variants={rowVariants}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {columns.map((column, colIndex) => (
-                      <td
-                        key={`cell-${rowIndex}-${colIndex}`}
-                        className={`whitespace-nowrap ${selectedSize.cell} ${selectedVariant.cell} ${column.cellClassName || ''}`}
-                      >
-                        {column.cell ? column.cell(row) : getCellValue(row, column.accessor)}
-                      </td>
-                    ))}
-                  </motion.tr>
-                ))}
-              </tbody>
-            )}
-          </table>
+    <div className="overflow-x-auto shadow-sm rounded-lg w-full max-w-full">
+      {/* Mobile view with collapsible rows */}
+      {mobileCollapsible && isMobileView ? (
+        <div className="bg-white rounded-lg">
+          {renderMobileView()}
         </div>
-      </div>
+      ) : (
+        /* Desktop table view */
+        <div className="w-full align-middle">
+          <div className="overflow-hidden">
+            <table className={tableClasses} {...props}>
+              <thead className={`${stickyHeader ? 'sticky top-0' : ''}`}>
+                <tr>
+                  {columns.map((column, index) => (
+                    <th
+                      key={`header-${index}`}
+                      scope="col"
+                      className={`
+                        ${headerClasses} 
+                        ${column.className || ''} 
+                        ${sortable && column.sortable ? 'cursor-pointer select-none group hover:bg-gray-100 transition-colors' : ''}
+                      `}
+                      style={column.width ? { width: column.width } : {}}
+                      onClick={() => handleColumnClick(column)}
+                    >
+                      <div className="flex items-center">
+                        {column.header}
+                        {renderSortIndicator(column)}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              {isLoading ? (
+                renderSkeleton()
+              ) : data.length === 0 ? (
+                renderNoData()
+              ) : (
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.map((row, rowIndex) => (
+                    <motion.tr
+                      key={`row-${row.id || rowIndex}`}
+                      className={`
+                        ${selectedVariant.row}
+                        ${stripedRows && rowIndex % 2 ? 'bg-gray-50' : ''}
+                        ${onRowClick ? 'cursor-pointer' : ''}
+                      `}
+                      onClick={() => onRowClick && onRowClick(row)}
+                      initial="initial"
+                      whileHover={highlightOnHover ? "hover" : "initial"}
+                      variants={rowVariants}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {columns.map((column, colIndex) => (
+                        <td
+                          key={`cell-${rowIndex}-${colIndex}`}
+                          className={`${column.noWrap !== false ? 'whitespace-nowrap' : ''} ${selectedSize.cell} ${selectedVariant.cell} ${column.cellClassName || ''}`}
+                          style={column.maxWidth ? { maxWidth: column.maxWidth } : {}}
+                        >
+                          {column.cell ? column.cell(row) : getCellValue(row, column.accessor)}
+                        </td>
+                      ))}
+                    </motion.tr>
+                  ))}
+                </tbody>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -278,8 +475,10 @@ Table.propTypes = {
       className: PropTypes.string,
       cellClassName: PropTypes.string,
       width: PropTypes.string,
+      maxWidth: PropTypes.string,
       sortable: PropTypes.bool,
-      sortKey: PropTypes.string
+      sortKey: PropTypes.string,
+      noWrap: PropTypes.bool
     })
   ),
   isLoading: PropTypes.bool,
@@ -295,7 +494,9 @@ Table.propTypes = {
   sortable: PropTypes.bool,
   onSort: PropTypes.func,
   sortBy: PropTypes.string,
-  sortOrder: PropTypes.oneOf(['asc', 'desc'])
+  sortOrder: PropTypes.oneOf(['asc', 'desc']),
+  mobileCollapsible: PropTypes.bool,
+  mobileBreakpoint: PropTypes.number
 };
 
 export default Table;

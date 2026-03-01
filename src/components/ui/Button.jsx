@@ -38,11 +38,11 @@ const Button = forwardRef(({
   };
   
   const sizes = {
-    xs: 'text-xs px-2.5 py-1.5 rounded',
-    sm: 'text-sm px-3 py-2 rounded-md',
-    md: 'text-base px-4 py-2 rounded-md',
-    lg: 'text-lg px-5 py-2.5 rounded-lg',
-    xl: 'text-xl px-6 py-3 rounded-lg'
+    xs: 'text-xs px-2.5 py-1.5 rounded min-h-[32px]',
+    sm: 'text-sm px-3 py-2 rounded-md min-h-[36px]',
+    md: 'text-base px-4 py-2 rounded-md min-h-[42px] sm:min-h-[40px]',
+    lg: 'text-lg px-5 py-2.5 rounded-lg min-h-[48px]',
+    xl: 'text-xl px-6 py-3 rounded-lg min-h-[52px]'
   };
   
   const disabledClass = disabled || isLoading ? 'opacity-60 cursor-not-allowed shadow-none pointer-events-none' : 'cursor-pointer';

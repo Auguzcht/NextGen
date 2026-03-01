@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import supabase from '../../services/supabase.js';
 import googleDrive from '../../services/googleDrive.js';
 import MaterialForm from './MaterialForm.jsx';
-import { Button, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Input } from '../ui';
+import { Button, Badge, Table, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Input } from '../ui';
 import { motion } from 'framer-motion';
 import { formatDate } from '../../utils/dateUtils.js';
 
@@ -26,6 +26,10 @@ const MaterialsManager = ({ ageCategories = [] }) => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState('upload_date');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     fetchMaterials();
@@ -128,9 +132,8 @@ const MaterialsManager = ({ ageCategories = [] }) => {
     }
   };
 
-  // Filter materials based on search and filters
   const filteredMaterials = useMemo(() => {
-    return materials.filter(material => {
+    let filtered = materials.filter(material => {
       // Search filter (use debounced search)
       const searchLower = debouncedSearchQuery.toLowerCase();
       const matchesSearch = !debouncedSearchQuery || 
@@ -147,7 +150,186 @@ const MaterialsManager = ({ ageCategories = [] }) => {
       
       return matchesSearch && matchesCategory && matchesAgeGroup;
     });
-  }, [materials, debouncedSearchQuery, categoryFilter, ageGroupFilter]);
+    
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aVal, bVal;
+      
+      switch(sortBy) {
+        case 'title':
+          aVal = a.title || '';
+          bVal = b.title || '';
+          break;
+        case 'category':
+          aVal = a.category || '';
+          bVal = b.category || '';
+          break;
+        case 'age_group':
+          aVal = a.age_categories?.category_name || '';
+          bVal = b.age_categories?.category_name || '';
+          break;
+        case 'upload_date':
+          aVal = new Date(a.upload_date || 0);
+          bVal = new Date(b.upload_date || 0);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      } else {
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+      }
+    });
+    
+    return filtered;
+  }, [materials, debouncedSearchQuery, categoryFilter, ageGroupFilter, sortBy, sortOrder]);
+  
+  // Handle sorting
+  const handleSort = (columnKey) => {
+    if (sortBy === columnKey) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(columnKey);
+      setSortOrder('asc');
+    }
+  };
+  
+  // Define table columns
+  const columns = useMemo(() => [
+    {
+      header: 'Title',
+      accessor: 'title',
+      sortable: true,
+      sortKey: 'title',
+      noWrap: false,
+      maxWidth: "350px",
+      cell: (material) => (
+        <div className="flex items-center">
+          <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white mr-3">
+            {getCategoryIcon(material.category)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-gray-900 truncate">{material.title}</div>
+            {material.description && (
+              <div className="text-xs text-gray-500 line-clamp-1">{material.description}</div>
+            )}
+            <div className="flex items-center gap-1.5 mt-1">
+              {material.link_type === 'external' ? (
+                <Badge variant="info" size="sm">
+                  External URL
+                </Badge>
+              ) : material.file_url && material.file_url.includes('drive.google.com') ? (
+                <Badge variant="success" size="sm">
+                  Google Drive
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Category',
+      accessor: 'category',
+      sortable: true,
+      sortKey: 'category',
+      cell: (material) => (
+        <Badge variant="primary" size="sm">
+          {material.category}
+        </Badge>
+      )
+    },
+    {
+      header: 'Age Group',
+      accessor: 'age_categories.category_name',
+      sortable: true,
+      sortKey: 'age_group',
+      cell: (material) => (
+        <Badge variant="info" size="sm">
+          {material.age_categories?.category_name || 'All Ages'}
+        </Badge>
+      )
+    },
+    {
+      header: 'Date',
+      accessor: 'upload_date',
+      sortable: true,
+      sortKey: 'upload_date',
+      cell: (material) => (
+        <span className="text-sm text-gray-500">
+          {material.upload_date ? formatDate(material.upload_date, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+        </span>
+      )
+    },
+    {
+      header: 'Actions',
+      accessor: 'actions',
+      cell: (material) => (
+        <div className="flex justify-end items-center space-x-2">
+          {material.file_url && (
+            <a
+              href={material.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-nextgen-blue hover:text-nextgen-blue-dark"
+            >
+              <Button
+                variant="ghost"
+                size="xs"
+                icon={
+                  material.link_type === 'external' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  ) : material.file_url.includes('drive.google.com') ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972a6.033 6.033 0 110-12.064c1.498 0 2.866.549 3.921 1.453l2.814-2.814A9.969 9.969 0 0012.545 2C7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.748l-9.426-.013z"/>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )
+                }
+              >
+                {material.link_type === 'external' ? 'Open Link' : material.file_url.includes('drive.google.com') ? 'View' : 'Open'}
+              </Button>
+            </a>
+          )}
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => handleEdit(material)}
+            className="text-nextgen-blue"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            }
+          >
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="xs"
+            onClick={() => handleDelete(material.material_id)}
+            disabled={deletingId === material.material_id}
+            isLoading={deletingId === material.material_id}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            }
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    },
+  ], [deletingId]);
   
   // Paginated materials
   const paginatedMaterials = useMemo(() => {
@@ -212,8 +394,8 @@ const MaterialsManager = ({ ageCategories = [] }) => {
     };
 
     return (
-      <div className="flex items-center justify-between mt-4">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4 max-w-full">
+        <div className="flex-shrink-0">
           <p className="text-sm text-gray-700">
             Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
             <span className="font-medium">
@@ -222,7 +404,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
             of <span className="font-medium">{filteredMaterials.length}</span> results
           </p>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 overflow-x-auto max-w-full py-2">
           <Button
             variant="outline"
             size="sm"
@@ -311,7 +493,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full overflow-hidden">
       <div className="mb-6">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -430,172 +612,21 @@ const MaterialsManager = ({ ageCategories = [] }) => {
       </motion.div>
       
       {/* Materials Table */}
-      <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Title
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Category
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Age Group
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Upload Date
-              </th>
-              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-              <tr>
-                <td colSpan="5" className="px-6 py-12 text-center">
-                  <div className="flex justify-center items-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
-                    <span className="ml-3 text-sm text-gray-500">Loading materials...</span>
-                  </div>
-                </td>
-              </tr>
-            ) : paginatedMaterials.length === 0 && filteredMaterials.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="px-6 py-12 text-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-sm text-gray-500 font-medium">No materials match your filters</p>
-                  <p className="text-xs text-gray-400 mt-1">Try adjusting your search or filters</p>
-                </td>
-              </tr>
-            ) : paginatedMaterials.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="px-6 py-12 text-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-sm text-gray-500 font-medium">No materials found</p>
-                  <p className="text-xs text-gray-400 mt-1">Add educational materials to get started</p>
-                </td>
-              </tr>
-            ) : (
-              paginatedMaterials.map((material) => (
-                <motion.tr 
-                  key={material.material_id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                  whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
-                  className="group"
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white mr-3">
-                        {getCategoryIcon(material.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">{material.title}</div>
-                        {material.description && (
-                          <div className="text-xs text-gray-500 line-clamp-1">{material.description}</div>
-                        )}
-                        <div className="flex items-center gap-1.5 mt-1">
-                          {material.link_type === 'external' ? (
-                            <Badge variant="info" size="sm">
-                              External URL
-                            </Badge>
-                          ) : material.file_url && material.file_url.includes('drive.google.com') ? (
-                            <Badge variant="success" size="sm">
-                              Google Drive
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Badge variant="primary" size="sm">
-                      {material.category}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Badge variant="info" size="sm">
-                      {material.age_categories?.category_name || 'All Ages'}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {material.upload_date ? formatDate(material.upload_date, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end items-center space-x-2">
-                      {material.file_url && (
-                        <a
-                          href={material.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-nextgen-blue hover:text-nextgen-blue-dark"
-                        >
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            icon={
-                              material.link_type === 'external' ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                              ) : material.file_url.includes('drive.google.com') ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972a6.033 6.033 0 110-12.064c1.498 0 2.866.549 3.921 1.453l2.814-2.814A9.969 9.969 0 0012.545 2C7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.748l-9.426-.013z"/>
-                                </svg>
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              )
-                            }
-                          >
-                            {material.link_type === 'external' ? 'Open Link' : material.file_url.includes('drive.google.com') ? 'View' : 'Open'}
-                          </Button>
-                        </a>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => handleEdit(material)}
-                        className="text-nextgen-blue"
-                        icon={
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        }
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="xs"
-                        onClick={() => handleDelete(material.material_id)}
-                        disabled={deletingId === material.material_id}
-                        isLoading={deletingId === material.material_id}
-                        icon={
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </motion.tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Table
+        data={paginatedMaterials}
+        columns={columns}
+        sortable={true}
+        onSort={handleSort}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        mobileCollapsible={true}
+        emptyMessage={
+          filteredMaterials.length === 0 && !loading
+            ? "No materials match your filters. Try adjusting your search or filters."
+            : "No materials found. Add educational materials to get started."
+        }
+        isLoading={loading}
+      />
       
       {/* Pagination */}
       {totalPages > 1 && renderPagination()}

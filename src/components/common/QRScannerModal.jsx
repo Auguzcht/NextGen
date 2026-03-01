@@ -13,6 +13,8 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [qrBoxSize, setQrBoxSize] = useState({ width: 0, height: 0 });
   const [hasProcessedScan, setHasProcessedScan] = useState(false);
+  const [scannedChildInfo, setScannedChildInfo] = useState(null);
+  const [showChildInfo, setShowChildInfo] = useState(false);
   
   const videoRef = useRef(null);
   const qrScannerRef = useRef(null);
@@ -255,20 +257,33 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   };
   
   // Handle successful scan (from either method)
-  const handleScanResult = (result) => {
+  const handleScanResult = async (result) => {
     // Stop scanning
     stopScanning();
     
     // Show success message
     setSuccess(`QR Code detected: ${result}`);
     
-    // Call the onScanSuccess callback with the result
-    onScanSuccess(result);
+    // Call the onScanSuccess callback with the result and a callback to receive child info
+    const childInfo = await onScanSuccess(result);
     
-    // Auto close after success (with slight delay for animation)
-    setTimeout(() => {
-      onClose();
-    }, 1000);
+    // If we got child info, show it after animation
+    if (childInfo) {
+      setTimeout(() => {
+        setScannedChildInfo(childInfo);
+        setShowChildInfo(true);
+      }, 800);
+      
+      // Auto close after showing child info
+      setTimeout(() => {
+        onClose();
+      }, 7000);
+    } else {
+      // No child info (error case), close earlier
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    }
   };
   
   // Clean up when modal closes or component unmounts
@@ -280,6 +295,8 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       setSuccess(null);
       setShowSuccessAnimation(false);
       setHasProcessedScan(false);
+      setScannedChildInfo(null);
+      setShowChildInfo(false);
       processingRef.current = false;
       // Reset last scan when modal closes
       lastScanRef.current = { value: '', timestamp: 0 };
@@ -310,7 +327,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       <div className="p-5 relative" ref={modalContentRef}>
         {/* Success animation overlay - positioned only over the modal content */}
         <AnimatePresence>
-          {showSuccessAnimation && (
+          {showSuccessAnimation && !showChildInfo && (
             <motion.div 
               className="absolute inset-0 z-30 flex items-center justify-center bg-white/90 backdrop-blur-sm rounded-md"
               initial={{ opacity: 0 }}
@@ -341,6 +358,99 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
                     transition={{ duration: 0.5 }}
                   />
                 </motion.svg>
+              </motion.div>
+            </motion.div>
+          )}
+          {showChildInfo && scannedChildInfo && (
+            <motion.div 
+              className="absolute inset-0 z-30 flex items-center justify-center bg-white/95 backdrop-blur-sm rounded-md p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <motion.div 
+                className="bg-white border-2 border-green-500 rounded-lg shadow-lg p-6 max-w-sm w-full"
+                initial={{ scale: 0.85, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.85, opacity: 0 }}
+                transition={{ type: "spring", damping: 20, stiffness: 300 }}
+              >
+                {/* Success header with icon */}
+                <div className="flex items-center justify-center mb-4">
+                  <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                </div>
+                
+                {/* Action status */}
+                <div className="text-center mb-4">
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">
+                    {scannedChildInfo.action === 'check-in' ? 'Checked In!' : 'Checked Out!'}
+                  </h3>
+                  <p className="text-sm text-gray-500">Scan successful</p>
+                </div>
+                
+                {/* Child information card */}
+                <div className="bg-gradient-to-br from-nextgen-blue/5 to-nextgen-blue/10 rounded-lg p-4 space-y-3">
+                  {/* Photo and name */}
+                  <div className="flex items-center gap-3 pb-3 border-b border-nextgen-blue/20">
+                    {scannedChildInfo.photo_url ? (
+                      <img
+                        src={scannedChildInfo.photo_url}
+                        alt={scannedChildInfo.fullName}
+                        className="h-14 w-14 rounded-full object-cover border-2 border-nextgen-blue/30"
+                      />
+                    ) : (
+                      <div className="h-14 w-14 rounded-full bg-nextgen-blue/20 flex items-center justify-center border-2 border-nextgen-blue/30">
+                        <span className="text-nextgen-blue-dark font-bold text-lg">
+                          {scannedChildInfo.initials}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-900 text-lg truncate">
+                        {scannedChildInfo.fullName}
+                      </p>
+                      {scannedChildInfo.nickname && (
+                        <p className="text-sm text-gray-600 italic">"{scannedChildInfo.nickname}"</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Child details */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 font-medium">ID:</span>
+                      <span className="font-semibold text-nextgen-blue-dark">{scannedChildInfo.formalId}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 font-medium">Age:</span>
+                      <span className="font-semibold text-gray-900">{scannedChildInfo.age} years old</span>
+                    </div>
+                    {scannedChildInfo.ageGroup && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 font-medium">Group:</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-nextgen-blue text-white">
+                          {scannedChildInfo.ageGroup}
+                        </span>
+                      </div>
+                    )}
+                    {scannedChildInfo.gender && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 font-medium">Gender:</span>
+                        <span className="font-semibold text-gray-900">{scannedChildInfo.gender}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Auto-close indicator */}
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-gray-500">Closing automatically...</p>
+                </div>
               </motion.div>
             </motion.div>
           )}

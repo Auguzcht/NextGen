@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -6,6 +6,9 @@ import useImageCache from '../hooks/useImageCache.jsx';
 import { Card, Button, Table, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
 import QRScannerModal from '../components/common/QRScannerModal';
+import ChildDetailView from '../components/children/ChildDetailView';
+import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
+import PrintableIDCard from '../components/children/PrintableIDCard';
 
 const AttendancePage = () => {
   const { toast } = useToast();
@@ -24,6 +27,19 @@ const AttendancePage = () => {
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedChildren, setSelectedChildren] = useState([]);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState('check_in_time');
+  const [sortOrder, setSortOrder] = useState('desc');
+  
+  // Child detail view modal
+  const [selectedChildForView, setSelectedChildForView] = useState(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  
+  // Print ID and QR modal states
+  const [showPrintableID, setShowPrintableID] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [registeredChildData, setRegisteredChildData] = useState(null);
   
   // Image caching
   const { cacheImages } = useImageCache();
@@ -472,6 +488,86 @@ const AttendancePage = () => {
     return value;
   };
 
+  // Handle column sorting
+  const handleSort = (columnKey) => {
+    if (sortBy === columnKey) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(columnKey);
+      setSortOrder('asc');
+    }
+  };
+
+  // Sort the checked-in list based on current sort settings
+  const sortedCheckedInList = useMemo(() => {
+    if (!checkedInList || checkedInList.length === 0) return [];
+    
+    const sorted = [...checkedInList].sort((a, b) => {
+      let aVal, bVal;
+      
+      switch(sortBy) {
+        case 'children.formal_id':
+          aVal = a.children?.formal_id || '';
+          bVal = b.children?.formal_id || '';
+          break;
+        case 'children.first_name':
+          aVal = a.children?.first_name?.toLowerCase() || '';
+          bVal = b.children?.first_name?.toLowerCase() || '';
+          break;
+        case 'children.birthdate':
+          aVal = a.children?.birthdate ? new Date(a.children.birthdate) : new Date(0);
+          bVal = b.children?.birthdate ? new Date(b.children.birthdate) : new Date(0);
+          break;
+        case 'check_in_time':
+          aVal = a.check_in_time || '';
+          bVal = b.check_in_time || '';
+          break;
+        case 'check_out_time':
+          aVal = a.check_out_time || '';
+          bVal = b.check_out_time || '';
+          break;
+        default:
+          return 0;
+      }
+      
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      } else {
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+      }
+    });
+    
+    return sorted;
+  }, [checkedInList, sortBy, sortOrder]);
+
+  // Handle row click to view child details
+  const handleRowClick = async (row) => {
+    try {
+      // Fetch full child details
+      const { data: childData, error } = await supabase
+        .from('children')
+        .select(`
+          *,
+          age_categories(category_name),
+          child_guardian(
+            guardian_id,
+            is_primary,
+            guardians(first_name, last_name, phone_number, email)
+          )
+        `)
+        .eq('child_id', row.children?.child_id)
+        .single();
+      
+      if (error) throw error;
+      
+      setSelectedChildForView(childData);
+      setIsViewModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching child details:', error);
+      toast.error('Failed to load child details');
+    }
+  };
+
   // Search results component
   const SearchResultsList = () => {
     if (searchResults.length === 0) {
@@ -582,7 +678,9 @@ const AttendancePage = () => {
       header: "ID",
       accessor: row => row.children?.formal_id || 'N/A',
       cellClassName: "font-medium text-gray-900",
-      width: "100px"
+      width: "100px",
+      sortable: true,
+      sortKey: "children.formal_id"
     },
     {
       header: "Name",
@@ -611,7 +709,9 @@ const AttendancePage = () => {
           </div>
         </div>
       ),
-      width: "250px"
+      width: "250px",
+      sortable: true,
+      sortKey: "children.first_name"
     },
     {
       header: "Age / Group",
@@ -625,7 +725,9 @@ const AttendancePage = () => {
           )}
         </div>
       ),
-      width: "180px"
+      width: "180px",
+      sortable: true,
+      sortKey: "children.birthdate"
     },
     {
       header: "Check In",
@@ -635,7 +737,9 @@ const AttendancePage = () => {
           <div className="text-xs text-gray-500">by {formatStaffName(row.checked_in_by)}</div>
         </div>
       ),
-      width: "150px"
+      width: "150px",
+      sortable: true,
+      sortKey: "check_in_time"
     },
     {
       header: "Check Out",
@@ -647,7 +751,9 @@ const AttendancePage = () => {
       ) : (
         <span className="text-gray-500">-</span>
       ),
-      width: "150px"
+      width: "150px",
+      sortable: true,
+      sortKey: "check_out_time"
     },
     {
       header: "Actions",
@@ -669,14 +775,25 @@ const AttendancePage = () => {
   const handleQRScanSuccess = useCallback(async (scannedId) => {
     if (!selectedService || !selectedDate) {
       setError('Please select a service and date first');
-      return;
+      return null;
     }
     
     try {
-      // Try to find a child with this formal ID
+      // Try to find a child with this formal ID - fetch more details for display
       const { data: childData, error: childError } = await supabase
         .from('children')
-        .select('child_id, first_name, last_name, formal_id')
+        .select(`
+          child_id, 
+          first_name, 
+          middle_name,
+          last_name, 
+          nickname,
+          formal_id,
+          birthdate,
+          gender,
+          photo_url,
+          age_categories(category_name)
+        `)
         .eq('formal_id', scannedId)
         .eq('is_active', true)
         .maybeSingle();
@@ -685,7 +802,7 @@ const AttendancePage = () => {
       
       if (!childData) {
         setError(`No child found with ID: ${scannedId}`);
-        return;
+        return null;
       }
       
       // Check if child is already checked in
@@ -699,11 +816,34 @@ const AttendancePage = () => {
       
       if (checkInError) throw checkInError;
       
+      // Calculate age
+      const birthDate = new Date(childData.birthdate);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      // Prepare child info for display
+      const childInfo = {
+        fullName: `${childData.first_name}${childData.middle_name ? ' ' + childData.middle_name : ''} ${childData.last_name}`,
+        nickname: childData.nickname,
+        formalId: childData.formal_id,
+        age: age,
+        ageGroup: childData.age_categories?.category_name,
+        gender: childData.gender,
+        photo_url: childData.photo_url,
+        initials: `${childData.first_name?.charAt(0)}${childData.last_name?.charAt(0)}`,
+        action: null // Will be set below
+      };
+      
       if (existingCheckIn) {
         // Child is already checked in
         if (existingCheckIn.check_out_time) {
           // Already checked out
           setError(`${childData.first_name} ${childData.last_name} is already checked out`);
+          return null;
         } else {
           // Checked in but not out - perform check out
           await handleCheckOut(existingCheckIn.attendance_id);
@@ -714,6 +854,8 @@ const AttendancePage = () => {
             duration: 2000,
             variant: 'nextgen'
           });
+          
+          childInfo.action = 'check-out';
         }
       } else {
         // Not checked in yet - perform check in
@@ -724,14 +866,20 @@ const AttendancePage = () => {
         toast.success(`${childData.first_name} checked IN`, {
           duration: 2000
         });
+        
+        childInfo.action = 'check-in';
       }
     
       // Refresh the checked-in list
-      fetchCheckedInChildren();
+      await fetchCheckedInChildren();
+      
+      // Return child info to display in modal
+      return childInfo;
       
     } catch (error) {
       console.error('Error processing QR scan:', error);
       setError(`Failed to process scan: ${error.message}`);
+      return null;
     }
   }, [selectedService, selectedDate, handleCheckIn, handleCheckOut, fetchCheckedInChildren]);
 
@@ -893,7 +1041,7 @@ const AttendancePage = () => {
               </h3>
               <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                 <Table
-                  data={checkedInList}
+                  data={sortedCheckedInList}
                   columns={checkedInColumns}
                   isLoading={loading}
                   noDataMessage="No children checked in for this service"
@@ -901,6 +1049,12 @@ const AttendancePage = () => {
                   variant="primary"
                   stickyHeader={true}
                   size="md"
+                  sortable={true}
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortOrder={sortOrder}
+                  onRowClick={handleRowClick}
+                  mobileCollapsible={true}
                 />
               </div>
             </div>
@@ -941,6 +1095,79 @@ const AttendancePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Child Detail View Modal */}
+      <ChildDetailView
+        child={selectedChildForView}
+        isOpen={isViewModalOpen}
+        onClose={() => {
+          setIsViewModalOpen(false);
+          setSelectedChildForView(null);
+        }}
+        onPrintID={() => {
+          setIsViewModalOpen(false);
+          setSelectedChildForView(null);
+          setRegisteredChildData({
+            firstName: selectedChildForView.first_name,
+            lastName: selectedChildForView.last_name,
+            middleName: selectedChildForView.middle_name || '',
+            formalId: selectedChildForView.formal_id || 'N/A',
+            gender: selectedChildForView.gender,
+            birthdate: selectedChildForView.birthdate,
+            age: Math.floor((new Date() - new Date(selectedChildForView.birthdate)) / 31557600000),
+            ageCategory: selectedChildForView.age_categories?.category_name || 'N/A',
+            guardianFirstName: selectedChildForView.child_guardian?.[0]?.guardians?.first_name || '',
+            guardianLastName: selectedChildForView.child_guardian?.[0]?.guardians?.last_name || '',
+            guardianPhone: selectedChildForView.child_guardian?.[0]?.guardians?.phone_number || '',
+            guardianEmail: selectedChildForView.child_guardian?.[0]?.guardians?.email || '',
+            photoUrl: selectedChildForView.photo_url || '',
+            registrationDate: selectedChildForView.registration_date
+          });
+          setTimeout(() => setShowPrintableID(true), 100);
+        }}
+        onShowQR={() => {
+          setIsViewModalOpen(false);
+          setSelectedChildForView(null);
+          setRegisteredChildData({
+            firstName: selectedChildForView.first_name,
+            lastName: selectedChildForView.last_name,
+            middleName: selectedChildForView.middle_name || '',
+            formalId: selectedChildForView.formal_id || 'N/A',
+            gender: selectedChildForView.gender,
+            birthdate: selectedChildForView.birthdate,
+            age: Math.floor((new Date() - new Date(selectedChildForView.birthdate)) / 31557600000),
+            ageCategory: selectedChildForView.age_categories?.category_name || 'N/A',
+            guardianFirstName: selectedChildForView.child_guardian?.[0]?.guardians?.first_name || '',
+            guardianLastName: selectedChildForView.child_guardian?.[0]?.guardians?.last_name || '',
+            guardianPhone: selectedChildForView.child_guardian?.[0]?.guardians?.phone_number || '',
+            guardianEmail: selectedChildForView.child_guardian?.[0]?.guardians?.email || '',
+            photoUrl: selectedChildForView.photo_url || '',
+            registrationDate: selectedChildForView.registration_date
+          });
+          setTimeout(() => setShowQRModal(true), 100);
+        }}
+      />
+
+      {/* QR Code Modal (from Show QR button) */}
+      {showQRModal && registeredChildData && (
+        <RegistrationSuccessModal
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+          childData={registeredChildData}
+          onPrintID={() => {
+            setShowQRModal(false);
+            setTimeout(() => setShowPrintableID(true), 100);
+          }}
+        />
+      )}
+
+      {/* Printable ID Card Component */}
+      {showPrintableID && registeredChildData && (
+        <PrintableIDCard 
+          childData={registeredChildData}
+          onClose={() => setShowPrintableID(false)}
+        />
+      )}
     </div>
   );
 };

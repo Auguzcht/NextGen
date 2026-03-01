@@ -178,7 +178,7 @@ const SettingsPage = () => {
         
       case 'services':
         return (
-          <div className="space-y-10">
+          <div className="space-y-10 max-w-full overflow-hidden">
             <ServiceSettingsManager 
               services={services} 
               onUpdate={fetchServices}
@@ -192,7 +192,7 @@ const SettingsPage = () => {
         
       case 'age-groups-materials':
         return (
-          <div className="space-y-10">
+          <div className="space-y-10 max-w-full overflow-hidden">
             <AgeGroupSettings 
               ageCategories={ageCategories} 
               onUpdate={fetchAgeCategories}

@@ -552,6 +552,7 @@ const ChildrenPage = () => {
               onSort={handleSort}
               sortBy={sortBy}
               sortOrder={sortOrder}
+              mobileCollapsible={true}
             />
           </motion.div>
         </div>

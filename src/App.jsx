@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
+import MobileSidebar from './components/layout/MobileSidebar.jsx';
 import Footer from './components/layout/Footer.jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CURRENT_VERSION, shouldShowChangelog, markChangelogAsShown } from './utils/changelog.js';
@@ -37,9 +38,9 @@ const PageLoadingFallback = () => (
 );// Wrapper component to log page mounting
 const PageWrapper = ({ children, pageName }) => {
   useEffect(() => {
-    console.log(`[App] ✅ ${pageName} component MOUNTED`);
+    // console.log(`[App] ✅ ${pageName} component MOUNTED`);
     return () => {
-      console.log(`[App] ❌ ${pageName} component UNMOUNTED`);
+      // console.log(`[App] ❌ ${pageName} component UNMOUNTED`);
     };
   }, [pageName]);
   
@@ -65,7 +66,7 @@ const AuthCheck = () => {
   
   // If no session, redirect to login
   if (!session) {
-    console.log('No authenticated session, redirecting to login');
+    // console.log('No authenticated session, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
@@ -90,6 +91,32 @@ const MainLayoutContent = () => {
   const { sidebarOpen } = useNavigation(); // Now this is inside NavigationProvider
   const { user } = useAuth();
   const [showChangelog, setShowChangelog] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Detect mobile viewport using matchMedia (works better with browser dev tools)
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    
+    const checkMobile = (e) => {
+      const isMobileView = e ? e.matches : mediaQuery.matches;
+      setIsMobile(isMobileView);
+      // console.log('📱 Mobile view:', isMobileView, 'Width:', window.innerWidth);
+    };
+    
+    // Initial check
+    checkMobile();
+    
+    // Listen for changes (works with browser dev tools device emulation)
+    mediaQuery.addEventListener('change', checkMobile);
+    
+    // Also listen to resize as backup
+    window.addEventListener('resize', () => checkMobile());
+    
+    return () => {
+      mediaQuery.removeEventListener('change', checkMobile);
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
   
   // Check if we should show the changelog on first login
   useEffect(() => {
@@ -128,22 +155,27 @@ const MainLayoutContent = () => {
       {/* AI Chat Widget - Available on all authenticated pages */}
       <AIChatWidget />
       
-      {/* Fixed sidebar that doesn't scroll */}
-      <div className="fixed h-full z-30">
+      {/* Desktop sidebar - fixed, doesn't scroll */}
+      <div className="hidden md:block fixed h-full z-30">
         <Sidebar />
+      </div>
+      
+      {/* Mobile sidebar - overlay, doesn't affect layout */}
+      <div className="md:hidden">
+        <MobileSidebar />
       </div>
       
       {/* Main content area with fixed header and scrollable content */}
       <div 
         className="flex flex-col flex-1 transition-all duration-300 w-full min-h-screen"
         style={{ 
-          marginLeft: sidebarOpen ? "260px" : "0px" 
+          marginLeft: !isMobile && sidebarOpen ? "260px" : "0px" 
         }}
       >
         {/* Fixed header at the top */}
         <div className="fixed top-0 right-0 left-0 z-20 transition-all duration-300"
              style={{ 
-               left: sidebarOpen ? "260px" : "0px" 
+               left: !isMobile && sidebarOpen ? "260px" : "0px" 
              }}>
           <Header />
         </div>
@@ -185,7 +217,7 @@ const PublicRoute = () => {
     // Only redirect if on /login page and has a session
     // Never redirect if on /reset-password
     if (session && location.pathname === '/login') {
-      console.log('Session exists, redirecting to dashboard');
+      // console.log('Session exists, redirecting to dashboard');
       navigate('/dashboard', { replace: true });
     }
   }, [session, navigate, location]);

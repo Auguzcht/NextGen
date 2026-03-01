@@ -511,6 +511,7 @@ const GuardiansPage = () => {
             onSort={handleSort}
             sortBy={sortBy}
             sortOrder={sortOrder}
+            mobileCollapsible={true}
           />
         </motion.div>
         

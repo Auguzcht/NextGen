@@ -19,23 +19,23 @@ const Modal = ({
 
   // Size classes with better responsive handling
   const sizes = {
-    sm: 'w-full max-w-sm',
-    md: 'w-full max-w-md',
-    lg: 'w-full max-w-lg',
-    xl: 'w-full max-w-xl',
-    '2xl': 'w-full max-w-2xl',
-    '3xl': 'w-full max-w-3xl',
-    '4xl': 'w-full max-w-4xl',
-    '5xl': 'w-full max-w-5xl',
-    'full': 'w-[95vw]',
+    sm: 'w-full max-w-sm mx-4',
+    md: 'w-full max-w-md mx-4',
+    lg: 'w-full max-w-lg mx-4',
+    xl: 'w-full max-w-xl mx-4',
+    '2xl': 'w-full max-w-2xl mx-4',
+    '3xl': 'w-full max-w-3xl mx-4',
+    '4xl': 'w-full max-w-4xl mx-4',
+    '5xl': 'w-full max-w-5xl mx-4',
+    'full': 'w-[95vw] max-w-full mx-auto',
   };
   
   // Variants using NextGen color palette
   const variants = {
-    default: 'bg-white dark:bg-gray-800',
-    primary: 'bg-white dark:bg-gray-800 border-t-4 border-nextgen-blue',
-    secondary: 'bg-white dark:bg-gray-800 border-t-4 border-nextgen-orange',
-    glass: 'bg-white/90 dark:bg-gray-800/90 backdrop-blur-md'
+    default: 'bg-white',
+    primary: 'bg-white border-t-4 border-nextgen-blue',
+    secondary: 'bg-white border-t-4 border-nextgen-orange',
+    glass: 'bg-white/90 backdrop-blur-md'
   };
 
   // Handle ESC key and body scroll locking
@@ -109,7 +109,7 @@ const Modal = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[9999] overflow-hidden flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] overflow-hidden flex items-center justify-center p-2 sm:p-4"
           initial="hidden"
           animate="visible"
           exit="exit"
@@ -142,9 +142,9 @@ const Modal = ({
             </motion.div>
             
             {title && (
-              <div className="px-6 py-4 border-b border-nextgen-blue/20 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-nextgen-blue/20 flex items-center justify-between flex-shrink-0">
                 <motion.h3 
-                  className="text-lg font-medium text-nextgen-blue-dark dark:text-gray-100"
+                  className="text-base sm:text-lg font-medium text-nextgen-blue-dark"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
@@ -155,7 +155,7 @@ const Modal = ({
                 {closeButton && (
                   <motion.button
                     onClick={onClose}
-                    className="rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 dark:hover:bg-gray-700 transition-colors ml-4"
+                    className="rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors ml-4"
                     aria-label="Close"
                     initial={{ opacity: 0, rotate: 45 }}
                     animate={{ opacity: 1, rotate: 0 }}
@@ -174,7 +174,7 @@ const Modal = ({
             )}
             
             <motion.div 
-              className="px-6 py-5 overflow-y-auto flex-grow"
+              className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-grow"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
@@ -187,7 +187,7 @@ const Modal = ({
             
             {footer && (
               <motion.div 
-                className="px-6 py-4 border-t border-nextgen-blue/20 dark:border-gray-700 flex justify-end space-x-3 flex-shrink-0"
+                className="px-4 sm:px-6 py-3 sm:py-4 border-t border-nextgen-blue/20 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 flex-shrink-0"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
@@ -200,7 +200,7 @@ const Modal = ({
             {!title && closeButton && (
               <motion.button
                 onClick={onClose}
-                className="absolute top-4 right-4 rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 dark:hover:bg-gray-700 transition-colors"
+                className="absolute top-4 right-4 rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors"
                 aria-label="Close"
                 initial={{ opacity: 0, rotate: 45 }}
                 animate={{ opacity: 1, rotate: 0 }}

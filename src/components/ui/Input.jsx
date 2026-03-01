@@ -54,9 +54,9 @@ const Input = ({
   };
   
   const sizes = {
-    sm: "py-1 px-2 text-sm",
-    md: "py-2 px-3 text-base",
-    lg: "py-2.5 px-4 text-lg"
+    sm: "py-1.5 px-2.5 text-sm min-h-[36px]",
+    md: "py-2 px-3 text-base min-h-[42px] md:min-h-[40px]",
+    lg: "py-2.5 px-4 text-lg min-h-[48px]"
   };
   
   const statusClasses = error 
@@ -90,6 +90,7 @@ const Input = ({
     ${fullWidth ? 'w-full' : 'w-auto'}
     ${hasValue ? 'bg-white' : ''}
     ${isFocused ? 'ring-2 ring-opacity-20' : ''}
+    text-base md:text-sm
   `;
   
   return (
@@ -105,7 +106,7 @@ const Input = ({
         <label 
           htmlFor={inputId} 
           className={`
-            block text-sm font-medium mb-1 flex items-center
+            flex items-center text-sm font-medium mb-1
             ${disabled ? 'text-gray-400' : 'text-gray-700'}
             ${isFocused ? 'text-nextgen-blue' : ''}
             ${error ? 'text-red-600' : ''}

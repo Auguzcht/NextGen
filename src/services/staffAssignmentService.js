@@ -17,10 +17,10 @@ export const fetchStaffAssignments = async (startDate, endDate) => {
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
     
-    console.log('📅 Fetching staff assignments from Supabase:', {
-      from: startDateStr,
-      to: endDateStr
-    });
+    // console.log('📅 Fetching staff assignments from Supabase:', {
+    //   from: startDateStr,
+    //   to: endDateStr
+    // });
     
     const { data, error } = await supabase
       .from('staff_assignments')
@@ -52,11 +52,11 @@ export const fetchStaffAssignments = async (startDate, endDate) => {
     
     if (error) throw error;
     
-    console.log('✅ Fetched', data?.length || 0, 'staff assignments from Supabase');
+    // console.log('✅ Fetched', data?.length || 0, 'staff assignments from Supabase');
     
     return data || [];
   } catch (error) {
-    console.error('❌ Error fetching staff assignments:', error);
+    // console.error('❌ Error fetching staff assignments:', error);
     throw error;
   }
 };
@@ -178,7 +178,7 @@ export const getStaffStatisticsFromDB = async (staffEmail, startDate = null, end
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
     
-    console.log('📊 Getting statistics from DB for:', staffEmail);
+    // console.log('📊 Getting statistics from DB for:', staffEmail);
     
     // Fetch all assignments for this staff member
     const { data, error } = await supabase
@@ -203,7 +203,7 @@ export const getStaffStatisticsFromDB = async (staffEmail, startDate = null, end
     const assignments = data || [];
     
     if (assignments.length === 0) {
-      console.log('ℹ️  No assignments found for', staffEmail);
+      // console.log('ℹ️  No assignments found for', staffEmail);
       return {
         totalAssignments: 0,
         upcomingAssignments: 0,
@@ -244,11 +244,11 @@ export const getStaffStatisticsFromDB = async (staffEmail, startDate = null, end
       }
     } : null;
     
-    console.log('📈 Statistics from DB:', {
-      totalAssignments,
-      upcomingAssignments,
-      servicesWorked
-    });
+    // console.log('📈 Statistics from DB:', {
+    //   totalAssignments,
+    //   upcomingAssignments,
+    //   servicesWorked
+    // });
     
     return {
       totalAssignments,
@@ -257,7 +257,7 @@ export const getStaffStatisticsFromDB = async (staffEmail, startDate = null, end
       recentAssignment
     };
   } catch (error) {
-    console.error('❌ Error getting staff statistics from DB:', error);
+    // console.error('❌ Error getting staff statistics from DB:', error);
     return {
       totalAssignments: 0,
       upcomingAssignments: 0,

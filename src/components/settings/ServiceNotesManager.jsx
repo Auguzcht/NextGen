@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import supabase from '../../services/supabase.js';
 import ServiceNotesForm from './ServiceNotesForm.jsx';
 import { Button, Table, Modal, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
@@ -73,6 +73,94 @@ const ServiceNotesManager = ({ services }) => {
     }
   };
 
+  // Define table columns
+  const columns = useMemo(() => [
+    {
+      header: "Date",
+      accessor: "service_date",
+      cell: (row) => (
+        <div className="flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="font-medium">
+            {formatDate(row.service_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+        </div>
+      )
+    },
+    {
+      header: "Service",
+      accessor: "services.service_name",
+      cell: (row) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">{row.services?.service_name || 'N/A'}</div>
+          <div className="text-xs text-gray-500">{row.services?.day_of_week || ''}</div>
+        </div>
+      )
+    },
+    {
+      header: "Theme",
+      accessor: "theme",
+      noWrap: false,
+      maxWidth: "250px",
+      cell: (row) => (
+        <div className="text-sm text-gray-500 break-words">
+          {row.theme || <span className="text-gray-400 italic">No theme</span>}
+        </div>
+      )
+    },
+    {
+      header: "Recorded By",
+      accessor: "staff.first_name",
+      cell: (row) => (
+        <Badge variant="primary" size="sm">
+          {row.staff ? `${row.staff.first_name} ${row.staff.last_name}` : 'Unknown'}
+        </Badge>
+      )
+    },
+    {
+      header: "Actions",
+      accessor: "actions",
+      cell: (row) => (
+        <div className="flex justify-start items-center space-x-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedNote(row);
+            }}
+            className="text-nextgen-blue"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            }
+          >
+            View
+          </Button>
+          <Button
+            variant="danger"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(row.note_id);
+            }}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            }
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    }
+  ], []);
+
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-md mt-6">
       <div className="px-4 py-5 sm:p-6">
@@ -97,117 +185,17 @@ const ServiceNotesManager = ({ services }) => {
           </Button>
         </div>
 
-        {/* Custom Table - Matching StaffList Design */}
-        <div className="overflow-hidden border border-gray-200 rounded-lg shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Service
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Theme
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Recorded By
-                </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center">
-                    <div className="flex justify-center items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
-                      <span className="ml-3 text-sm text-gray-500">Loading service notes...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : notes.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <p className="text-sm text-gray-500 font-medium">No service notes found</p>
-                    <p className="text-xs text-gray-400 mt-1">Add notes for services that have occurred</p>
-                  </td>
-                </tr>
-              ) : (
-                notes.map((note) => (
-                  <motion.tr 
-                    key={note.note_id}
-                    whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
-                    className="group"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div className="flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span className="font-medium">
-                          {formatDate(note.service_date, { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{note.services?.service_name || 'N/A'}</div>
-                        <div className="text-xs text-gray-500">{note.services?.day_of_week || ''}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="max-w-xs truncate">
-                        {note.theme || <span className="text-gray-400 italic">No theme</span>}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant="primary" size="sm">
-                        {note.staff ? `${note.staff.first_name} ${note.staff.last_name}` : 'Unknown'}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => setSelectedNote(note)}
-                          className="text-nextgen-blue"
-                          icon={
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          }
-                        >
-                          View
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="xs"
-                          onClick={() => handleDelete(note.note_id)}
-                          icon={
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          }
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Service Notes Table */}
+        <Table
+          data={notes}
+          columns={columns}
+          isLoading={loading}
+          noDataMessage="No service notes found. Add notes for services that have occurred."
+          highlightOnHover={true}
+          variant="default"
+          size="md"
+          mobileCollapsible={true}
+        />
 
         {/* View Note Details Modal */}
         {selectedNote && (
