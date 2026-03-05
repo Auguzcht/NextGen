@@ -9,6 +9,7 @@ import QRScannerModal from '../components/common/QRScannerModal';
 import ChildDetailView from '../components/children/ChildDetailView';
 import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
 import PrintableIDCard from '../components/children/PrintableIDCard';
+import AddChildForm from '../components/children/AddChildForm';
 
 const AttendancePage = () => {
   const { toast } = useToast();
@@ -40,6 +41,14 @@ const AttendancePage = () => {
   const [showPrintableID, setShowPrintableID] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
+  
+  // Edit modal states
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedChildForEdit, setSelectedChildForEdit] = useState(null);
+  
+  // Remove from attendance states
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [attendanceToRemove, setAttendanceToRemove] = useState(null);
   
   // Image caching
   const { cacheImages } = useImageCache();
@@ -758,16 +767,42 @@ const AttendancePage = () => {
     {
       header: "Actions",
       cell: (row) => (
-        <Button
-          variant="danger"
-          size="xs"
-          onClick={() => handleCheckOut(row.attendance_id)}
-          disabled={!!row.check_out_time} // Disable if already checked out
-        >
-          Check Out
-        </Button>
+        <div className="flex justify-start gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditChild(row.children);
+            }}
+            icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>}
+            title="Edit Child"
+          />
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRemoveFromAttendance(row);
+            }}
+            icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>}
+            title="Remove from Attendance"
+          />
+          <Button
+            variant="danger"
+            size="xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCheckOut(row.attendance_id);
+            }}
+            disabled={!!row.check_out_time}
+            title="Check Out"
+          >
+            Check Out
+          </Button>
+        </div>
       ),
-      width: "100px"
+      width: "150px"
     }
   ];
 
@@ -882,6 +917,66 @@ const AttendancePage = () => {
       return null;
     }
   }, [selectedService, selectedDate, handleCheckIn, handleCheckOut, fetchCheckedInChildren]);
+
+  // Handle edit child
+  const handleEditChild = (child) => {
+    setSelectedChildForEdit(child);
+    setIsEditModalOpen(true);
+  };
+
+  // Handle edit success
+  const handleEditSuccess = async () => {
+    setIsEditModalOpen(false);
+    setSelectedChildForEdit(null);
+    
+    // Refresh the checked-in list to show updated data
+    await fetchCheckedInChildren();
+    
+    toast({
+      title: "Success",
+      description: "Child information updated successfully",
+      variant: "success"
+    });
+  };
+
+  // Handle remove from attendance
+  const handleRemoveFromAttendance = (row) => {
+    setAttendanceToRemove(row);
+    setShowRemoveDialog(true);
+  };
+
+  // Confirm remove from attendance
+  const confirmRemoveFromAttendance = async () => {
+    if (!attendanceToRemove) return;
+    
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('attendance_id', attendanceToRemove.attendance_id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Success",
+        description: `${attendanceToRemove.children?.first_name} ${attendanceToRemove.children?.last_name} removed from attendance`,
+        variant: "success"
+      });
+      
+      // Refresh the checked-in list
+      await fetchCheckedInChildren();
+      
+      setShowRemoveDialog(false);
+      setAttendanceToRemove(null);
+    } catch (error) {
+      console.error('Error removing from attendance:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove child from attendance",
+        variant: "error"
+      });
+    }
+  };
 
   return (
     <div className="page-container">
@@ -1168,6 +1263,48 @@ const AttendancePage = () => {
           onClose={() => setShowPrintableID(false)}
         />
       )}
+
+      {/* Edit Child Form Modal */}
+      {isEditModalOpen && selectedChildForEdit && (
+        <AddChildForm
+          isEdit={true}
+          initialData={selectedChildForEdit}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedChildForEdit(null);
+          }}
+          onSuccess={handleEditSuccess}
+        />
+      )}
+
+      {/* Remove from Attendance Dialog */}
+      <Dialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove from Attendance?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {attendanceToRemove?.children?.first_name} {attendanceToRemove?.children?.last_name} from this attendance session? This will delete their attendance record for this date and service.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRemoveDialog(false);
+                setAttendanceToRemove(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmRemoveFromAttendance}
+            >
+              Yes, remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

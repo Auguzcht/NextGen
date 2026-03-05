@@ -129,7 +129,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       
       // Process the scanned code with a delay for the animation
       setTimeout(() => {
-        handleScanResult(scanValue);
+        handleScanResult(scanValue, 'external');
       }, 700);
     } catch (error) {
       console.error('Error processing external scan:', error);
@@ -191,7 +191,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
             
             // Process the QR code after a brief delay for animation
             setTimeout(() => {
-              handleScanResult(scanValue);
+              handleScanResult(scanValue, 'webcam');
             }, 700);
           },
           {
@@ -257,12 +257,15 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   };
   
   // Handle successful scan (from either method)
-  const handleScanResult = async (result) => {
+  const handleScanResult = async (result, source = 'webcam') => {
     // Stop scanning
     stopScanning();
     
-    // Show success message
-    setSuccess(`QR Code detected: ${result}`);
+    // Show success message only for external scanner (2D barcode scanner)
+    // Webcam uses the overlay animations instead
+    if (source === 'external') {
+      setSuccess(`QR Code detected: ${result}`);
+    }
     
     // Call the onScanSuccess callback with the result and a callback to receive child info
     const childInfo = await onScanSuccess(result);
