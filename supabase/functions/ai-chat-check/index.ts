@@ -68,8 +68,19 @@ serve(async (req) => {
     // Analyze state and determine triggers
     const triggers: any[] = [];
 
+    // Check when last proactive message of each type was sent (cooldown: 5 minutes)
+    const { data: recentProactive } = await supabaseClient
+      .from('ai_chat_messages')
+      .select('trigger_type, created_at')
+      .eq('session_id', session.session_id)
+      .eq('was_proactive', true)
+      .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false });
+
+    const recentTriggerTypes = new Set(recentProactive?.map((m: any) => m.trigger_type) || []);
+
     // TRIGGER 1: Stuck Detection (stuck_score > 0.75)
-    if (sessionState.stuckScore > 0.75) {
+    if (sessionState.stuckScore > 0.75 && !recentTriggerTypes.has('stuck_detected')) {
       const pageName = sessionState.currentPage?.replace('/', '').replace(/-/g, ' ') || 'this page';
       
       // Natural, conversational message based on time spent
@@ -84,7 +95,7 @@ serve(async (req) => {
         context: {
           page: sessionState.currentPage,
           timeOnPage: sessionState.timeOnPageSeconds,
-          stuckScore: sessionState.stuckScore,
+          stuckScore: sessionState.stuckScore
         },
         action: {
           type: 'show_hint',
@@ -94,28 +105,42 @@ serve(async (req) => {
       });
     }
 
-    // TRIGGER 2: Error Pattern (2+ errors in recent history)
+    // TRIGGER 2: Error Pattern (2+ REAL errors in recent history, exclude dev errors)
     if (sessionState.recentErrors && sessionState.recentErrors.length >= 2) {
-      const errorSummary = sessionState.recentErrors.slice(0, 2).join(', ');
-      
-      triggers.push({
-        type: 'error_pattern',
-        priority: 'high',
-        message: `I see you're encountering some errors: ${errorSummary.substring(0, 50)}... Can I help troubleshoot?`,
-        context: {
-          errors: sessionState.recentErrors,
-          page: sessionState.currentPage,
-        },
-        action: {
-          type: 'show_hint',
-          target: 'ai_widget',
-          payload: { autoOpen: true }
-        }
+      // Filter out development/HMR errors
+      const realErrors = sessionState.recentErrors.filter((err: string) => {
+        const isDev = err.includes('Failed to fetch dynamically imported module') ||
+                     err.includes('HMR') ||
+                     err.includes('hot update') ||
+                     err.includes('vite') ||
+                     err.includes('useAuth(...)') || // Common dev error pattern
+                     err.includes('Cannot destructure property');
+        return !isDev;
       });
+      
+      // Only trigger if there are 3+ real errors (not dev errors)
+      if (realErrors.length >= 3) {
+        const errorSummary = realErrors.slice(0, 2).join(', ');
+        
+        triggers.push({
+          type: 'error_pattern',
+          priority: 'high',
+          message: `I see you're encountering some errors: ${errorSummary.substring(0, 50)}... Can I help troubleshoot?`,
+          context: {
+            errors: realErrors,
+            page: sessionState.currentPage,
+          },
+          action: {
+            type: 'show_hint',
+            target: 'ai_widget',
+            payload: { autoOpen: true }
+          }
+        });
+      }
     }
 
     // TRIGGER 3: Idle Timeout (5+ minutes on page with no action)
-    if (sessionState.timeOnPageSeconds > 300 && !sessionState.lastAction) {
+    if (sessionState.timeOnPageSeconds > 300 && !sessionState.lastAction && !recentTriggerTypes.has('idle_timeout')) {
       triggers.push({
         type: 'idle_timeout',
         priority: 'medium',
@@ -133,7 +158,7 @@ serve(async (req) => {
     }
 
     // TRIGGER 4: Intent-specific assistance (e.g., check-in attempt)
-    if (sessionState.inferredIntent === 'attendance.check_in' && sessionState.timeOnPageSeconds > 30) {
+    if (sessionState.inferredIntent === 'attendance.check_in' && sessionState.timeOnPageSeconds > 30 && !recentTriggerTypes.has('intent_assistance')) {
       triggers.push({
         type: 'intent_assistance',
         priority: 'medium',
@@ -155,7 +180,7 @@ serve(async (req) => {
     const recentEvents = sessionState.recentEvents || [];
     const backNavCount = recentEvents.filter((e: any) => e.event_type === 'nav_back').length;
     
-    if (backNavCount >= 3) {
+    if (backNavCount >= 3 && !recentTriggerTypes.has('navigation_confusion')) {
       triggers.push({
         type: 'navigation_confusion',
         priority: 'medium',

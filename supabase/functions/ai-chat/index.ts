@@ -245,7 +245,7 @@ serve(async (req) => {
         model: 'gpt-4o-mini',
         messages,
         temperature: 0.7,
-        max_tokens: 1500,
+        max_tokens: 3500,
         response_format: { type: 'json_object' }, // Request structured JSON response
       }),
     });
@@ -256,19 +256,42 @@ serve(async (req) => {
     // Parse JSON response with action schema
     let assistantMessage: string;
     let suggestedAction: any = null;
+    let followUpPrompts: string[] = [];
+    
+    const rawContent = openaiData.choices[0].message.content;
     
     try {
-      const jsonResponse = JSON.parse(openaiData.choices[0].message.content);
-      assistantMessage = jsonResponse.message || jsonResponse.response || openaiData.choices[0].message.content;
+      const jsonResponse = JSON.parse(rawContent);
+      assistantMessage = jsonResponse.message || jsonResponse.response || rawContent;
       suggestedAction = jsonResponse.action || null;
+      followUpPrompts = jsonResponse.followUpPrompts || [];
       
       if (suggestedAction) {
         console.log('AI suggested action:', suggestedAction);
       }
+      if (followUpPrompts.length > 0) {
+        console.log('AI suggested follow-up prompts:', followUpPrompts);
+      }
     } catch (parseError) {
       // Fallback to plain text if JSON parsing fails
-      console.warn('Failed to parse JSON response, using plain text');
-      assistantMessage = openaiData.choices[0].message.content;
+      console.warn('Failed to parse JSON response, using plain text:', parseError);
+      // Try to extract message from partial JSON if it exists
+      const messageMatch = rawContent.match(/"message"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/s);
+      if (messageMatch) {
+        assistantMessage = messageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        console.log('Extracted message from partial JSON');
+      } else {
+        assistantMessage = rawContent;
+      }
+      // Try to extract follow-up prompts
+      const promptsMatch = rawContent.match(/"followUpPrompts"\s*:\s*\[(.*?)\]/s);
+      if (promptsMatch) {
+        try {
+          followUpPrompts = JSON.parse('[' + promptsMatch[1] + ']');
+        } catch (e) {
+          // Ignore if can't parse
+        }
+      }
     }
     
     const tokensUsed = openaiData.usage.total_tokens;
@@ -338,6 +361,7 @@ serve(async (req) => {
         tokensUsed,
         responseTime,
         action: suggestedAction, // NEW: Include action in response
+        followUpPrompts: followUpPrompts, // NEW: Include follow-up prompts
         contextSources: {
           pinecone: ragContext.length,
           supabase: supabaseContext ? Object.keys(supabaseContext).length : 0,
@@ -366,26 +390,33 @@ function buildBaseIdentity(): string {
 **RESPONSE FORMAT:**
 Always respond with JSON:
 {
-  "message": "Your conversational response here",
-  "action": {
-    "type": "highlight" | "navigate" | "show_hint" | null,
-    "target": "component_name",
-    "payload": {}
-  }
+  "message": "Your complete conversational response here",
+  "followUpPrompts": ["Short follow-up question 1?", "Short follow-up question 2?", "Short follow-up question 3?"],
+  "action": null
 }
+
+**IMPORTANT:** 
+- ALWAYS complete your "message" field fully. Never cut off mid-sentence.
+- ALWAYS include 2-3 relevant "followUpPrompts" based on the context
+- Follow-up prompts should be:
+  * Short and concise (4-8 words)
+  * Naturally related to the current topic
+  * Practical next steps the user might want to know
+  * Phrased as questions when possible
+- Keep "action" as null unless there's a critical UI element to highlight
+- Prioritize completing helpful instructions over suggesting actions
 
 **CORE RULES:**
 1. NEVER HALLUCINATE - If you don't know, say "I don't have that information"
 2. Use STATE to detect if user is stuck (stuckScore > 0.7) - offer proactive help
 3. Use MANUAL_CONTEXT pages when answering - ONLY cite pages explicitly provided
 4. Use DATA for specific counts and names - be precise
-5. Suggest actions when helpful (highlight buttons, navigate to pages)
-6. Be WARM, FRIENDLY, and HELPFUL:
+5. Be WARM, FRIENDLY, and HELPFUL:
    - Start with acknowledgment: "I can help you with that!"
    - Use encouraging language: "Great question!", "You're on the right track!"
    - End with friendly outro: "Let me know if you need anything else!" or "Feel free to ask if you have questions!"
    - Show empathy: "I understand that can be tricky" or "That's a common question"
-7. Response STRUCTURE:
+6. Response STRUCTURE:
    - Opening: Acknowledge their question warmly
    - Body: Provide clear, numbered steps OR direct answer
    - Closing: Friendly outro offering continued help

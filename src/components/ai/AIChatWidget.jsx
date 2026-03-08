@@ -37,6 +37,7 @@ const AIChatWidget = () => {
   const [proactiveMessage, setProactiveMessage] = useState(null); // NEW: Proactive trigger message
   const [lastProactiveTrigger, setLastProactiveTrigger] = useState(null); // Prevent duplicate triggers
   const [showScrollButton, setShowScrollButton] = useState(false); // Show scroll-to-bottom button
+  const [followUpPrompts, setFollowUpPrompts] = useState(null); // Dynamic follow-up prompts from AI
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
@@ -300,20 +301,120 @@ const AIChatWidget = () => {
     }
   }, [isOpen, isMinimized]);
 
+  // Suggested prompts for first-time users
+  const suggestedPrompts = [
+    "Register a new child",
+    "Check in a child",
+    "Send emails to guardians",
+    "Staff roles & permissions"
+  ];
+
+  // Handle clicking a suggested prompt
+  const handleSuggestedPrompt = async (prompt) => {
+    // Convert short prompt to full question and submit immediately
+    const fullPrompts = {
+      "Register a new child": "How do I register a new child in the system?",
+      "Check in a child": "How do I check in a child for a service?",
+      "Send emails to guardians": "How do I send emails to guardians?",
+      "Staff roles & permissions": "What are the different staff roles and permissions?"
+    };
+    
+    const fullQuestion = fullPrompts[prompt] || prompt;
+    
+    // Add user message immediately
+    const userMessage = {
+      id: Date.now(),
+      role: 'user',
+      content: fullQuestion,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    // Track message send event
+    trackClick('ai_chat_send', { 
+      messageLength: fullQuestion.length,
+      queryPreview: fullQuestion.substring(0, 50),
+      source: 'suggested_prompt'
+    });
+
+    try {
+      // Detect current page from window location
+      const currentPage = window.location.pathname.split('/').pop() || 'Dashboard';
+      
+      // Call Supabase Edge Function
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
+          query: fullQuestion,
+          staffId: user?.staff_id || user?.id,
+          accessLevel: user?.access_level || 1,
+          currentPage: currentPage.replace('-', ' ').replace(/([A-Z])/g, ' $1').trim(),
+          conversationHistory: messages.slice(-4).map(msg => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        },
+      });
+
+      if (error) throw error;
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date(),
+        tokensUsed: data.tokensUsed,
+        contextSources: data.contextSources?.pinecone || 0,
+        responseTime: data.responseTime,
+        action: data.action,
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Set follow-up prompts if provided
+      if (data.followUpPrompts && data.followUpPrompts.length > 0) {
+        setFollowUpPrompts(data.followUpPrompts);
+      }
+
+      // Execute action if AI suggested one
+      if (data.action) {
+        executeAction(data.action);
+      }
+    } catch (error) {
+      const errorMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error processing your request. Please try again or contact support if the issue persists.',
+        timestamp: new Date(),
+        isError: true,
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // AI intro greeting presets (randomly selected for variety)
+  const getWelcomeGreeting = (firstName) => {
+    const name = firstName || 'there';
+    const greetings = [
+      `Hello, ${name}! 👋🏻 I'm your NextGen AI Assistant. What would you like to know?`,
+      `Hi, ${name}! 👋🏻 I'm here to help you with NextGen. What can I do for you?`,
+      `Hey, ${name}! 👋🏻 Ready to assist with anything NextGen-related. What do you need?`,
+      `Welcome ${name}! 👋🏻 I'm your NextGen AI Assistant. How can I help today?`,
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  };
+
   // Initialize with welcome message only for new sessions
   useEffect(() => {
     if (isOpen && messages.length === 0 && !sessionId) {
       const welcomeMessage = {
         id: Date.now(),
         role: 'assistant',
-        content: `Hello ${user?.first_name || 'there'}! I'm your NextGen AI Assistant. I can help you with:
-
-- Understanding the NextGen system
-- Operational workflows and procedures
-- Your role and responsibilities
-- System features and navigation
-
-What would you like to know?`,
+        content: getWelcomeGreeting(user?.first_name),
         timestamp: new Date(),
         contextSources: 0,
       };
@@ -340,6 +441,7 @@ What would you like to know?`,
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
+    setFollowUpPrompts(null); // Clear previous follow-up prompts
 
     try {
       // Detect current page from window location
@@ -373,6 +475,11 @@ What would you like to know?`,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Set follow-up prompts if provided
+      if (data.followUpPrompts && data.followUpPrompts.length > 0) {
+        setFollowUpPrompts(data.followUpPrompts);
+      }
 
       // Execute action if AI suggested one (Todo 7)
       if (data.action) {
@@ -554,6 +661,148 @@ What would you like to know?`,
                   {messages.map((message) => (
                     <ChatMessage key={message.id} message={message} userProfile={profile} />
                   ))}
+                  
+                  {/* Suggested Prompts - Show only after welcome message */}
+                  {messages.length === 1 && !isLoading && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3, duration: 0.4 }}
+                      className="px-4 pb-3"
+                    >
+                      <p className="text-xs text-gray-400 mb-2 text-right font-medium">Suggested prompts</p>
+                      <div className="flex flex-col items-end gap-1.5">
+                        {suggestedPrompts.map((prompt, idx) => (
+                          <motion.button
+                            key={idx}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.3 + (idx * 0.08), duration: 0.3, ease: 'easeOut' }}
+                            whileHover={{ scale: 1.02, x: -2 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleSuggestedPrompt(prompt)}
+                            className="text-xs px-3 py-2 rounded-2xl cursor-pointer transition-all duration-200"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(48, 206, 228, 0.08) 0%, rgba(28, 167, 188, 0.08) 100%)',
+                              border: '1px solid rgba(48, 206, 228, 0.3)',
+                              color: '#1e8a99',
+                              fontWeight: 400
+                            }}
+                          >
+                            {prompt}
+                          </motion.button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                  
+                  {/* Follow-up Prompts - Show after AI responses */}
+                  {followUpPrompts && followUpPrompts.length > 0 && !isLoading && messages.length > 1 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2, duration: 0.3 }}
+                      className="px-4 pb-3"
+                    >
+                      <p className="text-xs text-gray-400 mb-2 text-right font-medium">Follow-up questions</p>
+                      <div className="flex flex-col items-end gap-1.5">
+                        {followUpPrompts.map((prompt, idx) => (
+                          <motion.button
+                            key={idx}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.2 + (idx * 0.08), duration: 0.3, ease: 'easeOut' }}
+                            whileHover={{ scale: 1.02, x: -2 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={async () => {
+                              setFollowUpPrompts(null); // Clear prompts immediately
+                              
+                              // Add user message
+                              const userMessage = {
+                                id: Date.now(),
+                                role: 'user',
+                                content: prompt,
+                                timestamp: new Date(),
+                              };
+
+                              setMessages(prev => [...prev, userMessage]);
+                              setIsLoading(true);
+
+                              // Track message send event
+                              trackClick('ai_chat_send', { 
+                                messageLength: prompt.length,
+                                queryPreview: prompt.substring(0, 50),
+                                source: 'follow_up_prompt'
+                              });
+
+                              try {
+                                const currentPage = window.location.pathname.split('/').pop() || 'Dashboard';
+                                
+                                const { data, error } = await supabase.functions.invoke('ai-chat', {
+                                  body: {
+                                    query: prompt,
+                                    staffId: user?.staff_id || user?.id,
+                                    accessLevel: user?.access_level || 1,
+                                    currentPage: currentPage.replace('-', ' ').replace(/([A-Z])/g, ' $1').trim(),
+                                    conversationHistory: messages.slice(-4).map(msg => ({
+                                      role: msg.role,
+                                      content: msg.content,
+                                    })),
+                                  },
+                                });
+
+                                if (error) throw error;
+
+                                const assistantMessage = {
+                                  id: Date.now() + 1,
+                                  role: 'assistant',
+                                  content: data.message,
+                                  timestamp: new Date(),
+                                  tokensUsed: data.tokensUsed,
+                                  contextSources: data.contextSources?.pinecone || 0,
+                                  responseTime: data.responseTime,
+                                  action: data.action,
+                                };
+
+                                setMessages(prev => [...prev, assistantMessage]);
+
+                                // Set new follow-up prompts if provided
+                                if (data.followUpPrompts && data.followUpPrompts.length > 0) {
+                                  setFollowUpPrompts(data.followUpPrompts);
+                                }
+
+                                // Execute action if AI suggested one
+                                if (data.action) {
+                                  executeAction(data.action);
+                                }
+                              } catch (error) {
+                                const errorMessage = {
+                                  id: Date.now() + 1,
+                                  role: 'assistant',
+                                  content: 'I apologize, but I encountered an error processing your request. Please try again or contact support if the issue persists.',
+                                  timestamp: new Date(),
+                                  isError: true,
+                                };
+
+                                setMessages(prev => [...prev, errorMessage]);
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                            className="text-xs px-3 py-2 rounded-2xl cursor-pointer transition-all duration-200"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(48, 206, 228, 0.08) 0%, rgba(28, 167, 188, 0.08) 100%)',
+                              border: '1px solid rgba(48, 206, 228, 0.3)',
+                              color: '#1e8a99',
+                              fontWeight: 400
+                            }}
+                          >
+                            {prompt}
+                          </motion.button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
                   
                   {isLoading && (
                     <motion.div 
