@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Modal, AlertNew, AlertTitle, AlertDescription } from '../ui';
 import PropTypes from 'prop-types';
 import QrScanner from 'qr-scanner';
 
+const CAMERA_BARCODE_FORMATS = ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf', 'codabar'];
+
 const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   const [scanning, setScanning] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [externalScanBuffer, setExternalScanBuffer] = useState('');
   const [processingExternalScan, setProcessingExternalScan] = useState(false);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
@@ -15,14 +17,179 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
   const [hasProcessedScan, setHasProcessedScan] = useState(false);
   const [scannedChildInfo, setScannedChildInfo] = useState(null);
   const [showChildInfo, setShowChildInfo] = useState(false);
+  const [barcodeCameraSupported, setBarcodeCameraSupported] = useState(false);
   
   const videoRef = useRef(null);
   const qrScannerRef = useRef(null);
+  const barcodeDetectorRef = useRef(null);
+  const barcodeScanRafRef = useRef(null);
   const videoContainerRef = useRef(null);
   const externalBufferTimeoutRef = useRef(null);
   const modalContentRef = useRef(null);
   const processingRef = useRef(false); // Synchronous processing flag
+  const scanningRef = useRef(false);
+  const hasProcessedRef = useRef(false);
   const lastScanRef = useRef({ value: '', timestamp: 0 }); // Track last scan to prevent duplicates
+  const barcodeLastDetectAtRef = useRef(0);
+
+  // Non-invasive tuning layer: adapt rates and delays by device capability.
+  const scanTuning = useMemo(() => {
+    const defaults = {
+      profileName: 'default',
+      maxScansPerSecond: 3,
+      barcodeDetectIntervalMs: 60,
+      startUiDelayMs: 180,
+      stabilizeDelayMs: 100,
+      stopUiDelayMs: 120,
+      highlightScanRegion: true,
+      highlightCodeOutline: true,
+    };
+
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return defaults;
+    }
+
+    const ua = navigator.userAgent || '';
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+    const cpuCores = navigator.hardwareConcurrency || 4;
+    const memoryGb = navigator.deviceMemory || 4;
+    const isLowPowerDevice = cpuCores <= 4 || memoryGb <= 4;
+
+    if (isLowPowerDevice) {
+      return {
+        profileName: 'conservative',
+        maxScansPerSecond: 2,
+        barcodeDetectIntervalMs: 140,
+        startUiDelayMs: 220,
+        stabilizeDelayMs: 140,
+        stopUiDelayMs: 120,
+        highlightScanRegion: false,
+        highlightCodeOutline: false,
+      };
+    }
+
+    if (isMobile) {
+      return {
+        profileName: 'mobile',
+        maxScansPerSecond: 2.5,
+        barcodeDetectIntervalMs: 90,
+        startUiDelayMs: 200,
+        stabilizeDelayMs: 120,
+        stopUiDelayMs: 120,
+        highlightScanRegion: true,
+        highlightCodeOutline: true,
+      };
+    }
+
+    return defaults;
+  }, []);
+
+  useEffect(() => {
+    // console.log('QR scan tuning profile:', scanTuning.profileName, scanTuning);
+  }, [scanTuning]);
+
+  const handleDetectedScan = (scanValue, source) => {
+    if (!scanValue || processingRef.current || hasProcessedRef.current) return;
+
+    processingRef.current = true;
+    hasProcessedRef.current = true;
+    setHasProcessedScan(true);
+    stopScanning();
+
+    const now = Date.now();
+    if (lastScanRef.current.value === scanValue && (now - lastScanRef.current.timestamp) < 2000) {
+      processingRef.current = false;
+      return;
+    }
+
+    lastScanRef.current = { value: scanValue, timestamp: now };
+
+    setTimeout(() => {
+      handleScanResult(scanValue, source);
+    }, 700);
+  };
+
+  const stopBarcodeLoop = () => {
+    if (barcodeScanRafRef.current) {
+      cancelAnimationFrame(barcodeScanRafRef.current);
+      barcodeScanRafRef.current = null;
+    }
+  };
+
+  const startBarcodeLoop = () => {
+    if (!barcodeDetectorRef.current || !videoRef.current) return;
+
+    const scanFrame = async () => {
+      if (!scanningRef.current || processingRef.current || hasProcessedRef.current || !videoRef.current) {
+        stopBarcodeLoop();
+        return;
+      }
+
+      try {
+        const now = performance.now();
+        if (now - barcodeLastDetectAtRef.current < scanTuning.barcodeDetectIntervalMs) {
+          barcodeScanRafRef.current = requestAnimationFrame(scanFrame);
+          return;
+        }
+        barcodeLastDetectAtRef.current = now;
+
+        if (videoRef.current.readyState >= 2) {
+          const detected = await barcodeDetectorRef.current.detect(videoRef.current);
+          if (detected?.length) {
+            const raw = (detected[0].rawValue || '').trim();
+            if (raw) {
+              handleDetectedScan(raw, 'barcode-camera');
+              return;
+            }
+          }
+        }
+      } catch {
+        // Ignore intermittent detector errors while camera stream warms up.
+      }
+
+      barcodeScanRafRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    barcodeScanRafRef.current = requestAnimationFrame(scanFrame);
+  };
+
+  useEffect(() => {
+    scanningRef.current = scanning;
+  }, [scanning]);
+
+  useEffect(() => {
+    hasProcessedRef.current = hasProcessedScan;
+  }, [hasProcessedScan]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const setupBarcodeDetector = async () => {
+      if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
+        if (mounted) setBarcodeCameraSupported(false);
+        return;
+      }
+
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats();
+        const formats = CAMERA_BARCODE_FORMATS.filter((format) => supported.includes(format));
+        if (!formats.length) {
+          if (mounted) setBarcodeCameraSupported(false);
+          return;
+        }
+
+        barcodeDetectorRef.current = new window.BarcodeDetector({ formats });
+        if (mounted) setBarcodeCameraSupported(true);
+      } catch {
+        if (mounted) setBarcodeCameraSupported(false);
+      }
+    };
+
+    setupBarcodeDetector();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   
   // Calculate scanner box dimensions based on container size
   useEffect(() => {
@@ -124,9 +291,6 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       // Update last scan
       lastScanRef.current = { value: scanValue, timestamp: now };
       
-      // Show animation
-      setShowSuccessAnimation(true);
-      
       // Process the scanned code with a delay for the animation
       setTimeout(() => {
         handleScanResult(scanValue, 'external');
@@ -139,17 +303,34 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       setProcessingExternalScan(false);
     }
   };
+
+  const handleScanAnother = async () => {
+    setShowChildInfo(false);
+    setScannedChildInfo(null);
+    setShowSuccessAnimation(false);
+    setError(null);
+    setHasProcessedScan(false);
+    setProcessingExternalScan(false);
+    setExternalScanBuffer('');
+
+    processingRef.current = false;
+    hasProcessedRef.current = false;
+    lastScanRef.current = { value: '', timestamp: 0 };
+
+    await startScanning();
+  };
   
   // Start webcam scanning
   const startScanning = async () => {
     try {
-      setScanning(true);
+      // Show loading state first
+      setCameraLoading(true);
       setError(null);
-      setSuccess(null);
-      setShowSuccessAnimation(false);
-      setHasProcessedScan(false);
+      
+      // Reset internal state synchronously
+      scanningRef.current = true;
+      hasProcessedRef.current = false;
       processingRef.current = false;
-      // Clear last scan when starting new scan session
       lastScanRef.current = { value: '', timestamp: 0 };
       
       if (!videoRef.current) return;
@@ -159,53 +340,39 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
         qrScannerRef.current = new QrScanner(
           videoRef.current,
           result => {
-            // Only process if we haven't already processed a scan
-            if (hasProcessedScan || processingRef.current) return;
-            
-            console.log("QR code detected:", result);
-            
-            // Immediately set processing flag and stop scanner
-            processingRef.current = true;
-            setHasProcessedScan(true);
-            
-            // Stop the scanner immediately to prevent additional scans
-            if (qrScannerRef.current) {
-              qrScannerRef.current.stop();
-            }
-            setScanning(false);
-            
-            // Check for duplicate scan (same value within 2 seconds)
-            const now = Date.now();
-            const scanValue = result.data;
-            if (lastScanRef.current.value === scanValue && (now - lastScanRef.current.timestamp) < 2000) {
-              console.log('Duplicate scan detected, ignoring');
-              processingRef.current = false;
-              return;
-            }
-            
-            // Update last scan
-            lastScanRef.current = { value: scanValue, timestamp: now };
-            
-            // Show success animation
-            setShowSuccessAnimation(true);
-            
-            // Process the QR code after a brief delay for animation
-            setTimeout(() => {
-              handleScanResult(scanValue, 'webcam');
-            }, 700);
+            if (processingRef.current || hasProcessedRef.current) return;
+            handleDetectedScan(result.data, 'webcam');
           },
           {
             returnDetailedScanResult: true,
-            highlightScanRegion: true,
-            highlightCodeOutline: true,
-            maxScansPerSecond: 1, // Further reduce scan rate to prevent multiple detections
-            preferredCamera: 'environment', // Use back camera by default
+            highlightScanRegion: scanTuning.highlightScanRegion,
+            highlightCodeOutline: scanTuning.highlightCodeOutline,
+            maxScansPerSecond: scanTuning.maxScansPerSecond,
+            preferredCamera: 'environment',
           }
         );
       }
+
+      barcodeLastDetectAtRef.current = 0;
       
-      // Start the scanner
+      // Wait a bit to let the loading state render smoothly
+      await new Promise(resolve => setTimeout(resolve, scanTuning.startUiDelayMs));
+      
+      // Start the scanner and wait for it
       await qrScannerRef.current.start();
+      
+      // Wait for camera feed to stabilize
+      await new Promise(resolve => setTimeout(resolve, scanTuning.stabilizeDelayMs));
+      
+      // Only after camera is ready, update UI state
+      setCameraLoading(false);
+      setScanning(true);
+      setShowSuccessAnimation(false);
+      setHasProcessedScan(false);
+      
+      if (barcodeCameraSupported) {
+        startBarcodeLoop();
+      }
       
       // Log available cameras for debugging
       QrScanner.listCameras().then(cameras => {
@@ -214,17 +381,28 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       
     } catch (err) {
       console.error('Error starting QR scanner:', err);
-      setError(`Camera access error: ${err.message}`);
+      setCameraLoading(false);
       setScanning(false);
+      setError(`Camera access error: ${err.message}`);
     }
   };
   
   // Stop webcam scanning
-  const stopScanning = () => {
+  const stopScanning = async () => {
+    // Start the stopping process
+    setScanning(false);
+    
+    // Wait briefly for UI to transition (shorter wait for seamless fade)
+    await new Promise(resolve => setTimeout(resolve, scanTuning.stopUiDelayMs));
+    
+    // Then stop the actual camera
+    stopBarcodeLoop();
     if (qrScannerRef.current) {
       qrScannerRef.current.stop();
     }
-    setScanning(false);
+    barcodeLastDetectAtRef.current = 0;
+    scanningRef.current = false;
+    setCameraLoading(false);
   };
 
   // Toggle camera between front and back
@@ -256,36 +434,41 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
     }
   };
   
-  // Handle successful scan (from either method)
-  const handleScanResult = async (result, source = 'webcam') => {
+  // Handle successful scan from camera, barcode-camera, or external scanner
+  const handleScanResult = async (result) => {
     // Stop scanning
     stopScanning();
     
-    // Show success message only for external scanner (2D barcode scanner)
-    // Webcam uses the overlay animations instead
-    if (source === 'external') {
-      setSuccess(`QR Code detected: ${result}`);
-    }
-    
     // Call the onScanSuccess callback with the result and a callback to receive child info
-    const childInfo = await onScanSuccess(result);
+    const scanOutcome = await onScanSuccess(result);
+
+    // Explicit modal-level error contract from caller
+    if (scanOutcome?.modalError) {
+      setShowSuccessAnimation(false);
+      setShowChildInfo(false);
+      setScannedChildInfo(null);
+      setError(scanOutcome.modalError);
+      setHasProcessedScan(false);
+      processingRef.current = false;
+      hasProcessedRef.current = false;
+      return;
+    }
+
+    const childInfo = scanOutcome?.childInfo || scanOutcome;
     
     // If we got child info, show it after animation
     if (childInfo) {
+      setError(null);
+      setShowSuccessAnimation(true);
       setTimeout(() => {
         setScannedChildInfo(childInfo);
         setShowChildInfo(true);
       }, 800);
-      
-      // Auto close after showing child info
-      setTimeout(() => {
-        onClose();
-      }, 7000);
     } else {
-      // No child info (error case), close earlier
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      setShowSuccessAnimation(false);
+      setHasProcessedScan(false);
+      processingRef.current = false;
+      hasProcessedRef.current = false;
     }
   };
   
@@ -295,12 +478,14 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
       stopScanning();
       setExternalScanBuffer('');
       setError(null);
-      setSuccess(null);
+      setCameraLoading(false);
       setShowSuccessAnimation(false);
       setHasProcessedScan(false);
       setScannedChildInfo(null);
       setShowChildInfo(false);
       processingRef.current = false;
+      scanningRef.current = false;
+      hasProcessedRef.current = false;
       // Reset last scan when modal closes
       lastScanRef.current = { value: '', timestamp: 0 };
     }
@@ -312,6 +497,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
         qrScannerRef.current.destroy();
         qrScannerRef.current = null;
       }
+      stopBarcodeLoop();
       if (externalBufferTimeoutRef.current) {
         clearTimeout(externalBufferTimeoutRef.current);
       }
@@ -322,7 +508,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Scan QR Code"
+      title="Scan QR or Barcode"
       size="md"
       variant="primary"
       closeButton={true}
@@ -450,9 +636,21 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
                   </div>
                 </div>
                 
-                {/* Auto-close indicator */}
-                <div className="mt-4 text-center">
-                  <p className="text-xs text-gray-500">Closing automatically...</p>
+                {/* Success actions */}
+                <div className="mt-5 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleScanAnother}
+                    icon={
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    }
+                    iconPosition="left"
+                  >
+                    Scan Another
+                  </Button>
                 </div>
               </motion.div>
             </motion.div>
@@ -460,13 +658,19 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
         </AnimatePresence>
         
         {/* Instructions */}
-        <div className="text-center mb-4">
-          <p className="text-gray-600">
-            Scan a child's QR code using your device camera or a handheld scanner.
-          </p>
-          <p className="text-sm text-gray-500 mt-1">
-            Position the QR code within the scanning area.
-          </p>
+        <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-4 rounded-r-md backdrop-blur-sm shadow-sm">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-nextgen-blue-dark font-small">
+                Scan a QR code or barcode with your camera or handheld scanner
+              </p>
+            </div>
+          </div>
         </div>
         
         {/* Status Messages */}
@@ -484,31 +688,42 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
             </motion.div>
           )}
           
-          {success && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-4"
-            >
-              <AlertNew variant="success">
-                <AlertDescription>{success}</AlertDescription>
-              </AlertNew>
-            </motion.div>
-          )}
         </AnimatePresence>
         
         {/* Camera Preview Area */}
         <div 
           ref={videoContainerRef}
-          className="relative aspect-square bg-gray-900 rounded-lg overflow-hidden mb-4 max-w-sm mx-auto"
+          className="relative aspect-square bg-gray-900 rounded-lg overflow-hidden mb-4 max-w-sm mx-auto transition-all duration-300"
         >
           <video 
             ref={videoRef}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-opacity duration-300"
             playsInline 
             muted
           />
+          
+          {cameraLoading && (
+            <motion.div 
+              className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-gray-900/60 to-gray-900/40 z-10 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="flex flex-col items-center"
+              >
+                <svg className="h-10 w-10 animate-spin text-nextgen-blue mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                <p className="text-white text-sm font-medium">Initializing camera...</p>
+              </motion.div>
+            </motion.div>
+          )}
           
           {scanning && (
             <>
@@ -528,40 +743,46 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
               {/* Scanner status indicator */}
               <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20">
                 <div className="bg-black/50 text-white text-xs py-1 px-3 rounded-full flex items-center">
-                  <motion.div 
-                    className="w-2 h-2 bg-nextgen-blue rounded-full mr-2"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                  />
-                  Scanning...
+                  <svg className="h-3 w-3 animate-spin text-nextgen-blue mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Scanning
                 </div>
               </div>
             </>
           )}
           
-          {!scanning && !success && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 p-8">
+          {!scanning && !cameraLoading && (
+            <motion.div 
+              className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 p-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="w-16 h-16 mb-4 flex items-center justify-center rounded-full bg-nextgen-blue/10">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0118.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
               <p className="text-center">Camera preview will appear here</p>
-              <p className="text-sm mt-2">Click "Start Camera" to begin scanning</p>
-            </div>
+              <p className="text-sm text-center mt-2">Click "Start Camera" to begin scanning</p>
+            </motion.div>
           )}
         </div>
 
-        {/* External scanner info */}
-        <div className="flex items-center justify-center mb-4">
-          <div className="flex items-center text-sm text-gray-500">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1.5 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            External barcode scanners are supported and working
-          </div>
-        </div>
+        {/* Preview text below camera - always visible to prevent button shift */}
+        <motion.div 
+          className="text-center mt-4 text-sm text-gray-500"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: scanning || cameraLoading ? 0 : 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          <p>Click "Start Camera" to begin scanning</p>
+        </motion.div>
+
 
         {/* Action Buttons - Fixed layout */}
         <div className="flex justify-end items-center mt-4 gap-3">
@@ -573,12 +794,12 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
             Close
           </Button>
           
-          {!success && !showSuccessAnimation && (
+          {!showSuccessAnimation && (
             <Button
               variant={scanning ? "danger" : "primary"}
               onClick={scanning ? stopScanning : startScanning}
-              disabled={showSuccessAnimation}
-              className="whitespace-nowrap"
+              disabled={showSuccessAnimation || cameraLoading}
+              className="whitespace-nowrap transition-all duration-200"
               icon={
                 scanning ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -594,7 +815,7 @@ const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
               }
               iconPosition="left"
             >
-              {scanning ? "Stop Camera" : "Start Camera"}
+              {cameraLoading ? "Initializing..." : scanning ? "Stop Camera" : "Start Camera"}
             </Button>
           )}
         </div>

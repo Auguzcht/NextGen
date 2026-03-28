@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  */
 const useImageCache = () => {
   const [cache, setCache] = useState(new Map());
+  const [invalidUrls, setInvalidUrls] = useState(new Set());
   const loadingRef = useRef(new Set());
   
   // Load cache from sessionStorage on mount
@@ -17,6 +18,12 @@ const useImageCache = () => {
       if (cachedData) {
         const parsed = JSON.parse(cachedData);
         setCache(new Map(Object.entries(parsed)));
+      }
+
+      const invalidData = sessionStorage.getItem('nextgen_invalid_image_urls');
+      if (invalidData) {
+        const parsedInvalid = JSON.parse(invalidData);
+        setInvalidUrls(new Set(parsedInvalid));
       }
     } catch (error) {
       console.error('Error loading image cache:', error);
@@ -32,6 +39,14 @@ const useImageCache = () => {
       console.error('Error saving image cache:', error);
     }
   }, [cache]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('nextgen_invalid_image_urls', JSON.stringify(Array.from(invalidUrls)));
+    } catch (error) {
+      console.error('Error saving invalid image URLs:', error);
+    }
+  }, [invalidUrls]);
   
   /**
    * Get cached image URL
@@ -45,7 +60,7 @@ const useImageCache = () => {
    * Preload and cache an image
    */
   const cacheImage = useCallback((url) => {
-    if (!url || cache.has(url) || loadingRef.current.has(url)) {
+    if (!url || cache.has(url) || invalidUrls.has(url) || loadingRef.current.has(url)) {
       return Promise.resolve(cache.get(url) || url);
     }
     
@@ -66,27 +81,34 @@ const useImageCache = () => {
       
       img.onerror = (error) => {
         loadingRef.current.delete(url);
+        setInvalidUrls(prev => {
+          const newInvalid = new Set(prev);
+          newInvalid.add(url);
+          return newInvalid;
+        });
         reject(error);
       };
       
       img.src = url;
     });
-  }, [cache]);
+  }, [cache, invalidUrls]);
   
   /**
    * Batch cache multiple images
    */
   const cacheImages = useCallback(async (urls) => {
-    const validUrls = urls.filter(url => url && !cache.has(url) && !loadingRef.current.has(url));
+    const validUrls = urls.filter(url => url && !cache.has(url) && !invalidUrls.has(url) && !loadingRef.current.has(url));
     
     if (validUrls.length === 0) return;
-    
-    try {
-      await Promise.all(validUrls.map(url => cacheImage(url)));
-    } catch (error) {
-      console.error('Error batch caching images:', error);
+
+    const results = await Promise.allSettled(validUrls.map(url => cacheImage(url)));
+    const failedCount = results.filter(result => result.status === 'rejected').length;
+
+    // Broken image URLs are expected sometimes; avoid noisy error logs in the console.
+    if (failedCount > 0 && import.meta.env.DEV) {
+      console.debug(`[ImageCache] Skipped ${failedCount} invalid image URL(s).`);
     }
-  }, [cache, cacheImage]);
+  }, [cache, invalidUrls, cacheImage]);
   
   /**
    * Check if image is cached
@@ -94,13 +116,35 @@ const useImageCache = () => {
   const isCached = useCallback((url) => {
     return cache.has(url);
   }, [cache]);
+
+  /**
+   * Check if image URL has already been validated as broken/unavailable
+   */
+  const isInvalidImage = useCallback((url) => {
+    if (!url) return false;
+    return invalidUrls.has(url);
+  }, [invalidUrls]);
+
+  /**
+   * Mark an image URL as invalid from UI-level onError handlers
+   */
+  const markInvalidImage = useCallback((url) => {
+    if (!url) return;
+    setInvalidUrls(prev => {
+      const newInvalid = new Set(prev);
+      newInvalid.add(url);
+      return newInvalid;
+    });
+  }, []);
   
   /**
    * Clear all cached images
    */
   const clearCache = useCallback(() => {
     setCache(new Map());
+    setInvalidUrls(new Set());
     sessionStorage.removeItem('nextgen_image_cache');
+    sessionStorage.removeItem('nextgen_invalid_image_urls');
     loadingRef.current.clear();
   }, []);
   
@@ -113,6 +157,12 @@ const useImageCache = () => {
       newCache.delete(url);
       return newCache;
     });
+
+    setInvalidUrls(prev => {
+      const newInvalid = new Set(prev);
+      newInvalid.delete(url);
+      return newInvalid;
+    });
   }, []);
   
   return {
@@ -120,6 +170,8 @@ const useImageCache = () => {
     cacheImage,
     cacheImages,
     isCached,
+    isInvalidImage,
+    markInvalidImage,
     clearCache,
     removeImage,
     cacheSize: cache.size

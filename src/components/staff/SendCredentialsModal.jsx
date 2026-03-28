@@ -334,7 +334,7 @@ const SendCredentialsModal = ({ isOpen, onClose, staffMembers }) => {
                     </svg>
                   }
                 >
-                  {isSending ? 'Sending...' : `Send to ${selectedStaff.length} Staff`}
+                  {`Send to ${selectedStaff.length} Staff`}
                 </Button>
               </div>
             </motion.div>

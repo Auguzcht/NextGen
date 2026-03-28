@@ -218,15 +218,17 @@ const CredentialManagement = ({ staffMembers, onRefresh }) => {
             onClick={() => handleGenerateCredentials(true)}
             disabled={isGenerating || statusCounts.no_login === 0}
             variant="primary"
+            isLoading={isGenerating}
           >
-            {isGenerating ? 'Generating...' : `Generate All (${statusCounts.no_login})`}
+            {isGenerating ? 'Generating' : `Generate All (${statusCounts.no_login})`}
           </Button>
           <Button
             onClick={() => handleGenerateCredentials(false)}
             disabled={isGenerating || selectedStaff.length === 0}
             variant="secondary"
+            isLoading={isGenerating}
           >
-            {isGenerating ? 'Generating...' : `Generate Selected (${selectedStaff.length})`}
+            {isGenerating ? 'Generating' : `Generate Selected (${selectedStaff.length})`}
           </Button>
         </div>
       </div>

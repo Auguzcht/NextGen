@@ -261,12 +261,9 @@ const Dashboard = () => {
         </AlertNew>
       )}
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
         <div>
-          <h1 className="page-title text-nextgen-blue-dark">NextGen Ministry Dashboard</h1>
-          <p className="text-nextgen-orange/80 text-sm">
-            Welcome, {user?.first_name || user?.user_metadata?.first_name || user?.email?.split('@')[0]}
-          </p>
+          <h1 className="page-title text-nextgen-blue-dark">NXTGen Ministry Dashboard</h1>
         </div>
       </div>
       

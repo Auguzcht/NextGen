@@ -82,9 +82,9 @@ export default async function handler(req, res) {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
       to: [testEmail],
-      subject: 'NextGen Ministry - Test Email Configuration',
+      subject: 'NXTGen Ministry - Test Email Configuration',
       html: createTestEmailTemplate(),
-      text: `NextGen Ministry - Test Email Configuration
+      text: `NXTGen Ministry - Test Email Configuration
 
 Congratulations! Your email configuration is working correctly.
 
@@ -98,7 +98,7 @@ Your email system is now ready to:
 • Send Custom Messages: Personalized communications via Email Composer
 • Send Staff Credentials: Account setup and password reset emails
 
-This is an automated test email from NextGen Ministry
+This is an automated test email from NXTGen Ministry
 Sent at ${new Date().toLocaleString()}`
     };
 

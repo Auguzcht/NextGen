@@ -8,6 +8,8 @@ import ChangelogModal from './components/common/ChangelogModal.jsx';
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
+import PrivacyPolicyPage from './pages/legal/PrivacyPolicyPage.jsx';
+import TermsOfServicePage from './pages/legal/TermsOfServicePage.jsx';
 import Header from './components/layout/Header.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import MobileSidebar from './components/layout/MobileSidebar.jsx';
@@ -281,6 +283,8 @@ function AppContent() {
       <Route element={<PublicRoute />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
       </Route>
       
       {/* Protected routes with persistent layout */}

@@ -350,7 +350,7 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
                 disabled={isCreating || selectedStaff.length === 0}
                 isLoading={isCreating}
               >
-                {isCreating ? 'Creating...' : `Create Selected (${selectedStaff.length})`}
+                {isCreating ? 'Creating' : `Create Selected (${selectedStaff.length})`}
               </Button>
               <Button
                 variant="primary"
@@ -363,7 +363,7 @@ const BatchCredentialCreation = ({ isOpen, onClose, staffMembers, onSuccess }) =
                   </svg>
                 }
               >
-                {isCreating ? 'Creating...' : `Create All (${staffWithoutAccount.length})`}
+                {isCreating ? 'Creating' : `Create All (${staffWithoutAccount.length})`}
               </Button>
             </div>
           </div>

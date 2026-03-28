@@ -4,6 +4,48 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../ui';
 
+const parseAcceptTokens = (accept = '*/*') =>
+  accept
+    .split(',')
+    .map(token => token.trim().toLowerCase())
+    .filter(Boolean);
+
+const isFileTypeAccepted = (file, accept = '*/*') => {
+  const tokens = parseAcceptTokens(accept);
+  if (tokens.length === 0 || tokens.includes('*/*')) return true;
+
+  const fileName = (file?.name || '').toLowerCase();
+  const fileType = (file?.type || '').toLowerCase();
+
+  return tokens.some(token => {
+    if (token.startsWith('.')) {
+      return fileName.endsWith(token);
+    }
+
+    if (token.endsWith('/*')) {
+      const [prefix] = token.split('/');
+      return fileType.startsWith(`${prefix}/`);
+    }
+
+    return fileType === token;
+  });
+};
+
+const isUsableDownloadUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+
+  const normalized = url.trim();
+  if (!/^https?:\/\//i.test(normalized)) return false;
+  if (normalized.includes('undefined') || normalized.includes('null')) return false;
+
+  try {
+    const parsed = new URL(normalized);
+    return Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
 const FileUpload = React.forwardRef(({
   category,
   onUploadComplete,
@@ -32,6 +74,26 @@ const FileUpload = React.forwardRef(({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
+  const validateFile = (file) => {
+    if (!file) {
+      return 'No file provided';
+    }
+
+    if (file.size > maxSize * 1024 * 1024) {
+      return `File size must be less than ${maxSize}MB`;
+    }
+
+    if (!isFileTypeAccepted(file, accept)) {
+      return 'Selected file type is not allowed';
+    }
+
+    if (mode === 'image' && !(file.type || '').toLowerCase().startsWith('image/')) {
+      return 'Please upload an image file';
+    }
+
+    return null;
+  };
+
   // Expose triggerUpload method via ref
   React.useImperativeHandle(ref, () => ({
     triggerUpload: () => fileInputRef.current?.click()
@@ -47,18 +109,10 @@ const FileUpload = React.forwardRef(({
   }, [stream]);
 
   const uploadFile = async (file) => {
-    // Validate file exists
-    if (!file) {
-      console.error('No file provided to uploadFile');
+    const validationError = validateFile(file);
+    if (validationError) {
       if (typeof onUploadError === 'function') {
-        onUploadError(new Error('No file provided'));
-      }
-      return;
-    }
-
-    if (file.size > maxSize * 1024 * 1024) {
-      if (typeof onUploadError === 'function') {
-        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
+        onUploadError(new Error(validationError));
       }
       return;
     }
@@ -74,6 +128,10 @@ const FileUpload = React.forwardRef(({
       
       const snapshot = await uploadBytes(fileStorageRef, file, metadata);
       const url = await getDownloadURL(fileStorageRef);
+
+      if (!isUsableDownloadUrl(url)) {
+        throw new Error('Upload completed but returned an invalid download URL');
+      }
       
       setPreview(url);
       setImagePath(snapshot.ref.fullPath);
@@ -113,13 +171,6 @@ const FileUpload = React.forwardRef(({
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > maxSize * 1024 * 1024) {
-      if (typeof onUploadError === 'function') {
-        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
-      }
-      return;
-    }
-
     await uploadFile(file);
   };
 
@@ -151,13 +202,6 @@ const FileUpload = React.forwardRef(({
 
     const file = e.dataTransfer.files[0];
     if (!file) return;
-
-    if (file.size > maxSize * 1024 * 1024) {
-      if (typeof onUploadError === 'function') {
-        onUploadError(new Error(`File size must be less than ${maxSize}MB`));
-      }
-      return;
-    }
 
     await uploadFile(file);
   };
@@ -518,7 +562,7 @@ const FileUpload = React.forwardRef(({
                     whileHover={{ scale: uploading ? 1 : 1.02 }}
                     whileTap={{ scale: uploading ? 1 : 0.98 }}
                   >
-                    {uploading ? 'Uploading...' : 'Capture Photo'}
+                    {uploading ? 'Uploading' : 'Capture Photo'}
                   </motion.button>
                 </div>
               </div>
@@ -578,7 +622,7 @@ const FileUpload = React.forwardRef(({
                         ease: "linear"
                       }}
                     />
-                    <span className="text-sm text-gray-600">Uploading...</span>
+                    <span className="text-sm text-gray-600">Uploading</span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center space-y-3">
@@ -641,11 +685,24 @@ export const MultiFileUpload = ({
   const [uploadProgress, setUploadProgress] = useState(null);
   const fileInputRef = useRef(null);
 
+  const validateFile = (file) => {
+    if (file.size > maxSize * 1024 * 1024) {
+      return `${file.name} exceeds ${maxSize}MB limit`;
+    }
+
+    if (!isFileTypeAccepted(file, accept)) {
+      return `${file.name} is not an allowed file type`;
+    }
+
+    return null;
+  };
+
   const uploadFiles = async (files) => {
     const validFiles = Array.from(files).filter(file => {
-      if (file.size > maxSize * 1024 * 1024) {
+      const validationError = validateFile(file);
+      if (validationError) {
         if (typeof onUploadError === 'function') {
-          onUploadError(new Error(`${file.name} exceeds ${maxSize}MB limit`));
+          onUploadError(new Error(validationError));
         }
         return false;
       }
@@ -667,6 +724,10 @@ export const MultiFileUpload = ({
         
         const snapshot = await uploadBytes(fileStorageRef, file, metadata);
         const url = await getDownloadURL(fileStorageRef);
+
+        if (!isUsableDownloadUrl(url)) {
+          throw new Error(`Upload returned invalid URL for ${file.name}`);
+        }
         
         setUploadProgress(prev => ({ ...prev, current: index + 1 }));
         

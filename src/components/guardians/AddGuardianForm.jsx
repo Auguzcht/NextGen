@@ -746,15 +746,10 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                   type="submit"
                   variant="primary"
                   disabled={loading}
+                  isLoading={loading}
                   className="relative"
                 >
-                  {loading ? (
-                    <span className="flex items-center justify-center">
-                      {isEdit ? 'Saving Changes...' : 'Adding Guardian...'}
-                    </span>
-                  ) : (
-                    isEdit ? 'Save Changes' : 'Add Guardian'
-                  )}
+                  {isEdit ? 'Save Changes' : 'Add Guardian'}
                 </Button>
               </div>
             </div>

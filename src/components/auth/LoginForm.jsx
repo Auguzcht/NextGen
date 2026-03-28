@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext.jsx';
 import supabase from '../../services/supabase';
@@ -192,7 +193,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
               size="lg" 
               variant="primary" 
               type="fade"
-              label="Redirecting to dashboard..." 
+              label="Redirecting to dashboard" 
               labelPosition="bottom"
               className="mb-4"
             />
@@ -386,7 +387,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Signing in...
+                      Signing in
                     </span>
                   ) : (
                     'Sign in'
@@ -402,6 +403,20 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
                   Need help? Contact your administrator
                 </motion.p>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.85 }}
+                  className="mt-3 flex items-center justify-center gap-3 text-xs"
+                >
+                  <Link to="/privacy" className="text-nextgen-blue hover:text-nextgen-blue-dark hover:underline">
+                    Privacy Policy
+                  </Link>
+                  <span className="text-gray-300">|</span>
+                  <Link to="/terms" className="text-nextgen-blue hover:text-nextgen-blue-dark hover:underline">
+                    Terms of Service
+                  </Link>
+                </motion.div>
               </motion.div>
             </motion.form>
           </motion.div>
@@ -445,7 +460,7 @@ const LoginForm = ({ onLoginStart, onLoginSuccess }) => {
               disabled={forgotPasswordLoading}
               isLoading={forgotPasswordLoading}
             >
-              {forgotPasswordLoading ? 'Sending...' : 'Send Reset Link'}
+              Send Reset Link
             </Button>
           </DialogFooter>
         </DialogContent>

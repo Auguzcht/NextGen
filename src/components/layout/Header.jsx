@@ -124,7 +124,7 @@ const Header = () => {
   // Get base page info with personalization for dashboard
   const basePageInfo = pageTitles[mainPath] || { 
     title: 'Dashboard', 
-    description: 'Welcome to NextGen Ministry'
+    description: 'Welcome to NXTGen Ministry'
   };
   
   // Create personalized page info with user's name
@@ -132,7 +132,7 @@ const Header = () => {
     const info = { ...basePageInfo };
     
     if (user && info.description.includes('Welcome')) {
-      info.description = `Welcome to NextGen Ministry, ${user.first_name || user.email?.split('@')[0]}`;
+      info.description = `Welcome to NXTGen Ministry, ${user.first_name || user.email?.split('@')[0]}`;
     }
     
     return info;

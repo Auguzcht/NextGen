@@ -6,7 +6,7 @@ const Footer = ({ onVersionClick }) => {
   return (
     <footer className="mt-auto py-3 px-4 md:px-6 text-center text-sm text-gray-500">
       <p>
-        © {new Date().getFullYear()} NextGen Ministry Management · 
+        © {new Date().getFullYear()} NXTGen Children's Ministry · 
         <button
           onClick={onVersionClick}
           className="font-medium text-nextgen-blue hover:text-nextgen-blue-dark transition-colors ml-1 hover:underline cursor-pointer"

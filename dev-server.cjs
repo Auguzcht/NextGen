@@ -7,7 +7,27 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
+
+let JSBARCODE_INLINE = '';
+try {
+  JSBARCODE_INLINE = fs.readFileSync(require.resolve('jsbarcode/dist/JsBarcode.all.min.js'), 'utf8');
+} catch (error) {
+  console.warn('Could not inline JsBarcode from node_modules, falling back to CDN in HTML rendering:', error.message);
+}
+
+let LOCAL_TEMPLATE_DATA_URL = '';
+function getLocalTemplateDataUrl() {
+  if (LOCAL_TEMPLATE_DATA_URL) return LOCAL_TEMPLATE_DATA_URL;
+
+  const templatePath = path.join(__dirname, 'public', 'NXTGen-Child-ID-Template.png');
+  const templateBuffer = fs.readFileSync(templatePath);
+  LOCAL_TEMPLATE_DATA_URL = `data:image/png;base64,${templateBuffer.toString('base64')}`;
+  return LOCAL_TEMPLATE_DATA_URL;
+}
 
 const app = express();
 const PORT = 3001;
@@ -194,7 +214,7 @@ app.post('/api/email/send-test', async (req, res) => {
       body: JSON.stringify({
         from: `${emailConfig.from_name} <${emailConfig.from_email}>`,
         to: [testEmail],
-        subject: 'NextGen Ministry - Test Email',
+        subject: 'NXTGen Ministry - Test Email',
         html: `
           <!DOCTYPE html>
           <html>
@@ -214,7 +234,7 @@ app.post('/api/email/send-test', async (req, res) => {
               </div>
               <div class="content">
                 <div class="success-badge">✓ Configuration Working</div>
-                <p>Congratulations! Your NextGen Ministry email configuration is working correctly.</p>
+                <p>Congratulations! Your NXTGen Ministry email configuration is working correctly.</p>
                 <p><strong>Provider:</strong> ${emailConfig.provider}</p>
                 <p><strong>From:</strong> ${emailConfig.from_name} &lt;${emailConfig.from_email}&gt;</p>
               </div>
@@ -299,30 +319,30 @@ app.post('/api/email/send-credentials', async (req, res) => {
     // Event type configurations
     const eventConfigs = {
       new_account: {
-        subject: 'Welcome to NextGen Ministry - Set Up Your Account',
+        subject: 'Welcome to NXTGen Ministry - Set Up Your Account',
         title: 'Account Access Information',
-        greeting: 'Your account for the NextGen Ministry management system is ready!',
+        greeting: 'Your account for the NXTGen Ministry management system is ready!',
         buttonText: 'Set My Password',
         note: 'Set up your password to get started with the system.'
       },
       password_reset: {
-        subject: 'NextGen Ministry - Password Reset Request',
+        subject: 'NXTGen Ministry - Password Reset Request',
         title: 'Password Reset',
         greeting: 'We received a request to reset your password.',
         buttonText: 'Reset Password',
         note: 'If you didn\'t request this, please ignore this email.'
       },
       account_reactivation: {
-        subject: 'NextGen Ministry - Your Account Has Been Reactivated',
+        subject: 'NXTGen Ministry - Your Account Has Been Reactivated',
         title: 'Account Reactivated',
-        greeting: 'Good news! Your NextGen Ministry account has been reactivated.',
+        greeting: 'Good news! Your NXTGen Ministry account has been reactivated.',
         buttonText: 'Access Your Account',
         note: 'Set up a new password to regain access to the system.'
       },
       access_reminder: {
-        subject: 'NextGen Ministry - Your Login Credentials',
+        subject: 'NXTGen Ministry - Your Login Credentials',
         title: 'Login Credentials Reminder',
-        greeting: 'Here are your login credentials for the NextGen Ministry system.',
+        greeting: 'Here are your login credentials for the NXTGen Ministry system.',
         buttonText: 'Set/Reset Password',
         note: 'Click below to set a new password or reset your existing one.'
       }
@@ -549,9 +569,9 @@ app.post('/api/email/send-child-qr', async (req, res) => {
     const emailData = {
       from: `${config.from_name} <${config.from_email}>`,
       to: [guardianEmail],
-      subject: `${firstName}'s Check-In QR Code - NextGen Ministry`,
+      subject: `${firstName}'s Check-In QR Code - NXTGen Ministry`,
       html: htmlContent,
-      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNextGen Ministry Davao Team`
+      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NXTGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNXTGen Ministry Davao Team`
     };
 
     // Add attachment if QR buffer was generated successfully
@@ -1325,6 +1345,403 @@ app.post('/api/staff/generate-credentials', async (req, res) => {
   }
 });
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeCode128(value) {
+  return String(value ?? '')
+    .split('')
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 32 && code <= 126 ? char : '?';
+    })
+    .join('');
+}
+
+function mapChildToSnapshot(row) {
+  const guardians = row.child_guardian || [];
+  const primary = guardians.find((g) => g.is_primary) || guardians[0] || null;
+  const guardianName = primary?.guardians
+    ? `${primary.guardians.first_name || ''} ${primary.guardians.last_name || ''}`.trim()
+    : '';
+
+  return {
+    child_id: row.child_id,
+    formal_id: row.formal_id || 'N/A',
+    first_name: row.first_name || '',
+    last_name: row.last_name || '',
+    nickname: row.nickname || '',
+    photo_url: row.photo_url || '',
+    birthdate: row.birthdate,
+    age_category: row.age_categories?.category_name || 'N/A',
+    guardian_name: guardianName || 'N/A',
+    guardian_contact: primary?.guardians?.phone_number || primary?.guardians?.email || 'N/A',
+  };
+}
+
+function computeExportCounts(rows) {
+  const isEligible = (row) => Boolean(row?.is_active && row?.nickname && row?.photo_url);
+  const counts = {
+    totalActive: rows.length,
+    eligible: 0,
+    pending: 0,
+    reprintNeeded: 0,
+    printed: 0,
+    hold: 0,
+    incomplete: 0,
+    exportable: 0,
+  };
+
+  for (const row of rows) {
+    const eligible = isEligible(row);
+    if (eligible) counts.eligible += 1;
+    else counts.incomplete += 1;
+
+    if (row.id_print_status === 'pending') counts.pending += 1;
+    if (row.id_print_status === 'reprint_needed') counts.reprintNeeded += 1;
+    if (row.id_print_status === 'printed') counts.printed += 1;
+    if (row.id_print_status === 'hold') counts.hold += 1;
+
+    if (eligible && (row.id_print_status === 'pending' || row.id_print_status === 'reprint_needed')) {
+      counts.exportable += 1;
+    }
+  }
+
+  return { counts, isEligible };
+}
+
+function getPreviewCardsPerPage() {
+  // A4 landscape with current card + gap + margins fits 4 cards.
+  return 4;
+}
+
+function fillSnapshotsForPreviewPage(snapshots, target) {
+  if (target <= 0 || snapshots.length === 0) return snapshots;
+  if (snapshots.length >= target) return snapshots.slice(0, target);
+
+  const filled = [...snapshots];
+  let cursor = 0;
+  while (filled.length < target) {
+    filled.push({ ...snapshots[cursor % snapshots.length] });
+    cursor += 1;
+  }
+  return filled;
+}
+
+function buildBatchPrintHtml(snapshots, templateUrl) {
+  const cards = snapshots.map((child) => {
+    const guardianParts = String(child.guardian_name || '').trim().split(/\s+/);
+    const guardianFirst = guardianParts[0] || 'N/A';
+    const guardianLast = guardianParts.slice(1).join(' ');
+    const barcodeValue = sanitizeCode128(child.formal_id || child.child_id);
+    const age = child.birthdate
+      ? Math.floor((Date.now() - new Date(child.birthdate).getTime()) / 31557600000)
+      : 'N/A';
+    const initials = `${(child.first_name || '').charAt(0)}${(child.last_name || '').charAt(0)}`.toUpperCase();
+
+    return `
+      <article class="id-card">
+        <img src="${escapeHtml(templateUrl)}" class="template" alt="Template" />
+        <div class="photo-shell">
+          <img src="${escapeHtml(child.photo_url)}" class="photo" alt="${escapeHtml(`${child.first_name} ${child.last_name}`)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <div class="photo-fallback">${escapeHtml(initials || 'N/A')}</div>
+        </div>
+
+        <div class="text-block">
+          <div class="nickname">${escapeHtml((child.nickname || 'N/A').toUpperCase())}</div>
+          <div class="fullname">${escapeHtml(`${child.first_name || ''} ${child.last_name || ''}`.trim())}</div>
+          <div class="age-row">
+            <span class="age">Age/Group: <span class="age-value">${escapeHtml(Number.isFinite(age) ? String(age) : 'N/A')}</span></span>
+            <span class="age-badge">${escapeHtml(child.age_category || 'N/A')}</span>
+          </div>
+          <div class="guardian-lines">
+            <div><span class="label">Guardian Name:</span> ${escapeHtml(`${guardianFirst} ${guardianLast}`.trim())}</div>
+            ${child.guardian_contact ? `<div><span class="label">Guardian Contact:</span> ${escapeHtml(child.guardian_contact)}</div>` : ''}
+            <div><span class="label">Registration Date:</span> ${escapeHtml(new Date().toISOString().split('T')[0])}</div>
+          </div>
+        </div>
+
+        <div class="barcode-block">
+          <svg class="barcode" data-value="${escapeHtml(barcodeValue)}"></svg>
+          <div class="barcode-label">${escapeHtml(barcodeValue)}</div>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        @page { size: A4 landscape; margin: 25.4mm; }
+        body { margin: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .sheet { display: grid; grid-template-columns: repeat(auto-fill, 100mm); gap: 8mm; justify-content: center; align-content: start; }
+        .id-card { position: relative; width: 100mm; height: 70mm; overflow: hidden; }
+        .template { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .photo-shell { position: absolute; left: 7.35mm; top: 15.3mm; width: 32.6mm; height: 32.6mm; border-radius: 4mm; overflow: hidden; background: #ecfeff; display: flex; align-items: center; justify-content: center; }
+        .photo { width: 100%; height: 100%; object-fit: cover; }
+        .photo-fallback { display: none; font-size: 20px; font-weight: 700; color: #1ca7bc; }
+        .text-block { position: absolute; left: 45mm; top: 15.5mm; right: 6mm; color: #1f2937; }
+        .nickname { font-size: 20px; font-weight: 900; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.02em; color: #30cee4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fullname { margin-top: 1.5mm; font-size: 10px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .age-row { margin-top: 2mm; display: flex; align-items: center; gap: 2mm; }
+        .age { font-size: 9px; font-weight: 600; color: #1f2937; }
+        .age-value { font-weight: 400; }
+        .age-badge { display: inline-flex; padding: 0.5mm 3mm; border-radius: 999px; font-size: 7.5px; font-weight: 700; color: #fff; background: #30cee4; white-space: nowrap; }
+        .guardian-lines { margin-top: 2mm; display: grid; gap: 0.8mm; font-size: 8.5px; color: #1f2937; }
+        .guardian-lines .label { font-weight: 600; }
+        .barcode-block { position: absolute; left: 13mm; right: 13mm; bottom: 1mm; display: flex; flex-direction: column; align-items: center; }
+        .barcode { width: 100%; height: 30px; }
+        .barcode-label { margin-top: 0.8mm; width: 100%; text-align: center; font-size: 8.6px; font-weight: 700; letter-spacing: 0.16em; color: #30cee4; }
+      </style>
+    </head>
+    <body>
+      <main class="sheet">${cards}</main>
+      ${JSBARCODE_INLINE ? `<script>${JSBARCODE_INLINE}</script>` : '<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.1/dist/JsBarcode.all.min.js"></script>'}
+      <script>
+        document.querySelectorAll('svg.barcode').forEach((el) => {
+          const value = el.getAttribute('data-value') || 'N/A';
+          JsBarcode(el, value, {
+            format: 'CODE128',
+            width: 1.6,
+            height: 30,
+            margin: 1.7,
+            displayValue: false,
+            lineColor: '#30cee4',
+            background: '#ffffff',
+            flat: true,
+          });
+        });
+      </script>
+    </body>
+  </html>`;
+}
+
+async function renderBatchPdfViaPuppeteer(snapshots, templateUrl) {
+  const startedAt = Date.now();
+  const html = buildBatchPrintHtml(snapshots, templateUrl);
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(120000);
+    page.setDefaultNavigationTimeout(120000);
+    console.log('🪪 ID export render stage: setContent start');
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    console.log('🪪 ID export render stage: setContent done');
+    await page.waitForSelector('.id-card', { timeout: 10000 });
+    console.log('🪪 ID export render stage: card selector ready');
+
+    const imageLoadStats = await page.evaluate(async () => {
+      const images = Array.from(document.images || []);
+      if (images.length === 0) return { total: 0, loaded: 0, failed: 0 };
+
+      const waitForImage = (img) => new Promise((resolve) => {
+        if (img.complete) {
+          resolve(img.naturalWidth > 0);
+          return;
+        }
+
+        const onLoad = () => resolve(true);
+        const onError = () => resolve(false);
+        img.addEventListener('load', onLoad, { once: true });
+        img.addEventListener('error', onError, { once: true });
+      });
+
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => resolve('timeout'), 45000);
+      });
+
+      const settled = await Promise.race([
+        Promise.all(images.map(waitForImage)),
+        timeoutPromise,
+      ]);
+
+      if (settled === 'timeout') {
+        const loaded = images.filter((img) => img.complete && img.naturalWidth > 0).length;
+        const failed = images.filter((img) => img.complete && img.naturalWidth === 0).length;
+        return { total: images.length, loaded, failed };
+      }
+
+      const loaded = settled.filter(Boolean).length;
+      const failed = settled.length - loaded;
+      return { total: settled.length, loaded, failed };
+    });
+    console.log('🪪 ID export render stage: image readiness', imageLoadStats);
+
+    await page.waitForFunction(
+      () => {
+        const barcodes = Array.from(document.querySelectorAll('svg.barcode'));
+        if (barcodes.length === 0) return false;
+        return barcodes.every((svg) => svg.querySelector('rect, path'));
+      },
+      { timeout: 10000 }
+    ).catch(() => {
+      console.warn('🪪 ID export render stage: barcode readiness timeout (continuing)');
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    console.log('🪪 ID export render stage: pdf start');
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      landscape: true,
+      printBackground: true,
+      margin: { top: '25.4mm', right: '25.4mm', bottom: '25.4mm', left: '25.4mm' },
+      timeout: 0,
+    });
+    console.log(`🪪 ID export render stage: pdf done (${Date.now() - startedAt}ms)`);
+    return pdfBuffer;
+  } finally {
+    await browser.close();
+  }
+}
+
+app.post('/api/children/id-export', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return res.status(500).json({ error: 'Missing Supabase env keys for local export.' });
+    }
+
+    const authedClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: { user }, error: userError } = await authedClient.auth.getUser();
+    if (userError || !user) {
+      return res.status(401).json({ error: 'Unauthorized user.' });
+    }
+
+    const { data: staff, error: staffError } = await serviceClient
+      .from('staff')
+      .select('staff_id, access_level, is_active')
+      .eq('user_id', user.id)
+      .single();
+
+    if (staffError || !staff || !staff.is_active || (staff.access_level ?? 0) < 10) {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+
+    const mode = req.body?.mode;
+    if (!mode || !['preview', 'generate'].includes(mode)) {
+      return res.status(400).json({ error: 'Invalid mode. Use preview or generate.' });
+    }
+
+    const { data: rows, error: fetchError } = await serviceClient
+      .from('children')
+      .select(`
+        child_id,
+        formal_id,
+        first_name,
+        last_name,
+        nickname,
+        photo_url,
+        gender,
+        birthdate,
+        is_active,
+        id_print_status,
+        age_categories(category_name),
+        child_guardian(
+          is_primary,
+          guardians(first_name, last_name, phone_number, email)
+        )
+      `)
+      .eq('is_active', true)
+      .order('child_id', { ascending: true });
+
+    if (fetchError) {
+      return res.status(500).json({ error: fetchError.message });
+    }
+
+    const { counts, isEligible } = computeExportCounts(rows || []);
+    if (mode === 'preview') {
+      return res.json({ mode, counts });
+    }
+
+    const includeReprints = req.body?.includeReprints !== false;
+    const dryRun = req.body?.dryRun === true;
+    const fillPageForTest = req.body?.fillPageForTest === true;
+    const candidates = (rows || []).filter((row) => {
+      if (!isEligible(row)) return false;
+      if (row.id_print_status === 'pending') return true;
+      if (includeReprints && row.id_print_status === 'reprint_needed') return true;
+      return false;
+    });
+
+    if (candidates.length === 0) {
+      return res.json({ mode, counts, exportedCount: 0, message: 'No eligible children to export right now.' });
+    }
+
+    const snapshots = candidates.map(mapChildToSnapshot);
+    const cardsPerPage = getPreviewCardsPerPage();
+    const pdfSnapshots = dryRun && fillPageForTest
+      ? fillSnapshotsForPreviewPage(snapshots, cardsPerPage)
+      : snapshots;
+    const templateUrl = getLocalTemplateDataUrl();
+    const pdfBytes = await renderBatchPdfViaPuppeteer(pdfSnapshots, templateUrl);
+    const pdfBuffer = Buffer.isBuffer(pdfBytes) ? pdfBytes : Buffer.from(pdfBytes);
+    const pdfBase64 = pdfBuffer.toString('base64');
+
+    if (dryRun) {
+      return res.json({
+        mode,
+        dryRun: true,
+        counts,
+        exportedCount: pdfSnapshots.length,
+        eligibleForExport: snapshots.length,
+        cardsPerPage,
+        filledForPreview: pdfSnapshots.length,
+        layoutVersion: 'local-puppeteer-printableid-1to1',
+        previewChild: snapshots[0] || null,
+        pdfBase64,
+      });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const pseudoPath = `local://id-export/${timestamp}-batch.pdf`;
+    const { data: finalizeData, error: finalizeError } = await serviceClient.rpc('finalize_child_id_export_batch', {
+      p_initiated_by_staff_id: staff.staff_id,
+      p_layout_version: 'local-puppeteer-printableid-1to1',
+      p_file_path: pseudoPath,
+      p_file_size_bytes: pdfBuffer.byteLength,
+      p_children_snapshot: snapshots,
+    });
+
+    if (finalizeError) {
+      return res.status(500).json({ error: `Finalize batch failed: ${finalizeError.message}` });
+    }
+
+    const batchRow = Array.isArray(finalizeData) ? finalizeData[0] : null;
+    return res.json({
+      mode,
+      counts,
+      batchId: batchRow?.batch_id || null,
+      exportedCount: batchRow?.exported_count || snapshots.length,
+      layoutVersion: 'local-puppeteer-printableid-1to1',
+      filePath: pseudoPath,
+      pdfBase64,
+      localGenerated: true,
+    });
+  } catch (error) {
+    console.error('Local ID export error:', error);
+    return res.status(500).json({ error: error.message || 'Local export failed.' });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Development API server is running' });
@@ -1350,6 +1767,7 @@ app.listen(PORT, () => {
   console.log(`   - POST /api/email/send-credentials`);
   console.log(`   - POST /api/email/send-child-qr`);
   console.log(`   - GET/POST /api/email/config`);
+  console.log(`🪪 Local ID export endpoint available at http://localhost:${PORT}/api/children/id-export`);
   console.log(`� Staff API endpoints available at http://localhost:${PORT}/api/staff/*`);
   console.log(`   - POST /api/staff/generate-credentials`);
   console.log(`�📅 Cal.com API endpoints available at http://localhost:${PORT}/api/calcom/*`);

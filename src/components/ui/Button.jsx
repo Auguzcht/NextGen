@@ -124,28 +124,6 @@ const Button = forwardRef(({
   
   // Dynamically arrange icon and content based on iconPosition
   const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center gap-2">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ 
-              duration: 1, 
-              repeat: Infinity, 
-              ease: "linear" 
-            }}
-            className="w-4 h-4"
-          >
-            <svg className="w-full h-full text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </motion.div>
-          {children}
-        </div>
-      );
-    }
-    
     // If we're using a right-aligned icon, always show it
     if (iconPosition === 'right') {
       return (
@@ -179,7 +157,29 @@ const Button = forwardRef(({
     }
     
     // No icon case
-    return children;
+    return <span>{children}</span>;
+  };
+
+  const renderLoadingSpinner = () => {
+    if (!isLoading) return null;
+
+    return (
+      <motion.div
+        aria-hidden="true"
+        animate={{ rotate: 360 }}
+        transition={{
+          duration: 1,
+          repeat: Infinity,
+          ease: 'linear'
+        }}
+        className="w-4 h-4"
+      >
+        <svg className="w-full h-full text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      </motion.div>
+    );
   };
   
   return (
@@ -212,8 +212,9 @@ const Button = forwardRef(({
       </motion.div>
       
       {/* Button content */}
-      <span className="relative z-10">
+      <span className="relative z-10 inline-flex items-center justify-center gap-2">
         {renderContent()}
+        {renderLoadingSpinner()}
       </span>
     </MotionButton>
   );

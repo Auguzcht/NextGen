@@ -90,30 +90,30 @@ export default async function handler(req, res) {
     // Event type configurations
     const eventConfigs = {
       new_account: {
-        subject: 'Welcome to NextGen Ministry - Set Up Your Account',
+        subject: 'Welcome to NXTGen Ministry - Set Up Your Account',
         title: 'Account Access Information',
-        greeting: 'Your account for the NextGen Ministry management system is ready!',
+        greeting: 'Your account for the NXTGen Ministry management system is ready!',
         buttonText: 'Set My Password',
         note: 'Set up your password to get started with the system.'
       },
       password_reset: {
-        subject: 'NextGen Ministry - Password Reset Request',
+        subject: 'NXTGen Ministry - Password Reset Request',
         title: 'Password Reset',
         greeting: 'We received a request to reset your password.',
         buttonText: 'Reset Password',
         note: 'If you didn\'t request this, please ignore this email.'
       },
       account_reactivation: {
-        subject: 'NextGen Ministry - Your Account Has Been Reactivated',
+        subject: 'NXTGen Ministry - Your Account Has Been Reactivated',
         title: 'Account Reactivated',
-        greeting: 'Good news! Your NextGen Ministry account has been reactivated.',
+        greeting: 'Good news! Your NXTGen Ministry account has been reactivated.',
         buttonText: 'Access Your Account',
         note: 'Set up a new password to regain access to the system.'
       },
       access_reminder: {
-        subject: 'NextGen Ministry - Your Login Credentials',
+        subject: 'NXTGen Ministry - Your Login Credentials',
         title: 'Login Credentials Reminder',
-        greeting: 'Here are your login credentials for the NextGen Ministry system.',
+        greeting: 'Here are your login credentials for the NXTGen Ministry system.',
         buttonText: 'Set/Reset Password',
         note: 'Click below to set a new password or reset your existing one.'
       }

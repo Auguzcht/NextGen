@@ -1236,8 +1236,9 @@ const EmailComposer = ({ templates }) => {
               type="submit"
               variant="primary"
               disabled={isSending}
+              isLoading={isSending}
             >
-              {isSending ? 'Sending...' : 'Send Emails'}
+              Send Emails
             </Button>
           </div>
         </div>

@@ -1,12 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Button, Modal, useToast } from '../ui';
+import { Button, Modal, useToast, HoverCard, HoverCardContent } from '../ui';
 import QRCode from '../common/QRCode';
 import PropTypes from 'prop-types';
+import { getPrintableIdValidation } from '../../utils/childIdMapper';
 
 const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => {
   const { toast } = useToast();
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const printableValidation = getPrintableIdValidation(childData);
   
   if (!childData) return null;
 
@@ -108,18 +110,41 @@ const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => 
         </div>
         
         <div className="mt-8 flex flex-col gap-3">
-          <Button 
-            variant="primary"
-            fullWidth
-            onClick={onPrintID}
-            icon={
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-              </svg>
-            }
-          >
-            Print ID Card
-          </Button>
+          <HoverCard openDelay={100} closeDelay={100}>
+            {({ open, handleOpen, handleClose, triggerRef, position, updatePosition }) => (
+              <div
+                ref={triggerRef}
+                className="relative w-full"
+                onMouseEnter={() => {
+                  updatePosition('bottom');
+                  handleOpen();
+                }}
+                onMouseLeave={handleClose}
+              >
+                <Button 
+                  variant="primary"
+                  fullWidth
+                  onClick={onPrintID}
+                  disabled={!printableValidation.isValid}
+                  icon={
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                    </svg>
+                  }
+                >
+                  Print ID Card
+                </Button>
+                {!printableValidation.isValid && (
+                  <HoverCardContent open={open} side="bottom" position={position}>
+                    <div className="flex flex-col gap-1">
+                      <h4 className="font-medium text-sm">Print ID unavailable</h4>
+                      <p className="text-xs text-gray-600">Missing: {printableValidation.missingFields.join(', ')}</p>
+                    </div>
+                  </HoverCardContent>
+                )}
+              </div>
+            )}
+          </HoverCard>
           
           <Button 
             variant="secondary"

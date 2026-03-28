@@ -464,7 +464,7 @@ export const createChildQREmailTemplate = ({
     </p>
     
     <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
-      Thank you for registering <strong>${childFirstName} ${childLastName}</strong> with NextGen Ministry! 
+      Thank you for registering <strong>${childFirstName} ${childLastName}</strong> with NXTGen Ministry! 
       We're excited to have your child join us.
     </p>
     
@@ -502,17 +502,17 @@ export const createChildQREmailTemplate = ({
     </div>
     
     <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 24px 0 0 0;">
-      If you have any questions or need assistance, please don't hesitate to contact our NextGen Ministry team.
+      If you have any questions or need assistance, please don't hesitate to contact our NXTGen Ministry team.
     </p>
     
     <p style="color: #4a5568; font-size: 16px; line-height: 1.6; margin: 16px 0 0 0;">
       Blessings,<br/>
-      <strong style="color: ${NXTGEN_COLORS.primary};">NextGen Ministry Davao Team</strong>
+      <strong style="color: ${NXTGEN_COLORS.primary};">NXTGen Ministry Davao Team</strong>
     </p>
   `;
 
   return createEmailTemplate({
-    title: 'Welcome to NextGen Ministry!',
+    title: 'Welcome to NXTGen Ministry!',
     subtitle: `${childFirstName}'s Registration Confirmation`,
     content,
     footerText: 'This is an automated message from NextGen Ministry Management System.',

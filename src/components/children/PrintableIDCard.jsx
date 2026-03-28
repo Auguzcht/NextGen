@@ -1,26 +1,60 @@
-import React, { useRef, useEffect } from 'react';
-import QRCode from '../common/QRCode';
+import React, { useEffect, useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
+import Code128Barcode from '../common/Code128Barcode';
+import { getPrintableIdValidation } from '../../utils/childIdMapper';
 
-const PrintableIDCard = ({ childData, onClose }) => {
-  const idCardRef = useRef(null);
-  
+const PrintableIDCard = ({ childData, onClose, autoPrint = true }) => {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const printValidation = useMemo(() => getPrintableIdValidation(childData), [childData]);
+
   useEffect(() => {
-    // Auto print when component is mounted
+    if (!printValidation.isValid) return undefined;
+    if (!autoPrint) return undefined;
+
     const timer = setTimeout(() => {
       window.print();
-    }, 1000);
+    }, 400);
     
     return () => clearTimeout(timer);
-  }, []);
+  }, [autoPrint, printValidation.isValid]);
   
   // Function to handle manual print button
   const handlePrint = () => {
+    if (!printValidation.isValid) return;
     window.print();
   };
   
-  // Use BASE_URL for logo path to ensure it works in all environments
-  const logoPath = `${import.meta.env.BASE_URL}NextGen-Logo.png`;
+  // Support both camelCase and snake_case field names
+  const getField = (camelCase, snakeCase) => childData[camelCase] ?? childData[snakeCase];
+  
+  // Use BASE_URL for assets to ensure paths work in all environments.
+  const templatePath = `${import.meta.env.BASE_URL}NXTGen-Child-ID-Template.png`;
+  
+  const firstName = getField('firstName', 'first_name') || '';
+  const lastName = getField('lastName', 'last_name') || '';
+  const nickname = getField('nickname', 'nickname') || '';
+  const photoUrl = getField('photoUrl', 'photo_url') || '';
+  const birthdate = getField('birthdate', 'birthdate');
+  const ageCategory = getField('ageCategory', 'age_category') || 'N/A';
+  const formalId = getField('formalId', 'formal_id') || 'N/A';
+  const guardianFirstName = getField('guardianFirstName', 'guardian_first_name') || getField('guardianName', 'guardian_name')?.split(' ')[0] || '';
+  const guardianLastName = getField('guardianLastName', 'guardian_last_name') || '';
+  const guardianPhone = getField('guardianPhone', 'guardian_contact') || '';
+  const registrationDate = getField('registrationDate', 'registration_date') || new Date().toISOString().split('T')[0];
+  
+  const initials = `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`;
+  const barcodeValue = useMemo(() => formalId || 'N/A', [formalId]);
+  
+  const computedAge = useMemo(() => {
+    if (childData.age) return childData.age;
+    if (!birthdate) return 'N/A';
+    const years = Math.floor((Date.now() - new Date(birthdate).getTime()) / 31557600000);
+    return Number.isFinite(years) && years >= 0 ? years : 'N/A';
+  }, [childData.age, birthdate]);
+
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [photoUrl]);
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
@@ -49,186 +83,116 @@ const PrintableIDCard = ({ childData, onClose }) => {
       </div>
       
       {/* Printable content */}
-      <div className="flex-1 flex items-center justify-center bg-gray-100 print:bg-white p-8 print:p-0 overflow-auto">
-        <div className="max-w-3xl w-full print:w-auto">
-          {/* For display in browser and printing - stacked vertically */}
-          <div 
-            className="flex flex-col gap-8 items-center mx-auto print:scale-100 print:transform-none" 
-            ref={idCardRef}
-            style={{
-              width: '340px', // Fixed width to maintain aspect ratio
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-            }}
-          >
-            {/* Front of Card */}
-            <div 
-              className="w-[340px] h-[216px] bg-white rounded-xl overflow-hidden shadow-lg print:shadow-none border border-gray-200 relative"
-              style={{ maxWidth: '340px' }} // Enforce max width
-            >
-              {/* Card Header */}
-              <div className="h-16 bg-gradient-to-r from-nextgen-blue to-nextgen-blue-dark flex items-center px-4">
-                {/* Added white background to logo */}
-                <div className="bg-white rounded-md p-1 flex items-center justify-center">
-                  <img 
-                    src={logoPath} 
-                    alt="NextGen Logo" 
-                    className="h-8"
-                    onError={(e) => {
-                      e.target.onerror = null; // Prevent infinite loop
-                      e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><text x="10" y="30" font-family="Arial" font-size="20" fill="#30cee4">NextGen</text></svg>';
-                    }}
-                  />
-                </div>
-                <div className="ml-auto text-white text-right">
-                  <div className="text-sm font-bold">NEXTGEN MINISTRY</div>
-                  <div className="text-xs">CHILD ID</div>
-                </div>
-              </div>
-              
-              {/* Card Body - Simplified layout with reduced spacing */}
-              <div className="p-3 flex">
-                {/* Left side - Photo */}
-                <div className="w-1/3 flex-shrink-0">
-                  {childData.photoUrl ? (
-                    <img
-                      src={childData.photoUrl}
-                      alt={`${childData.firstName} ${childData.lastName}`}
-                      className="w-full h-32 object-cover rounded-md border border-gray-200"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.style.display = 'none';
-                        e.target.parentNode.innerHTML = `<div class="w-full h-32 bg-nextgen-blue/10 flex items-center justify-center rounded-md border border-gray-200">
-                          <span class="text-3xl font-medium text-nextgen-blue-dark">
-                            ${childData.firstName?.charAt(0) || ''}${childData.lastName?.charAt(0) || ''}
-                          </span>
-                        </div>`;
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-32 bg-nextgen-blue/10 flex items-center justify-center rounded-md border border-gray-200">
-                      <span className="text-3xl font-medium text-nextgen-blue-dark">
-                        {childData.firstName?.charAt(0) || ''}{childData.lastName?.charAt(0) || ''}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Right side - Simplified Details with reduced spacing */}
-                <div className="w-2/3 pl-3 flex flex-col overflow-hidden">
-                  <div className="text-lg font-bold text-nextgen-blue-dark truncate">
-                    {childData.firstName} {childData.lastName}
-                  </div>
-                  <div className="text-xs text-gray-500 mb-1">ID: {childData.formalId}</div>
-                  
-                  {/* Simplified table with less spacing */}
-                  <table className="w-full text-xs mt-1">
-                    <tbody className="space-y-0">
-                      <tr>
-                        <td className="text-gray-500 pr-1 py-0 align-top w-20">Gender:</td>
-                        <td className="py-0">{childData.gender}</td>
-                      </tr>
-                      <tr>
-                        <td className="text-gray-500 pr-1 py-0 align-top w-20">Age Group:</td>
-                        <td className="py-0">{childData.ageCategory || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <td className="text-gray-500 pr-1 py-0 align-top w-20">Guardian:</td>
-                        <td className="py-0 truncate">
-                          {childData.guardianFirstName ? 
-                            `${childData.guardianFirstName} ${childData.guardianLastName || ''}`.trim() : 
-                            'N/A'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="text-gray-500 pr-1 py-0 align-top w-20">Contact:</td>
-                        <td className="py-0 truncate">
-                          {childData.guardianPhone || childData.guardianEmail || 'N/A'}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              
-              {/* Card footer with date */}
-              <div className="absolute bottom-1 right-3 text-xs text-gray-400">
-                Registered: {childData.registrationDate ? new Date(childData.registrationDate).toLocaleDateString() : new Date().toLocaleDateString()}
-              </div>
-            </div>
-            
-            {/* Back of Card - Updated design */}
-            <div 
-              className="w-[340px] h-[216px] bg-white rounded-xl overflow-hidden shadow-lg print:shadow-none border border-gray-200 flex flex-col"
-              style={{ maxWidth: '340px' }} // Enforce max width
-            >          
-              {/* Logo strip on top */}
-              <div className="h-8 bg-nextgen-blue/10 flex items-center px-3 border-b border-nextgen-blue/10">
-                <div className="bg-white rounded-md p-0.5 flex items-center justify-center">
-                  <img 
-                    src={logoPath} 
-                    alt="NextGen Logo" 
-                    className="h-4"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                </div>
-                <div className="ml-2 text-xs font-medium text-nextgen-blue-dark">NextGen Ministry ID</div>
-              </div>
-              
-              {/* QR Code - centered */}
-              <div className="flex-1 flex items-center justify-center p-3">
-                <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                  <QRCode
-                    value={childData.formalId || 'unknown-id'}
-                    size={120}
-                    level="H"
-                    fgColor="#30cee4"
-                    showLogo={true}
-                    logoSize={30}
-                  />
-                </div>
-              </div>
-              
-              {/* Privacy notice - Updated footer */}
-              <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center">
-                <div className="mr-2 text-nextgen-blue flex-shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="text-xs text-gray-600">
-                  If found, please return to NextGen Ministry staff.
-                </p>
-              </div>
-            </div>
+      <div className="flex-1 flex items-center justify-center bg-gray-100 print:bg-white p-6 print:p-0 overflow-auto">
+        <div className="w-full max-w-3xl print:max-w-none flex flex-col items-center gap-4">
+          <div className="text-sm text-gray-600 print:hidden">
+            CR100 single-side card (100x70mm) based on NXTGen template.
           </div>
-          
-          {/* Print instructions - only visible in browser, hidden when printing */}
-          <div className="mt-8 text-center text-sm text-gray-500 print:hidden">
-            <p>Use your browser's print function or click the Print ID Card button above.</p>
-            <p>For best results, print on a color printer using cardstock paper.</p>
-            <p className="mt-2 text-xs text-nextgen-blue">
-              <span className="bg-nextgen-blue/10 p-1 rounded">Tip: Save as PDF from the print dialog to create a digital copy</span>
-            </p>
+
+          <div className="id-card bg-white border border-gray-300 shadow-sm print:shadow-none relative overflow-hidden">
+            <img src={templatePath} alt="NXTGen ID Template" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+
+            {/* Photo area - properly contained within frame */}
+            <div className="absolute left-[7.35mm] top-[15.3mm] w-[32.6mm] h-[32.6mm] rounded-[4mm] overflow-hidden bg-cyan-50 flex items-center justify-center">
+              {photoUrl && !photoFailed ? (
+                <img
+                  src={photoUrl}
+                  alt={`${firstName} ${lastName}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    setPhotoFailed(true);
+                  }}
+                />
+              ) : (
+                <span className="text-xl font-bold text-nextgen-blue-dark">{initials}</span>
+              )}
+            </div>
+
+            {/* Text content area */}
+            <div className="absolute left-[45mm] top-[15.5mm] right-[6mm] text-gray-800">
+              {/* Nickname - prominent */}
+              <div className="text-[20px] font-black uppercase tracking-wide text-nextgen-blue leading-tight truncate">
+                {nickname || 'N/A'}
+              </div>
+              
+              {/* Full name */}
+              <div className="mt-[1.5mm] text-[10px] font-bold text-gray-900 leading-tight truncate">
+                {firstName} {lastName}
+              </div>
+              
+              {/* Age and Age Group on same line with badge */}
+              <div className="mt-[2mm] flex items-center gap-[2mm]">
+                <span className="text-[9px] font-semibold text-gray-800">Age/Group: <span className="font-normal">{computedAge}</span></span>
+                <span className="inline-flex px-[3mm] py-[0.5mm] bg-nextgen-blue text-white text-[7.5px] font-bold rounded-full whitespace-nowrap">
+                  {ageCategory}
+                </span>
+              </div>
+              
+              {/* Guardian info */}
+              <div className="mt-[2mm] space-y-[0.8mm]">
+                <div className="text-[8.5px] text-gray-800">
+                  <span className="font-semibold">Guardian Name:</span> {guardianFirstName} {guardianLastName}
+                </div>
+                {guardianPhone && (
+                  <div className="text-[8.5px] text-gray-800">
+                    <span className="font-semibold">Guardian Contact:</span> {guardianPhone}
+                  </div>
+                )}
+                <div className="text-[8.5px] text-gray-800">
+                  <span className="font-semibold">Registration Date:</span> {registrationDate}
+                </div>
+              </div>
+            </div> 
+
+            {/* Lower area: Just barcode (no duplicate CCF logo) */}
+            {/* ===== BARCODE WIDTH ADJUSTMENT ===== */}
+            {/* Adjust left-[Xmm] and right-[Xmm] values EQUALLY to keep centered */}
+            {/* Current: left-[13mm] right-[13mm] = 74mm width */}
+            {/* Now using Code128 format (30-40% more compact than Code39) */}
+            {/* Examples: left-[10mm] right-[10mm] = 80mm | left-[16mm] right-[16mm] = 68mm | left-[20mm] right-[20mm] = 60mm */}
+            <div className="absolute left-[13mm] right-[13mm] bottom-[1mm] flex flex-col items-center">
+              <Code128Barcode value={barcodeValue} height={30} showLabel={false} barColor="#30cee4" moduleWidth={1.6} quietZone={1.7} className="custom-barcode" />
+              <div className="mt-[0.8mm] text-[8.6px] text-center tracking-[0.16em] font-bold text-nextgen-blue w-full">{barcodeValue}</div>
+              {/* Fine tune density with moduleWidth and quietZone for print/scanner balance */}
+            </div>
+
+            {!printValidation.isValid && (
+              <div className="absolute inset-0 bg-white/95 flex items-center justify-center p-4 text-center">
+                <div className="max-w-[80mm]">
+                  <p className="text-[11px] font-bold text-red-700">Print ID blocked</p>
+                  <p className="mt-[1mm] text-[9px] text-gray-700">
+                    Missing required information: {printValidation.missingFields.join(', ')}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
       
       {/* Print styles */}
       <style dangerouslySetInnerHTML={{__html: `
+        .id-card {
+          width: 100mm;
+          height: 70mm;
+          box-sizing: border-box;
+        }
+
         @media print {
           @page {
-            size: portrait;
-            margin: 15mm;
+            size: A4 portrait;
+            margin: 10mm;
           }
           
           body {
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
+          }
+
+          .id-card {
+            box-shadow: none !important;
+            border: 1px solid #000;
           }
         }
       `}} />
@@ -238,6 +202,7 @@ const PrintableIDCard = ({ childData, onClose }) => {
 
 PrintableIDCard.propTypes = {
   childData: PropTypes.object.isRequired,
+  autoPrint: PropTypes.bool,
   onClose: PropTypes.func.isRequired
 };
 

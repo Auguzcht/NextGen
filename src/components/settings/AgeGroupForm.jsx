@@ -301,14 +301,9 @@ const AgeGroupForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
               variant="primary"
               onClick={handleSubmit}
               disabled={isSaving}
+              isLoading={isSaving}
             >
-              {isSaving ? (
-                <span className="flex items-center justify-center">
-                  {isEdit ? 'Saving Changes...' : 'Adding Category...'}
-                </span>
-              ) : (
-                isEdit ? 'Save Changes' : 'Add Category'
-              )}
+              {isEdit ? 'Save Changes' : 'Add Category'}
             </Button>
           </div>
         </div>

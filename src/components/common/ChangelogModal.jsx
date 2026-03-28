@@ -6,7 +6,8 @@ import Badge from '../ui/Badge';
 import { CHANGELOG, CURRENT_VERSION } from '../../utils/changelog';
 import { 
   Bot, Users, Shield, Mail, Calendar, Library, ClipboardCheck, 
-  UserCheck, Palette, Server, Bug, Zap 
+  UserCheck, Palette, Server, Bug, Zap, Smartphone, ScanLine, IdCard, ShieldCheck, Wrench,
+  Settings, Sparkles, Code2, FileText, BarChart3, FilePenLine, Plug, KeyRound, Lock, Flame, Database, Rocket
 } from 'lucide-react';
 
 const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
@@ -62,11 +63,46 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
       'Palette': Palette,
       'Server': Server,
       'Bug': Bug,
-      'Zap': Zap
+      'Zap': Zap,
+      'Smartphone': Smartphone,
+      'ScanLine': ScanLine,
+      'IdCard': IdCard,
+      'ShieldCheck': ShieldCheck,
+      'Wrench': Wrench,
+      '⚙️': Settings,
+      '⚡': Zap,
+      '✨': Sparkles,
+      '🎨': Palette,
+      '🐛': Bug,
+      '👥': Users,
+      '👨‍👩‍👧‍👦': Users,
+      '💻': Code2,
+      '📄': FileText,
+      '📅': Calendar,
+      '📊': BarChart3,
+      '📝': FilePenLine,
+      '📧': Mail,
+      '🔌': Plug,
+      '🔐': KeyRound,
+      '🔒': Lock,
+      '🔥': Flame,
+      '🗄️': Database,
+      '🚀': Rocket
     };
     const IconComponent = iconMap[iconName];
-    if (!IconComponent) return null;
+
     const sizeClass = size === 'small' ? 'w-4 h-4' : 'w-6 h-6';
+
+    if (!IconComponent) {
+      return (
+        <div className="flex-shrink-0">
+          <div className={`${sizeClass} rounded-full bg-nextgen-blue/10 text-nextgen-blue flex items-center justify-center text-[10px] font-bold`}>
+            {String(iconName || '?').slice(0, 1)}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-shrink-0">
         <IconComponent className={`${sizeClass} text-nextgen-blue`} />
@@ -364,7 +400,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
               <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 rounded-b-lg">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
-                    <span className="font-medium">NextGen Ministry</span> · 
+                    <span className="font-medium">NXTGen Ministry</span> · 
                     {viewMode === 'timeline' 
                       ? ` ${CHANGELOG.length} releases tracked`
                       : ` Version ${versionData.version}`

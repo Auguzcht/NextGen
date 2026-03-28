@@ -188,7 +188,7 @@ const LoginPage = () => {
                   transition: { duration: 0.3 }
                 }}
               >
-                NextGen Ministry
+                NXTGen Ministry
               </motion.span>
             </h1>
             <motion.p 
@@ -198,7 +198,7 @@ const LoginPage = () => {
                 transition: { duration: 0.3 }
               }}
             >
-              Streamlined Children's Ministry Management System
+              NextGen: CCF NXTGen Children's Ministry Management System
             </motion.p>
           </motion.div>
         </motion.div>
@@ -260,7 +260,7 @@ const LoginPage = () => {
               />
             ))}
           </div>
-          <p>NextGen Ministry Management System &copy; {new Date().getFullYear()}</p>
+          <p>NXTGen Ministry Management System &copy; {new Date().getFullYear()}</p>
         </div>
       </motion.div>
     </motion.div>

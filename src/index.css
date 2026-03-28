@@ -82,6 +82,11 @@ button {
   cursor: pointer;
 }
 
+/* Exception: Date picker buttons should have borders */
+button[aria-haspopup="dialog"] {
+  border: 1px solid #d1d5db; /* Gray-300 */
+}
+
 /* Override default button focus styles */
 button:focus,
 button:focus-visible {

@@ -103,9 +103,9 @@ export default async function handler(req, res) {
     // Prepare email data with attachment
     const emailData = {
       to: [guardianEmail],
-      subject: `${firstName}'s Check-In QR Code - NextGen Ministry`,
+      subject: `${firstName}'s Check-In QR Code - NXTGen Ministry`,
       html: htmlContent,
-      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NextGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNextGen Ministry Davao Team`,
+      text: `Hello${guardianName ? ` ${guardianName}` : ''},\n\nThank you for registering ${firstName} ${lastName} with NXTGen Ministry!\n\nChild ID: ${formalId}\n\nPlease download the attached QR code image to use for quick check-in at our services.\n\nBlessings,\nNXTGen Ministry Davao Team`,
       fromEmail: config.from_email,
       fromName: config.from_name
     };

@@ -188,8 +188,8 @@ const LoadingScreen = ({ finishLoading, isInitialLoadingComplete = false }) => {
   const getLoadingMessage = () => {
     if (forceExit) return "Resolving session state";
     if (user) return "Welcome back";
-    if (initialized && !user) return "NextGen Ministry";
-    return "NextGen Ministry";
+    if (initialized && !user) return "NXTGen Ministry";
+    return "NXTGen Ministry";
   };
   
   const loadingText = getLoadingMessage();

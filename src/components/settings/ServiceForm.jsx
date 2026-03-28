@@ -335,14 +335,9 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
               variant="primary"
               onClick={handleSubmit}
               disabled={isSaving}
+              isLoading={isSaving}
             >
-              {isSaving ? (
-                <span className="flex items-center justify-center">
-                  {isEdit ? 'Updating...' : 'Adding...'}
-                </span>
-              ) : (
-                isEdit ? 'Save Changes' : 'Add Service'
-              )}
+              {isEdit ? 'Save Changes' : 'Add Service'}
             </Button>
           </div>
         </div>

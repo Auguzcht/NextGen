@@ -7,8 +7,11 @@ import { motion } from 'framer-motion';
 import ChildDetailView from '../components/children/ChildDetailView.jsx';
 import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
 import PrintableIDCard from '../components/children/PrintableIDCard';
+import { useAuth } from '../context/AuthContext.jsx';
+import { mapChildToPrintableData, getPrintableIdValidation } from '../utils/childIdMapper.js';
 
 const ChildrenPage = () => {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,17 +29,25 @@ const ChildrenPage = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showPrintableID, setShowPrintableID] = useState(false);
+  const [printableAutoPrint, setPrintableAutoPrint] = useState(true);
   const [showQRModal, setShowQRModal] = useState(false);
   const [registeredChildData, setRegisteredChildData] = useState(null);
   const [showToggleDialog, setShowToggleDialog] = useState(false);
   const [childToToggle, setChildToToggle] = useState(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportPreview, setExportPreview] = useState(null);
+  const [loadingExportPreview, setLoadingExportPreview] = useState(false);
+  const [generatingExport, setGeneratingExport] = useState(false);
+  const [includeReprints, setIncludeReprints] = useState(true);
+  const [previewDryRun, setPreviewDryRun] = useState(false);
+  const [lastExportResult, setLastExportResult] = useState(null);
   
   // Sorting state
   const [sortBy, setSortBy] = useState('registration_date');
   const [sortOrder, setSortOrder] = useState('asc');
   
   // Image caching
-  const { cacheImages } = useImageCache();
+  const { cacheImages, isInvalidImage, markInvalidImage } = useImageCache();
 
   // Debounce search query
   useEffect(() => {
@@ -203,16 +214,24 @@ const ChildrenPage = () => {
       cell: (row) => (
         <div className="flex items-center gap-3">
           {row.photo_url ? (
-            <img
-              src={row.photo_url}
-              alt={`${row.first_name} ${row.last_name}`}
-              className="h-10 w-10 rounded-full object-cover"
-              loading="lazy" // Add lazy loading
-              onError={(e) => {
-                e.target.onerror = null; // Prevent infinite loop
-                e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`; // Fallback to default image
-              }}
-            />
+            !isInvalidImage(row.photo_url) ? (
+              <img
+                src={row.photo_url}
+                alt={`${row.first_name} ${row.last_name}`}
+                className="h-10 w-10 rounded-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  markInvalidImage(row.photo_url);
+                }}
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
+                <span className="text-nextgen-blue-dark font-medium text-sm">
+                  {row.first_name?.charAt(0)}{row.last_name?.charAt(0)}
+                </span>
+              </div>
+            )
           ) : (
             <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
               <span className="text-nextgen-blue-dark font-medium text-sm">
@@ -321,7 +340,7 @@ const ChildrenPage = () => {
       ),
       width: "100px" // Slightly reduced
     }
-  ], [calculateAge, getPrimaryGuardian]); // dependencies
+  ], [calculateAge, getPrimaryGuardian, isInvalidImage, markInvalidImage]); // dependencies
 
   // Modern pagination with ellipsis (shadcn style)
   const renderPagination = () => {
@@ -478,8 +497,211 @@ const ChildrenPage = () => {
 
   // Add a function to handle printing ID card
   const handlePrintIDCard = () => {
+    const validation = getPrintableIdValidation(registeredChildData);
+    if (!validation.isValid) {
+      toast.error('Cannot Print ID', {
+        description: `Missing required info: ${validation.missingFields.join(', ')}`,
+      });
+      return;
+    }
+
     setShowSuccessModal(false);
+    setPrintableAutoPrint(true);
     setShowPrintableID(true);
+  };
+
+  const mapSnapshotToPrintableData = (snapshot) => {
+    if (!snapshot) return null;
+
+    const guardianName = snapshot.guardian_name || '';
+    const guardianParts = guardianName.split(' ').filter(Boolean);
+
+    return {
+      formalId: snapshot.formal_id || 'N/A',
+      firstName: snapshot.first_name || '',
+      lastName: snapshot.last_name || '',
+      nickname: snapshot.nickname || '',
+      photoUrl: snapshot.photo_url || '',
+      gender: snapshot.gender || 'N/A',
+      ageCategory: snapshot.age_category || 'N/A',
+      guardianFirstName: guardianParts[0] || 'N/A',
+      guardianLastName: guardianParts.slice(1).join(' '),
+      guardianPhone: snapshot.guardian_contact || 'N/A',
+      guardianEmail: '',
+      registrationDate: new Date().toISOString(),
+    };
+  };
+
+  const openPdfFromBase64 = async (pdfBase64) => {
+    if (!pdfBase64) return null;
+
+    const raw = String(pdfBase64).trim();
+
+    // Backward compatibility: some API responses may return comma-separated byte values.
+    if (/^\d+(,\d+)+$/.test(raw)) {
+      const values = raw.split(',').map((n) => Number(n.trim()));
+      const valid = values.every((v) => Number.isInteger(v) && v >= 0 && v <= 255);
+      if (!valid) {
+        throw new Error('Invalid PDF byte payload returned from export API.');
+      }
+      const blob = new Blob([new Uint8Array(values)], { type: 'application/pdf' });
+      return URL.createObjectURL(blob);
+    }
+
+    const withoutPrefix = raw.startsWith('data:') ? (raw.split(',')[1] || '') : raw;
+    const normalized = withoutPrefix
+      .replace(/\s+/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+
+    try {
+      const invalidIndex = padded.search(/[^A-Za-z0-9+/=]/);
+      if (invalidIndex !== -1) {
+        throw new Error(`PDF payload contains non-base64 character at index ${invalidIndex}.`);
+      }
+
+      // Decode in chunks to avoid browser atob limits on very large base64 payloads.
+      const base64ChunkSize = 4 * 1024;
+      const byteChunks = [];
+      let totalLength = 0;
+
+      for (let offset = 0; offset < padded.length; offset += base64ChunkSize) {
+        const chunk = padded.slice(offset, offset + base64ChunkSize);
+        const binary = atob(chunk);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        byteChunks.push(bytes);
+        totalLength += bytes.length;
+      }
+
+      const merged = new Uint8Array(totalLength);
+      let writeOffset = 0;
+      for (const chunk of byteChunks) {
+        merged.set(chunk, writeOffset);
+        writeOffset += chunk.length;
+      }
+
+      const blob = new Blob([merged], { type: 'application/pdf' });
+      return URL.createObjectURL(blob);
+    } catch (decodeError) {
+      console.error('Invalid PDF base64 payload received from export API:', {
+        error: decodeError,
+        length: padded.length,
+        startsWith: padded.slice(0, 24),
+        endsWith: padded.slice(-24),
+      });
+      throw new Error('Invalid PDF payload returned from export API.');
+    }
+  };
+
+  const invokeIdExport = async (payload) => {
+    const useEdgeExport = import.meta.env.VITE_USE_EDGE_ID_EXPORT === 'true';
+
+    if (useEdgeExport) {
+      return supabase.functions.invoke('export-child-ids', { body: payload });
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+
+    const response = await fetch('/api/children/id-export', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { data: null, error: new Error(data?.error || 'Local export request failed') };
+    }
+
+    return { data, error: null };
+  };
+
+  const handleOpenExportDialog = async () => {
+    setShowExportDialog(true);
+    setLastExportResult(null);
+    setPreviewDryRun(false);
+    setLoadingExportPreview(true);
+
+    try {
+      const { data, error } = await invokeIdExport({ mode: 'preview' });
+
+      if (error) throw error;
+
+      setExportPreview(data?.counts || null);
+    } catch (error) {
+      console.error('Failed to load export preview:', error);
+      toast.error('Export Preview Failed', {
+        description: 'Could not load ID export counts. Please try again.',
+      });
+      setShowExportDialog(false);
+    } finally {
+      setLoadingExportPreview(false);
+    }
+  };
+
+  const handleGenerateBatchExport = async () => {
+    setGeneratingExport(true);
+    setLastExportResult(null);
+
+    try {
+      const { data, error } = await invokeIdExport({
+        mode: 'generate',
+        includeReprints,
+        dryRun: previewDryRun,
+        fillPageForTest: previewDryRun,
+      });
+
+      if (error) throw error;
+
+      setLastExportResult(data || null);
+
+      if (data?.pdfBase64) {
+        const blobUrl = await openPdfFromBase64(data.pdfBase64);
+        if (blobUrl) {
+          setLastExportResult((prev) => ({
+            ...(prev || {}),
+            ...(data || {}),
+            previewPdfUrl: blobUrl,
+          }));
+        }
+      }
+
+      if (data?.exportedCount > 0) {
+        if (previewDryRun) {
+          toast.success('Preview PDF Generated', {
+            description: `Generated a ${data.filledForPreview || data.exportedCount}-card test sheet without updating print status.`,
+          });
+        } else {
+          toast.success('Batch Export Generated', {
+            description: `Exported ${data.exportedCount} child IDs successfully.`,
+          });
+        }
+      } else {
+        toast.info('No Export Needed', {
+          description: data?.message || 'No eligible records were available for export.',
+        });
+      }
+
+      // Refresh table because statuses can change to printed
+      if (!previewDryRun) {
+        fetchChildren(true);
+      }
+    } catch (error) {
+      console.error('Failed to generate ID export:', error);
+      toast.error('Export Failed', {
+        description: error?.message || 'Could not generate child ID export. Please try again.',
+      });
+    } finally {
+      setGeneratingExport(false);
+    }
   };
 
   return (
@@ -518,17 +740,33 @@ const ChildrenPage = () => {
             />
           </div>
           
-          <Button
-            variant="primary"
-            onClick={() => setIsAddModalOpen(true)}
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-            }
-          >
-            Add Child
-          </Button>
+          <div className="w-full md:w-auto flex items-center gap-2 md:justify-end">
+            {user?.access_level >= 10 && (
+              <Button
+                variant="outline"
+                onClick={handleOpenExportDialog}
+                icon={
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-8m0 8l-3-3m3 3l3-3M4 17a2 2 0 002 2h12a2 2 0 002-2" />
+                  </svg>
+                }
+              >
+                Export IDs
+              </Button>
+            )}
+
+            <Button
+              variant="primary"
+              onClick={() => setIsAddModalOpen(true)}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+              }
+            >
+              Add Child
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
@@ -588,45 +826,25 @@ const ChildrenPage = () => {
             setSelectedChild(null); // Add this line to clean up
           }}
           onPrintID={() => {
+            const mapped = mapChildToPrintableData(selectedChild);
+            const validation = getPrintableIdValidation(mapped);
+            if (!validation.isValid) {
+              toast.error('Cannot Print ID', {
+                description: `Missing required info: ${validation.missingFields.join(', ')}`,
+              });
+              return;
+            }
+
             setIsViewModalOpen(false);
             setSelectedChild(null);
-            setRegisteredChildData({
-              firstName: selectedChild.first_name,
-              lastName: selectedChild.last_name,
-              middleName: selectedChild.middle_name || '',
-              formalId: selectedChild.formal_id || 'N/A',
-              gender: selectedChild.gender,
-              birthdate: selectedChild.birthdate,
-              age: Math.floor((new Date() - new Date(selectedChild.birthdate)) / 31557600000),
-              ageCategory: selectedChild.age_categories?.category_name || 'N/A',
-              guardianFirstName: selectedChild.child_guardian?.[0]?.guardians?.first_name || '',
-              guardianLastName: selectedChild.child_guardian?.[0]?.guardians?.last_name || '',
-              guardianPhone: selectedChild.child_guardian?.[0]?.guardians?.phone_number || '',
-              guardianEmail: selectedChild.child_guardian?.[0]?.guardians?.email || '',
-              photoUrl: selectedChild.photo_url || '',
-              registrationDate: selectedChild.registration_date
-            });
+            setRegisteredChildData(mapped);
+            setPrintableAutoPrint(true);
             setTimeout(() => setShowPrintableID(true), 100);
           }}
           onShowQR={() => {
             setIsViewModalOpen(false);
             setSelectedChild(null);
-            setRegisteredChildData({
-              firstName: selectedChild.first_name,
-              lastName: selectedChild.last_name,
-              middleName: selectedChild.middle_name || '',
-              formalId: selectedChild.formal_id || 'N/A',
-              gender: selectedChild.gender,
-              birthdate: selectedChild.birthdate,
-              age: Math.floor((new Date() - new Date(selectedChild.birthdate)) / 31557600000),
-              ageCategory: selectedChild.age_categories?.category_name || 'N/A',
-              guardianFirstName: selectedChild.child_guardian?.[0]?.guardians?.first_name || '',
-              guardianLastName: selectedChild.child_guardian?.[0]?.guardians?.last_name || '',
-              guardianPhone: selectedChild.child_guardian?.[0]?.guardians?.phone_number || '',
-              guardianEmail: selectedChild.child_guardian?.[0]?.guardians?.email || '',
-              photoUrl: selectedChild.photo_url || '',
-              registrationDate: selectedChild.registration_date
-            });
+            setRegisteredChildData(mapChildToPrintableData(selectedChild));
             setTimeout(() => setShowQRModal(true), 100);
           }}
         />
@@ -649,7 +867,16 @@ const ChildrenPage = () => {
           onClose={() => setShowQRModal(false)}
           childData={registeredChildData}
           onPrintID={() => {
+            const validation = getPrintableIdValidation(registeredChildData);
+            if (!validation.isValid) {
+              toast.error('Cannot Print ID', {
+                description: `Missing required info: ${validation.missingFields.join(', ')}`,
+              });
+              return;
+            }
+
             setShowQRModal(false);
+            setPrintableAutoPrint(true);
             setTimeout(() => setShowPrintableID(true), 100);
           }}
         />
@@ -659,7 +886,11 @@ const ChildrenPage = () => {
       {showPrintableID && registeredChildData && (
         <PrintableIDCard 
           childData={registeredChildData}
-          onClose={() => setShowPrintableID(false)}
+          autoPrint={printableAutoPrint}
+          onClose={() => {
+            setShowPrintableID(false);
+            setPrintableAutoPrint(true);
+          }}
         />
       )}
 
@@ -691,6 +922,105 @@ const ChildrenPage = () => {
               onClick={confirmToggleActive}
             >
               {childToToggle && !childToToggle.is_active ? "Yes, reactivate" : "Yes, deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Export IDs Dialog (Admin only) */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Child IDs</DialogTitle>
+            <DialogDescription>
+              This exports printable PDF IDs in 100x70mm format. Only eligible children with status pending and optionally reprint_needed are included.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingExportPreview ? (
+            <div className="py-4 text-sm text-gray-500 flex items-center gap-2">
+              <svg className="h-4 w-4 animate-spin text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <span>Loading export preview</span>
+            </div>
+          ) : exportPreview ? (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md bg-gray-50 p-2">Eligible: <strong>{exportPreview.eligible}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Exportable: <strong>{exportPreview.exportable}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Pending: <strong>{exportPreview.pending}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Reprint Needed: <strong>{exportPreview.reprintNeeded}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Printed: <strong>{exportPreview.printed}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Incomplete: <strong>{exportPreview.incomplete}</strong></div>
+              </div>
+
+              <label className="flex items-center gap-2 text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={includeReprints}
+                  onChange={(e) => setIncludeReprints(e.target.checked)}
+                />
+                Include reprint_needed records
+              </label>
+
+              <label className="flex items-center gap-2 text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={previewDryRun}
+                  onChange={(e) => setPreviewDryRun(e.target.checked)}
+                />
+                Preview mode: generate full test sheet, do not mark as printed
+              </label>
+
+              {(lastExportResult?.batchId || lastExportResult?.dryRun) && (
+                <div className="rounded-md border border-nextgen-blue/30 bg-nextgen-blue/5 p-3">
+                  <div className="font-medium text-nextgen-blue-dark">
+                    {lastExportResult.dryRun ? 'Preview Created (No Status Update)' : 'Batch Created'}
+                  </div>
+                  {lastExportResult.batchId && (
+                    <div className="text-xs text-gray-600 mt-1">Batch ID: {lastExportResult.batchId}</div>
+                  )}
+                  <div className="text-xs text-gray-600">Exported: {lastExportResult.exportedCount}</div>
+                  {lastExportResult.cardsPerPage && (
+                    <div className="text-xs text-gray-600">Cards/Page: {lastExportResult.cardsPerPage}</div>
+                  )}
+                  {lastExportResult.filledForPreview && (
+                    <div className="text-xs text-gray-600">Preview Fill: {lastExportResult.filledForPreview}</div>
+                  )}
+                  {(lastExportResult.downloadUrl || lastExportResult.previewPdfUrl) && (
+                    <a
+                      href={lastExportResult.downloadUrl || lastExportResult.previewPdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block mt-2 text-sm text-nextgen-blue-dark underline"
+                    >
+                      {lastExportResult.dryRun ? 'Open Preview PDF' : 'Download PDF'}
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-4 text-sm text-gray-500">No preview data available.</div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowExportDialog(false)}
+              disabled={generatingExport}
+            >
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleGenerateBatchExport}
+              disabled={generatingExport || loadingExportPreview || !exportPreview}
+              isLoading={generatingExport}
+            >
+              {generatingExport ? 'Generating PDF' : 'Generate PDF Export'}
             </Button>
           </DialogFooter>
         </DialogContent>

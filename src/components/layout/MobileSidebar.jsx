@@ -234,7 +234,7 @@ const MobileSidebar = () => {
                   className="text-xl font-bold text-white relative z-10"
                   whileHover={{ scale: 1.05 }}
                 >
-                  NextGen Ministry
+                  NXTGen Ministry
                 </motion.h1>
                 
                 <motion.p
@@ -403,7 +403,7 @@ const MobileSidebar = () => {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1 }}
               >
-                NextGen Ministry v1.0
+                NXTGen Ministry v1.0
               </motion.div>
             </div>
           </motion.aside>

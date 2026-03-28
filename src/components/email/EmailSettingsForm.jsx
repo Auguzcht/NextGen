@@ -10,7 +10,7 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
     provider: 'Resend',
     api_key: '',
     from_email: '',
-    from_name: 'NextGen Ministry',
+    from_name: 'NXTGen Ministry',
     batch_size: 100,
     is_active: true
   });
@@ -256,7 +256,7 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
                       label="From Name"
                       value={formData.from_name}
                       onChange={handleInputChange}
-                      placeholder="NextGen Ministry"
+                      placeholder="NXTGen Ministry"
                       helperText="Display name for outgoing emails"
                       required
                       animate
@@ -395,9 +395,10 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
                       variant="outline"
                       onClick={handleTestEmail}
                       disabled={isSendingTest || !formData.api_key || !formData.from_email}
+                      isLoading={isSendingTest}
                       className="border-purple-300 text-purple-700 hover:bg-purple-50"
                     >
-                      {isSendingTest ? 'Sending...' : 'Send Test'}
+                      Send Test
                     </Button>
                   </div>
                 </div>
@@ -423,8 +424,9 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
             type="submit"
             variant="primary"
             disabled={isSaving}
+            isLoading={isSaving}
           >
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            Save Settings
           </Button>
         </div>
       </form>

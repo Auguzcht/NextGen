@@ -508,14 +508,9 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                 variant="primary"
                 onClick={handleSubmit}
                 disabled={isSaving}
+                isLoading={isSaving}
               >
-                {isSaving ? (
-                  <span className="flex items-center justify-center">
-                    {existingNoteId ? 'Updating...' : 'Saving...'}
-                  </span>
-                ) : (
-                  existingNoteId ? 'Save Changes' : 'Save Notes'
-                )}
+                {existingNoteId ? 'Save Changes' : 'Save Notes'}
               </Button>
             )}
           </div>

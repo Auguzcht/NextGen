@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import useImageCache from '../hooks/useImageCache.jsx';
-import { Card, Button, Table, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
+import { Card, Button, Table, Input, Badge, DatePickerOverlay, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui';
 import { motion } from 'framer-motion';
 import QRScannerModal from '../components/common/QRScannerModal';
 import ChildDetailView from '../components/children/ChildDetailView';
 import RegistrationSuccessModal from '../components/children/RegistrationSuccessModal';
 import PrintableIDCard from '../components/children/PrintableIDCard';
 import AddChildForm from '../components/children/AddChildForm';
+import { getPrintableIdValidation } from '../utils/childIdMapper.js';
 
 const AttendancePage = () => {
   const { toast } = useToast();
@@ -50,8 +51,11 @@ const AttendancePage = () => {
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const [attendanceToRemove, setAttendanceToRemove] = useState(null);
   
+  // Mobile menu state for actions
+  const [openMobileMenu, setOpenMobileMenu] = useState(null);
+  
   // Image caching
-  const { cacheImages } = useImageCache();
+  const { cacheImages, isInvalidImage, markInvalidImage } = useImageCache();
 
   // Fetch services on mount
   useEffect(() => {
@@ -85,6 +89,18 @@ const AttendancePage = () => {
       setSelectedChildren([]); // Clear selections when search is cleared
     }
   }, [debouncedSearchQuery, selectedService, selectedDate]);
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenMobileMenu(null);
+    };
+
+    if (openMobileMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMobileMenu]);
 
   // Toggle child selection
   const toggleChildSelection = (childId) => {
@@ -632,16 +648,24 @@ const AttendancePage = () => {
                 onClick={(e) => e.stopPropagation()}
               />
               {child.photo_url ? (
-                <img
-                  src={child.photo_url}
-                  alt={`${child.first_name} ${child.last_name}`}
-                  className="h-8 w-8 rounded-full object-cover flex-shrink-0"
-                  loading="lazy"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
-                  }}
-                />
+                !isInvalidImage(child.photo_url) ? (
+                  <img
+                    src={child.photo_url}
+                    alt={`${child.first_name} ${child.last_name}`}
+                    className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      markInvalidImage(child.photo_url);
+                    }}
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-nextgen-blue-dark font-medium text-xs">
+                      {child.first_name?.charAt(0)}{child.last_name?.charAt(0)}
+                    </span>
+                  </div>
+                )
               ) : (
                 <div className="h-8 w-8 rounded-full bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
                   <span className="text-nextgen-blue-dark font-medium text-xs">
@@ -694,26 +718,34 @@ const AttendancePage = () => {
     {
       header: "Name",
       cell: (row) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {row.children?.photo_url ? (
-            <img
-              src={row.children?.photo_url}
-              alt={`${row.children?.first_name} ${row.children?.last_name}`}
-              className="h-10 w-10 rounded-full object-cover"
-              loading="lazy"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `${import.meta.env.BASE_URL}placeholder-avatar.png`;
-              }}
-            />
+            !isInvalidImage(row.children.photo_url) ? (
+              <img
+                src={row.children.photo_url}
+                alt={`${row.children?.first_name} ${row.children?.last_name}`}
+                className="h-10 w-10 rounded-full object-cover flex-shrink-0"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  markInvalidImage(row.children.photo_url);
+                }}
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-nextgen-blue-dark font-medium text-sm">
+                  {row.children?.first_name?.charAt(0)}{row.children?.last_name?.charAt(0)}
+                </span>
+              </div>
+            )
           ) : (
-            <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-full bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
               <span className="text-nextgen-blue-dark font-medium text-sm">
                 {row.children?.first_name?.charAt(0)}{row.children?.last_name?.charAt(0)}
               </span>
             </div>
           )}
-          <div className="font-medium text-gray-900">
+          <div className="font-medium text-gray-900 truncate">
             {row.children?.first_name} {row.children?.last_name}
           </div>
         </div>
@@ -741,65 +773,138 @@ const AttendancePage = () => {
     {
       header: "Check In",
       cell: (row) => (
-        <div className="text-gray-900">
-          <div>{formatTime(row.check_in_time)}</div>
-          <div className="text-xs text-gray-500">by {formatStaffName(row.checked_in_by)}</div>
+        <div className="flex items-center gap-2">
+          <Badge variant="primary" size="xs">
+            In
+          </Badge>
+          <div className="flex flex-col text-xs">
+            <span className="text-gray-900 font-medium">{formatTime(row.check_in_time)}</span>
+            <span className="text-gray-500">by {formatStaffName(row.checked_in_by)}</span>
+          </div>
         </div>
       ),
-      width: "150px",
+      width: "180px",
       sortable: true,
       sortKey: "check_in_time"
     },
     {
       header: "Check Out",
       cell: (row) => row.check_out_time ? (
-        <div className="text-gray-900">
-          <div>{formatTime(row.check_out_time)}</div>
-          <div className="text-xs text-gray-500">by {formatStaffName(row.checked_out_by)}</div>
+        <div className="flex items-center gap-2">
+          <Badge variant="success" size="xs">
+            Out
+          </Badge>
+          <div className="flex flex-col text-xs">
+            <span className="text-gray-900 font-medium">{formatTime(row.check_out_time)}</span>
+            <span className="text-gray-500">by {formatStaffName(row.checked_out_by)}</span>
+          </div>
         </div>
       ) : (
-        <span className="text-gray-500">-</span>
+        <Badge variant="warning" size="xs">
+          Pending
+        </Badge>
       ),
-      width: "150px",
+      width: "180px",
       sortable: true,
       sortKey: "check_out_time"
     },
     {
       header: "Actions",
       cell: (row) => (
-        <div className="flex justify-start gap-2">
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditChild(row.children);
-            }}
-            icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>}
-            title="Edit Child"
-          />
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleRemoveFromAttendance(row);
-            }}
-            icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>}
-            title="Remove from Attendance"
-          />
-          <Button
-            variant="danger"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCheckOut(row.attendance_id);
-            }}
-            disabled={!!row.check_out_time}
-            title="Check Out"
-          >
-            Check Out
-          </Button>
+        <div className="flex justify-start gap-1">
+          {/* Desktop: Show all buttons */}
+          <div className="hidden sm:flex gap-2">
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditChild(row.children);
+              }}
+              icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>}
+              title="Edit Child"
+            />
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemoveFromAttendance(row);
+              }}
+              icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>}
+              title="Remove from Attendance"
+            />
+            <Button
+              variant="danger"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCheckOut(row.attendance_id);
+              }}
+              disabled={!!row.check_out_time}
+              title="Check Out"
+            >
+              Check Out
+            </Button>
+          </div>
+
+          {/* Mobile: Compact view - only show checkout button + menu for other actions */}
+          <div className="flex sm:hidden gap-1 w-full">
+            <Button
+              variant="danger"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCheckOut(row.attendance_id);
+              }}
+              disabled={!!row.check_out_time}
+              className="flex-1 text-xs"
+            >
+              {row.check_out_time ? '✓' : 'Out'}
+            </Button>
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="xs"
+                className="px-2"
+                title="More actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMobileMenu(openMobileMenu === row.attendance_id ? null : row.attendance_id);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="10" cy="5" r="1.5" />
+                  <circle cx="10" cy="10" r="1.5" />
+                  <circle cx="10" cy="15" r="1.5" />
+                </svg>
+              </Button>
+              {openMobileMenu === row.attendance_id && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-40 min-w-max">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditChild(row.children);
+                      setOpenMobileMenu(null);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-md"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveFromAttendance(row);
+                      setOpenMobileMenu(null);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-md"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ),
       width: "150px"
@@ -877,8 +982,12 @@ const AttendancePage = () => {
         // Child is already checked in
         if (existingCheckIn.check_out_time) {
           // Already checked out
-          setError(`${childData.first_name} ${childData.last_name} is already checked out`);
-          return null;
+          toast.error(`${childData.first_name} ${childData.last_name} is already checked out`, {
+            duration: 2500
+          });
+          return {
+            modalError: `${childData.first_name} ${childData.last_name} is already checked out`
+          };
         } else {
           // Checked in but not out - perform check out
           await handleCheckOut(existingCheckIn.attendance_id);
@@ -1018,9 +1127,9 @@ const AttendancePage = () => {
               </h3>
               
               {/* Filters Row */}
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col md:flex-row gap-3 md:gap-4">
                 {/* Service Select */}
-                <div className="w-72">
+                <div className="w-full md:w-72">
                   <label htmlFor="service-select" className="block text-sm font-medium text-gray-700 mb-1">
                     Service
                   </label>
@@ -1036,26 +1145,24 @@ const AttendancePage = () => {
                         label: `${service.service_name} (${service.day_of_week})`
                       }))
                     ]}
-                    className="h-[42px]"
+                    className="h-[42px] !mb-0"
                   />
                 </div>
 
                 {/* Date Input */}
-                <div className="w-48">
+                <div className="w-full md:w-48">
                   <label htmlFor="date-select" className="block text-sm font-medium text-gray-700 mb-1">
                     Date
                   </label>
-                  <Input
-                    type="date"
+                  <DatePickerOverlay
                     id="date-select"
                     value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="h-[42px]"
+                    onChange={setSelectedDate}
                   />
                 </div>
 
                 {/* Search Input - Modified with QR button */}
-                <div className="flex-1 flex flex-col">
+                <div className="w-full md:flex-1 flex flex-col">
                   <label htmlFor="search-input" className="block text-sm font-medium text-gray-700 mb-1">
                     Search Child
                   </label>
@@ -1068,7 +1175,7 @@ const AttendancePage = () => {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         disabled={!selectedService}
-                        className="h-[42px]"
+                        className="h-[42px] !mb-0"
                         startIcon={
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -1118,16 +1225,29 @@ const AttendancePage = () => {
             <div>
               <h3 className="text-lg font-medium text-nextgen-blue-dark mb-4 flex justify-between items-center">
                 <span>Currently Checked In</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-500">
-                    {checkedInList.length} {checkedInList.length === 1 ? 'Child' : 'Children'}
-                  </span>
+                <div className="flex items-center gap-3 flex-wrap justify-end">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600 font-medium">Total:</span>
+                      <span className="text-gray-900 font-semibold">{checkedInList.length}</span>
+                    </div>
+                    {checkedInList.length > 0 && (
+                      <>
+                        <div className="w-px h-5 bg-gray-300"></div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-600 font-medium">Pending:</span>
+                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                            {checkedInList.filter(item => !item.check_out_time).length}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   {checkedInList.filter(item => !item.check_out_time).length > 0 && (
                     <Button
                       variant="danger"
                       size="sm"
                       onClick={() => setShowCheckOutAllDialog(true)}
-                      className="ml-2"
                     >
                       Check Out All
                     </Button>
@@ -1150,6 +1270,7 @@ const AttendancePage = () => {
                   sortOrder={sortOrder}
                   onRowClick={handleRowClick}
                   mobileCollapsible={true}
+                  getRowClassName={(row) => !row.check_out_time ? 'bg-yellow-50 hover:bg-yellow-100' : ''}
                 />
               </div>
             </div>
@@ -1200,11 +1321,10 @@ const AttendancePage = () => {
           setSelectedChildForView(null);
         }}
         onPrintID={() => {
-          setIsViewModalOpen(false);
-          setSelectedChildForView(null);
-          setRegisteredChildData({
+          const mappedData = {
             firstName: selectedChildForView.first_name,
             lastName: selectedChildForView.last_name,
+            nickname: selectedChildForView.nickname || '',
             middleName: selectedChildForView.middle_name || '',
             formalId: selectedChildForView.formal_id || 'N/A',
             gender: selectedChildForView.gender,
@@ -1217,7 +1337,19 @@ const AttendancePage = () => {
             guardianEmail: selectedChildForView.child_guardian?.[0]?.guardians?.email || '',
             photoUrl: selectedChildForView.photo_url || '',
             registrationDate: selectedChildForView.registration_date
-          });
+          };
+
+          const validation = getPrintableIdValidation(mappedData);
+          if (!validation.isValid) {
+            toast.error('Cannot Print ID', {
+              description: `Missing required info: ${validation.missingFields.join(', ')}`,
+            });
+            return;
+          }
+
+          setIsViewModalOpen(false);
+          setSelectedChildForView(null);
+          setRegisteredChildData(mappedData);
           setTimeout(() => setShowPrintableID(true), 100);
         }}
         onShowQR={() => {
@@ -1226,6 +1358,7 @@ const AttendancePage = () => {
           setRegisteredChildData({
             firstName: selectedChildForView.first_name,
             lastName: selectedChildForView.last_name,
+            nickname: selectedChildForView.nickname || '',
             middleName: selectedChildForView.middle_name || '',
             formalId: selectedChildForView.formal_id || 'N/A',
             gender: selectedChildForView.gender,
@@ -1250,6 +1383,14 @@ const AttendancePage = () => {
           onClose={() => setShowQRModal(false)}
           childData={registeredChildData}
           onPrintID={() => {
+            const validation = getPrintableIdValidation(registeredChildData);
+            if (!validation.isValid) {
+              toast.error('Cannot Print ID', {
+                description: `Missing required info: ${validation.missingFields.join(', ')}`,
+              });
+              return;
+            }
+
             setShowQRModal(false);
             setTimeout(() => setShowPrintableID(true), 100);
           }}

@@ -7,6 +7,8 @@ export { default as Spinner } from './Spinner';
 export { default as Modal } from './Modal';
 export { default as Table } from './Table';
 export { default as NextGenChart } from './Chart';
+export { default as Calendar } from './Calendar';
+export { default as DatePickerOverlay } from './DatePickerOverlay';
 
 // New shadcn-inspired components
 export { Alert as AlertNew, AlertTitle, AlertDescription } from './AlertNew';
@@ -19,3 +21,4 @@ export {
   DialogDescription,
 } from './DialogNew';
 export { ToastProvider, useToast, toast } from './Toast';
+export { HoverCard, HoverCardTrigger, HoverCardContent } from './HoverCard';

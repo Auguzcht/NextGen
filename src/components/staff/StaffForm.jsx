@@ -902,15 +902,10 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               variant="primary"
               onClick={handleSubmit}
               disabled={isSaving}
+              isLoading={isSaving}
               className="relative"
             >
-              {isSaving ? (
-                <span className="flex items-center justify-center">
-                  {isEdit ? 'Saving Changes...' : 'Adding Staff...'}
-                </span>
-              ) : (
-                isEdit ? 'Save Changes' : 'Add Staff Member'
-              )}
+              {isEdit ? 'Save Changes' : 'Add Staff Member'}
             </Button>
           </div>
         </div>

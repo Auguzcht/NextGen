@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Button, Input, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
+import { Button, Input, DatePickerOverlay, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initialData = null }) => {
@@ -476,20 +476,24 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                   Schedule & Role
                 </h3>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="assignment_date" className="block text-sm font-medium text-gray-700 mb-1">
                       Assignment Date *
                     </label>
-                    <Input
-                      type="date"
+                    <DatePickerOverlay
                       id="assignment_date"
-                      name="assignment_date"
                       value={formData.assignment_date}
-                      onChange={handleInputChange}
+                      onChange={(newDate) => {
+                        handleInputChange({
+                          target: {
+                            name: 'assignment_date',
+                            value: newDate,
+                          },
+                        });
+                      }}
                       error={errors.assignment_date}
-                      required
-                      fullWidth
+                      minDate={new Date().toISOString().split('T')[0]}
                     />
                   </div>
 
@@ -567,15 +571,10 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
               variant="primary"
               onClick={handleSubmit}
               disabled={submitting || loading}
+              isLoading={submitting}
               className="relative"
             >
-              {submitting ? (
-                <span className="flex items-center justify-center">
-                  {isEdit ? 'Updating...' : 'Assigning...'}
-                </span>
-              ) : (
-                isEdit ? 'Update Assignment' : 'Assign Staff'
-              )}
+              {isEdit ? 'Update Assignment' : 'Assign Staff'}
             </Button>
           </div>
         </div>

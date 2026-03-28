@@ -732,7 +732,7 @@ export const generateWeeklyReportPDF = async (
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(24);
     pdf.setTextColor(...colors.primary); // NextGen Primary
-    pdf.text('NextGen Ministry', margin, yPosition);
+    pdf.text('NXTGen Ministry', margin, yPosition);
     yPosition += 8;
     
     pdf.setFont('helvetica', 'normal');
@@ -1534,7 +1534,7 @@ export const generateWeeklyReportPDF = async (
     );
     
     pdf.text(
-      'NextGen Ministry Weekly Report - Confidential',
+      'NXTGen Ministry Weekly Report - Confidential',
       pageWidth / 2,
       footerY + 5,
       { align: 'center' }

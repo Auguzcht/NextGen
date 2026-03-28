@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // NextGen Ministry color palette
+        // NXTGen Ministry color palette
         nextgen: {
           blue: '#30cee4',     // Light blue primary
           orange: '#fb7610',   // Orange accent

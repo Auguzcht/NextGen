@@ -1,9 +1,77 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.2.0';
+export const CURRENT_VERSION = '1.2.5';
 
 export const CHANGELOG = [
+  {
+    version: '1.2.5',
+    date: '2026-03-29',
+    title: 'Mobile UX, Scanner Tuning, Child ID Workflow & Legal Pages Update',
+    type: 'patch',
+    changes: [
+      {
+        category: 'Mobile UI Optimization',
+        icon: 'Smartphone',
+        updates: [
+          'Optimized attendance page interactions for mobile with clearer action patterns and improved usability',
+          'Refined mobile action handling to reduce accidental taps and improve touch targets',
+          'Improved responsive layout behavior to better preserve visual hierarchy on smaller screens',
+          'Applied mobile-focused UI adjustments to modal/form experiences for consistency across workflows'
+        ]
+      },
+      {
+        category: 'Attendance UX Refinement',
+        icon: 'ClipboardCheck',
+        updates: [
+          'Enhanced checked-in list clarity with better pending checkout visibility',
+          'Improved check-in/check-out status readability with compact status presentation',
+          'Refined row-level visual indicators to help volunteers quickly identify pending actions',
+          'Improved mobile name handling and truncation behavior for cleaner row rendering'
+        ]
+      },
+      {
+        category: 'QR Scanner & Barcode Support',
+        icon: 'ScanLine',
+        updates: [
+          'Extended scanner UX for smoother camera start/stop transitions and reduced perceived lag',
+          'Improved loading and preview behavior in QR scanner modal with cleaner instructional flow',
+          'Added non-invasive mobile tuning layer for scanner timing/rates without altering core scan logic',
+          'Implemented device-aware scan profile tuning for better behavior on older phones, tablets, and webcams',
+          'Improved barcode camera loop cadence controls for more balanced performance on lower-powered devices'
+        ]
+      },
+      {
+        category: 'Child ID & Registration Workflow',
+        icon: 'IdCard',
+        updates: [
+          'Improved child ID-related workflow consistency across attendance and registration flows',
+          'Refined printable/validation-related ID handling for more reliable operations',
+          'Enhanced registration modal behavior to align with updated mobile-first interaction patterns'
+        ]
+      },
+      {
+        category: 'Legal & Compliance',
+        icon: 'ShieldCheck',
+        updates: [
+          'Added and refined legal pages experience for Terms of Service and Privacy Policy sections',
+          'Improved legal page layout consistency for readability across desktop and mobile',
+          'Updated legal navigation integration to ensure easier discoverability from core app layout'
+        ]
+      },
+      {
+        category: 'System Stability & Polish',
+        icon: 'Wrench',
+        updates: [
+          'Improved UI state transitions to reduce layout shift and preserve stable button positioning',
+          'Refined scanner modal copy and content density for faster volunteer onboarding during check-in',
+          'Applied incremental UX polish across updated components while preserving existing proven logic'
+        ]
+      }
+    ],
+    summary: 'Version 1.2.5 focuses on practical field-use improvements: faster and smoother mobile interactions, non-invasive scanner/barcode tuning for mixed device quality, stronger child ID workflow consistency, and improved legal/compliance page experience. This release prioritizes volunteer efficiency and reliability while preserving existing proven scan logic.',
+    breaking: false
+  },
   {
     version: '1.2.0',
     date: '2026-02-15',

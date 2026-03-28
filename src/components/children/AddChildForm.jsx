@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import supabase from '../../services/supabase.js';
-import { Card, Button, Input, Badge, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
+import { Card, Button, Input, Badge, DatePickerOverlay, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../services/firebase';
@@ -997,24 +997,32 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                 </div>
 
                 {/* Second Row - Nickname and Birthdate */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="Nickname (Optional)"
                     name="nickname"
                     value={formData.nickname}
                     onChange={handleChange}
                   />
-                  <Input
-                    type="date"
-                    label="Birth Date *"
-                    name="birthdate"
-                    value={formData.birthdate}
-                    onChange={handleChange}
-                    error={errors.birthdate}
-                    max={new Date().toISOString().split('T')[0]}
-                    className="h-[42px]"
-                    required
-                  />
+                  <div className="mb-4">
+                    <label htmlFor="birthdate" className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                      Birth Date *
+                    </label>
+                    <DatePickerOverlay
+                      id="birthdate"
+                      value={formData.birthdate}
+                      onChange={(newDate) => {
+                        handleChange({
+                          target: {
+                            name: 'birthdate',
+                            value: newDate,
+                          },
+                        });
+                      }}
+                      maxDate={new Date().toISOString().split('T')[0]}
+                      error={errors.birthdate}
+                    />
+                  </div>
                 </div>
 
                 {/* Third Row - Gender */}
@@ -1086,13 +1094,13 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
                       onClick={handleClearSelectedGuardian}
                       className="text-red-500 border-red-300 hover:bg-red-50"
                     >
-                      Clear Selection
+                      Use Different Guardian
                     </Button>
                   )}
                 </div>
-                
-                {/* Guardian Name Row */}
-                <div className="grid grid-cols-2 gap-4 mb-4 relative">
+
+                {/* Name Fields Row */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="relative">
                     <Input
                       label="First Name *"
@@ -1256,16 +1264,11 @@ const AddChildForm = ({ onClose, onSuccess, isEdit = false, initialData = null }
               type="submit" 
               variant="primary"
               disabled={loading}
+              isLoading={loading}
               className="relative"
               onClick={handleSubmit} // Add onClick handler as backup
             >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  {isEdit ? 'Saving Changes...' : 'Registering Child...'}
-                </span>
-              ) : (
-                isEdit ? 'Save Changes' : 'Register Child'
-              )}
+              {isEdit ? 'Save Changes' : 'Register Child'}
             </Button>
           </div>
         </div>
