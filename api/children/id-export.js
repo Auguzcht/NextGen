@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import puppeteer from 'puppeteer';
+import puppeteerCore from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { readFileSync } from 'fs';
@@ -266,10 +268,19 @@ function buildBatchPrintHtml(snapshots, templateUrl) {
 
 async function renderBatchPdfViaPuppeteer(snapshots, templateUrl) {
   const html = buildBatchPrintHtml(snapshots, templateUrl);
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const runningInServerless = Boolean(process.env.VERCEL || process.env.AWS_REGION || process.env.LAMBDA_TASK_ROOT);
+
+  const browser = runningInServerless
+    ? await puppeteerCore.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      })
+    : await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
 
   try {
     const page = await browser.newPage();
