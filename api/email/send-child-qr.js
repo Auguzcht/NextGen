@@ -5,8 +5,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { createChildQREmailTemplate } from '../../src/utils/emailTemplates.js';
-import { sendEmail } from '../utils/emailProviders.js';
-import { generateAndUploadQR, deleteOldQRCodes } from '../utils/qrGenerator.js';
+import { sendEmail } from '../../server/utils/emailProviders.js';
+import { generateAndUploadQR, deleteOldQRCodes } from '../../server/utils/qrGenerator.js';
 
 // Use non-VITE prefixed vars in production, fallback to VITE_ for development
 const supabase = createClient(

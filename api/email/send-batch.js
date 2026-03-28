@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendBatchEmails, validateEmailConfig } from '../utils/emailProviders.js';
+import { sendBatchEmails, validateEmailConfig } from '../../server/utils/emailProviders.js';
 import { createCustomEmailTemplate } from '../../src/utils/emailTemplates.js';
 
 // Use non-VITE prefixed vars in production

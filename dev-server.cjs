@@ -549,7 +549,7 @@ app.post('/api/email/send-child-qr', async (req, res) => {
     }
 
     // Import email template function
-    const { createChildQREmailTemplate } = await import('./api/utils/emailProviders.js').then(module => {
+    const { createChildQREmailTemplate } = await import('./server/utils/emailProviders.js').then(module => {
       // If the template is not in emailProviders, try the templates file
       return import('./src/utils/emailTemplates.js');
     }).catch(() => {
@@ -743,7 +743,7 @@ app.post('/api/email/send-batch', async (req, res) => {
     console.log(`📧 Using ${emailConfig.provider} with batch size: ${emailConfig.batch_size}`);
 
     // Import email providers for real sending
-    const { sendBatchEmails } = await import('./api/utils/emailProviders.js');
+    const { sendBatchEmails } = await import('./server/utils/emailProviders.js');
 
     // Prepare batch email data for real sending
     const emailBatchData = {
