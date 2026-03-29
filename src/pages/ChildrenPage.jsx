@@ -651,6 +651,15 @@ const ChildrenPage = () => {
     setGeneratingExport(true);
     setLastExportResult(null);
 
+    const loadingToastId = toast.loading(
+      previewDryRun ? 'Generating Preview PDF...' : 'Exporting Child IDs...',
+      {
+        description: previewDryRun
+          ? 'Preparing a test sheet without updating print status.'
+          : 'Preparing printable ID batches. This may take a while for large exports.',
+      }
+    );
+
     try {
       const { data, error } = await invokeIdExport({
         mode: 'generate',
@@ -676,17 +685,26 @@ const ChildrenPage = () => {
 
       if (data?.exportedCount > 0) {
         if (previewDryRun) {
-          toast.success('Preview PDF Generated', {
+          toast.update(loadingToastId, {
+            variant: 'success',
+            title: 'Preview PDF Generated',
             description: `Generated a ${data.filledForPreview || data.exportedCount}-card test sheet without updating print status.`,
+            duration: 5000,
           });
         } else {
-          toast.success('Batch Export Generated', {
+          toast.update(loadingToastId, {
+            variant: 'success',
+            title: 'Batch Export Generated',
             description: `Exported ${data.exportedCount} child IDs successfully.`,
+            duration: 5000,
           });
         }
       } else {
-        toast.info('No Export Needed', {
+        toast.update(loadingToastId, {
+          variant: 'info',
+          title: 'No Export Needed',
           description: data?.message || 'No eligible records were available for export.',
+          duration: 5000,
         });
       }
 
@@ -696,8 +714,11 @@ const ChildrenPage = () => {
       }
     } catch (error) {
       console.error('Failed to generate ID export:', error);
-      toast.error('Export Failed', {
+      toast.update(loadingToastId, {
+        variant: 'destructive',
+        title: 'Export Failed',
         description: error?.message || 'Could not generate child ID export. Please try again.',
+        duration: 5000,
       });
     } finally {
       setGeneratingExport(false);
@@ -933,7 +954,7 @@ const ChildrenPage = () => {
           <DialogHeader>
             <DialogTitle>Export Child IDs</DialogTitle>
             <DialogDescription>
-              This exports printable PDF IDs in 100x70mm format. Only eligible children with status pending and optionally reprint_needed are included.
+              This exports printable PDF IDs in 100x70mm format. Eligible means profile-complete records currently in pending or reprint_needed status.
             </DialogDescription>
           </DialogHeader>
 
@@ -950,6 +971,7 @@ const ChildrenPage = () => {
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-md bg-gray-50 p-2">Eligible: <strong>{exportPreview.eligible}</strong></div>
                 <div className="rounded-md bg-gray-50 p-2">Exportable: <strong>{exportPreview.exportable}</strong></div>
+                <div className="rounded-md bg-gray-50 p-2">Ready Profiles: <strong>{exportPreview.readyProfiles || 0}</strong></div>
                 <div className="rounded-md bg-gray-50 p-2">Pending: <strong>{exportPreview.pending}</strong></div>
                 <div className="rounded-md bg-gray-50 p-2">Reprint Needed: <strong>{exportPreview.reprintNeeded}</strong></div>
                 <div className="rounded-md bg-gray-50 p-2">Printed: <strong>{exportPreview.printed}</strong></div>

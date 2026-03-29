@@ -140,6 +140,7 @@ function computeExportCounts(rows) {
   const isEligible = (row) => Boolean(row?.is_active && row?.nickname && row?.photo_url);
   const counts = {
     totalActive: rows.length,
+    readyProfiles: 0,
     eligible: 0,
     pending: 0,
     reprintNeeded: 0,
@@ -150,8 +151,8 @@ function computeExportCounts(rows) {
   };
 
   for (const row of rows) {
-    const eligible = isEligible(row);
-    if (eligible) counts.eligible += 1;
+    const profileReady = isEligible(row);
+    if (profileReady) counts.readyProfiles += 1;
     else counts.incomplete += 1;
 
     if (row.id_print_status === 'pending') counts.pending += 1;
@@ -159,7 +160,8 @@ function computeExportCounts(rows) {
     if (row.id_print_status === 'printed') counts.printed += 1;
     if (row.id_print_status === 'hold') counts.hold += 1;
 
-    if (eligible && (row.id_print_status === 'pending' || row.id_print_status === 'reprint_needed')) {
+    if (profileReady && (row.id_print_status === 'pending' || row.id_print_status === 'reprint_needed')) {
+      counts.eligible += 1;
       counts.exportable += 1;
     }
   }
@@ -241,7 +243,9 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
 }
 
 function buildBatchPrintHtml(snapshots, templateUrl) {
-  const cards = snapshots.map((child) => {
+  const pageChunks = chunkSnapshots(snapshots, 4);
+
+  const buildCard = (child) => {
     const guardianParts = String(child.guardian_name || '').trim().split(/\s+/);
     const guardianFirst = guardianParts[0] || 'N/A';
     const guardianLast = guardianParts.slice(1).join(' ');
@@ -279,6 +283,11 @@ function buildBatchPrintHtml(snapshots, templateUrl) {
         </div>
       </article>
     `;
+  };
+
+  const pages = pageChunks.map((chunk) => {
+    const cards = chunk.map((child) => buildCard(child)).join('');
+    return `<section class="print-page">${cards}</section>`;
   }).join('');
 
   return `<!doctype html>
@@ -288,7 +297,24 @@ function buildBatchPrintHtml(snapshots, templateUrl) {
       <style>
         @page { size: A4 landscape; margin: 25.4mm; }
         body { margin: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .sheet { display: grid; grid-template-columns: repeat(auto-fill, 100mm); gap: 8mm; justify-content: center; align-content: start; }
+        .sheet { margin: 0; }
+        .print-page {
+          width: calc(100mm * 2 + 8mm);
+          min-height: calc(70mm * 2 + 8mm);
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: repeat(2, 100mm);
+          grid-template-rows: repeat(2, 70mm);
+          gap: 8mm;
+          align-content: start;
+          justify-content: center;
+          page-break-after: always;
+          break-after: page;
+        }
+        .print-page:last-child {
+          page-break-after: auto;
+          break-after: auto;
+        }
         .id-card { position: relative; width: 100mm; height: 70mm; overflow: hidden; }
         .template { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
         .photo-shell { position: absolute; left: 7.35mm; top: 15.3mm; width: 32.6mm; height: 32.6mm; border-radius: 4mm; overflow: hidden; background: #ecfeff; display: flex; align-items: center; justify-content: center; }
@@ -309,7 +335,7 @@ function buildBatchPrintHtml(snapshots, templateUrl) {
       </style>
     </head>
     <body>
-      <main class="sheet">${cards}</main>
+      <main class="sheet">${pages}</main>
       <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.1/dist/JsBarcode.all.min.js"></script>
       <script>
         document.querySelectorAll('svg.barcode').forEach((el) => {
