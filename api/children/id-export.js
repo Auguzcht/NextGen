@@ -26,6 +26,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let LOCAL_TEMPLATE_DATA_URL = '';
+let LOCAL_JSBARCODE_SCRIPT = '';
 
 const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || 'nodado-portfolio.firebasestorage.app';
 
@@ -54,6 +55,20 @@ function getLocalTemplateDataUrl() {
   const templateBuffer = readFileSync(templatePath);
   LOCAL_TEMPLATE_DATA_URL = `data:image/png;base64,${templateBuffer.toString('base64')}`;
   return LOCAL_TEMPLATE_DATA_URL;
+}
+
+function getLocalJsBarcodeScript() {
+  if (LOCAL_JSBARCODE_SCRIPT) return LOCAL_JSBARCODE_SCRIPT;
+
+  try {
+    const scriptPath = join(__dirname, '../../node_modules/jsbarcode/dist/JsBarcode.all.min.js');
+    LOCAL_JSBARCODE_SCRIPT = readFileSync(scriptPath, 'utf8').replace(/<\/script/gi, '<\\/script');
+  } catch (error) {
+    console.warn('Local JsBarcode script unavailable, falling back to CDN:', error?.message || error);
+    LOCAL_JSBARCODE_SCRIPT = '';
+  }
+
+  return LOCAL_JSBARCODE_SCRIPT;
 }
 
 async function uploadExportPdfToFirebase(pdfBuffer, timestamp) {
@@ -224,11 +239,12 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
   }
 
   // Keep chunk size moderate on serverless to avoid Chromium crashes while minimizing launch overhead.
-  const defaultChunkSize = dryRun ? cardsPerPage : 24;
+  const defaultChunkSize = dryRun ? cardsPerPage : 16;
   const requestedChunkSize = Number(process.env.ID_EXPORT_RENDER_CHUNK_SIZE || defaultChunkSize);
   const chunkSize = Number.isFinite(requestedChunkSize) && requestedChunkSize > 0
     ? Math.floor(requestedChunkSize)
     : defaultChunkSize;
+  const imageWaitTimeoutMs = Number(process.env.ID_EXPORT_IMAGE_WAIT_TIMEOUT_MS || (dryRun ? 12000 : 7000));
 
   const chunks = chunkSnapshots(snapshots, chunkSize);
   const renderedBuffers = [];
@@ -265,7 +281,7 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
         await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
         await page.waitForSelector('.id-card', { timeout: 10000 });
 
-        await page.evaluate(async () => {
+        await page.evaluate(async (maxWaitMs) => {
           const images = Array.from(document.images || []);
           if (images.length === 0) return;
 
@@ -280,9 +296,9 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
 
           await Promise.race([
             Promise.all(images.map(waitForImage)),
-            new Promise((resolve) => setTimeout(resolve, 45000)),
+            new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
           ]);
-        });
+        }, imageWaitTimeoutMs);
 
         await page.waitForFunction(
           () => {
@@ -303,7 +319,7 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
         });
         renderedBuffers.push(Buffer.from(chunkPdf));
       } finally {
-        await page.close();
+        await page.close().catch(() => null);
       }
     }
   } finally {
@@ -314,6 +330,10 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
 }
 
 function buildBatchPrintHtml(snapshots, templateUrl) {
+  const jsBarcodeScript = getLocalJsBarcodeScript();
+  const barcodeScriptTag = jsBarcodeScript
+    ? `<script>${jsBarcodeScript}</script>`
+    : '<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.1/dist/JsBarcode.all.min.js"></script>';
   const pageChunks = chunkSnapshots(snapshots, 4);
 
   const buildCard = (child) => {
@@ -407,7 +427,7 @@ function buildBatchPrintHtml(snapshots, templateUrl) {
     </head>
     <body>
       <main class="sheet">${pages}</main>
-      <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.1/dist/JsBarcode.all.min.js"></script>
+      ${barcodeScriptTag}
       <script>
         document.querySelectorAll('svg.barcode').forEach((el) => {
           const value = el.getAttribute('data-value') || 'N/A';
