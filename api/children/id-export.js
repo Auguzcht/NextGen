@@ -233,6 +233,83 @@ async function mergePdfBuffers(pdfBuffers) {
   return Buffer.from(mergedBytes);
 }
 
+async function renderPagePdfBuffer(page) {
+  const client = await page.createCDPSession();
+  const response = await client.send('Page.printToPDF', {
+    landscape: true,
+    printBackground: true,
+    paperWidth: 11.692913,
+    paperHeight: 8.267717,
+    marginTop: 1,
+    marginBottom: 1,
+    marginLeft: 1,
+    marginRight: 1,
+    transferMode: 'ReturnAsBase64',
+  });
+
+  if (!response?.data) {
+    throw new Error('PDF generation returned empty payload.');
+  }
+
+  return Buffer.from(response.data, 'base64');
+}
+
+async function renderChunkPdfWithFallback(browser, chunk, templateUrl, imageWaitTimeoutMs, depth = 0) {
+  const html = buildBatchPrintHtml(chunk, templateUrl);
+  const page = await browser.newPage();
+
+  try {
+    page.setDefaultTimeout(120000);
+    page.setDefaultNavigationTimeout(120000);
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page.waitForSelector('.id-card', { timeout: 10000 });
+
+    await page.evaluate(async (maxWaitMs) => {
+      const images = Array.from(document.images || []);
+      if (images.length === 0) return;
+
+      const waitForImage = (img) => new Promise((resolve) => {
+        if (img.complete) {
+          resolve(img.naturalWidth > 0);
+          return;
+        }
+        img.addEventListener('load', () => resolve(true), { once: true });
+        img.addEventListener('error', () => resolve(false), { once: true });
+      });
+
+      await Promise.race([
+        Promise.all(images.map(waitForImage)),
+        new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
+      ]);
+    }, imageWaitTimeoutMs);
+
+    await page.waitForFunction(
+      () => {
+        const barcodes = Array.from(document.querySelectorAll('svg.barcode'));
+        if (barcodes.length === 0) return false;
+        return barcodes.every((svg) => svg.querySelector('rect, path'));
+      },
+      { timeout: 10000 }
+    ).catch(() => null);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return await renderPagePdfBuffer(page);
+  } catch (error) {
+    const canSplit = chunk.length > 4 && depth < 3;
+    if (!canSplit) throw error;
+
+    const midpoint = Math.ceil(chunk.length / 2);
+    const left = chunk.slice(0, midpoint);
+    const right = chunk.slice(midpoint);
+
+    const leftPdf = await renderChunkPdfWithFallback(browser, left, templateUrl, imageWaitTimeoutMs, depth + 1);
+    const rightPdf = await renderChunkPdfWithFallback(browser, right, templateUrl, imageWaitTimeoutMs, depth + 1);
+    return await mergePdfBuffers([leftPdf, rightPdf]);
+  } finally {
+    await page.close().catch(() => null);
+  }
+}
+
 async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryRun) {
   if (!Array.isArray(snapshots) || snapshots.length === 0) {
     return Buffer.from([]);
@@ -272,55 +349,8 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
   try {
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
-      const html = buildBatchPrintHtml(chunk, templateUrl);
-      const page = await browser.newPage();
-
-      try {
-        page.setDefaultTimeout(120000);
-        page.setDefaultNavigationTimeout(120000);
-        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
-        await page.waitForSelector('.id-card', { timeout: 10000 });
-
-        await page.evaluate(async (maxWaitMs) => {
-          const images = Array.from(document.images || []);
-          if (images.length === 0) return;
-
-          const waitForImage = (img) => new Promise((resolve) => {
-            if (img.complete) {
-              resolve(img.naturalWidth > 0);
-              return;
-            }
-            img.addEventListener('load', () => resolve(true), { once: true });
-            img.addEventListener('error', () => resolve(false), { once: true });
-          });
-
-          await Promise.race([
-            Promise.all(images.map(waitForImage)),
-            new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
-          ]);
-        }, imageWaitTimeoutMs);
-
-        await page.waitForFunction(
-          () => {
-            const barcodes = Array.from(document.querySelectorAll('svg.barcode'));
-            if (barcodes.length === 0) return false;
-            return barcodes.every((svg) => svg.querySelector('rect, path'));
-          },
-          { timeout: 10000 }
-        ).catch(() => null);
-
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        const chunkPdf = await page.pdf({
-          format: 'A4',
-          landscape: true,
-          printBackground: true,
-          margin: { top: '25.4mm', right: '25.4mm', bottom: '25.4mm', left: '25.4mm' },
-          timeout: 0,
-        });
-        renderedBuffers.push(Buffer.from(chunkPdf));
-      } finally {
-        await page.close().catch(() => null);
-      }
+      const chunkPdf = await renderChunkPdfWithFallback(browser, chunk, templateUrl, imageWaitTimeoutMs);
+      renderedBuffers.push(chunkPdf);
     }
   } finally {
     await browser.close();
