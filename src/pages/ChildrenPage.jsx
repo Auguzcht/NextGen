@@ -616,9 +616,27 @@ const ChildrenPage = () => {
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json().catch(() => null);
+    const responseText = await response.text();
+    let data = null;
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      data = null;
+    }
+
     if (!response.ok) {
-      return { data: null, error: new Error(data?.error || 'Local export request failed') };
+      const timeoutMessage = response.status === 504
+        ? 'Export timed out on Vercel. Please try again with fewer records or disable preview mode.'
+        : null;
+
+      return {
+        data: null,
+        error: new Error(
+          data?.error
+          || timeoutMessage
+          || `ID export failed (HTTP ${response.status}).`
+        ),
+      };
     }
 
     return { data, error: null };

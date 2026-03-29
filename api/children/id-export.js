@@ -223,8 +223,8 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
     return Buffer.from([]);
   }
 
-  // Keep chunk size small on serverless to avoid Chromium crashes on large exports.
-  const defaultChunkSize = dryRun ? cardsPerPage : 12;
+  // Keep chunk size moderate on serverless to avoid Chromium crashes while minimizing launch overhead.
+  const defaultChunkSize = dryRun ? cardsPerPage : 24;
   const requestedChunkSize = Number(process.env.ID_EXPORT_RENDER_CHUNK_SIZE || defaultChunkSize);
   const chunkSize = Number.isFinite(requestedChunkSize) && requestedChunkSize > 0
     ? Math.floor(requestedChunkSize)
@@ -233,10 +233,81 @@ async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryR
   const chunks = chunkSnapshots(snapshots, chunkSize);
   const renderedBuffers = [];
 
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const chunkPdf = await renderBatchPdfViaPuppeteer(chunk, templateUrl);
-    renderedBuffers.push(Buffer.from(chunkPdf));
+  const runningInServerless = Boolean(process.env.VERCEL || process.env.AWS_REGION || process.env.LAMBDA_TASK_ROOT);
+  const browser = runningInServerless
+    ? await puppeteerCore.launch({
+        args: [
+          ...chromium.args,
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--single-process',
+          '--no-zygote',
+        ],
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      })
+    : await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+  try {
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      const html = buildBatchPrintHtml(chunk, templateUrl);
+      const page = await browser.newPage();
+
+      try {
+        page.setDefaultTimeout(120000);
+        page.setDefaultNavigationTimeout(120000);
+        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
+        await page.waitForSelector('.id-card', { timeout: 10000 });
+
+        await page.evaluate(async () => {
+          const images = Array.from(document.images || []);
+          if (images.length === 0) return;
+
+          const waitForImage = (img) => new Promise((resolve) => {
+            if (img.complete) {
+              resolve(img.naturalWidth > 0);
+              return;
+            }
+            img.addEventListener('load', () => resolve(true), { once: true });
+            img.addEventListener('error', () => resolve(false), { once: true });
+          });
+
+          await Promise.race([
+            Promise.all(images.map(waitForImage)),
+            new Promise((resolve) => setTimeout(resolve, 45000)),
+          ]);
+        });
+
+        await page.waitForFunction(
+          () => {
+            const barcodes = Array.from(document.querySelectorAll('svg.barcode'));
+            if (barcodes.length === 0) return false;
+            return barcodes.every((svg) => svg.querySelector('rect, path'));
+          },
+          { timeout: 10000 }
+        ).catch(() => null);
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const chunkPdf = await page.pdf({
+          format: 'A4',
+          landscape: true,
+          printBackground: true,
+          margin: { top: '25.4mm', right: '25.4mm', bottom: '25.4mm', left: '25.4mm' },
+          timeout: 0,
+        });
+        renderedBuffers.push(Buffer.from(chunkPdf));
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
   }
 
   return mergePdfBuffers(renderedBuffers);
@@ -530,9 +601,9 @@ export default async function handler(req, res) {
 
     const templateDataUrl = getLocalTemplateDataUrl();
     const pdfBuffer = await renderBatchPdfInChunks(pdfSnapshots, templateDataUrl, cardsPerPage, dryRun);
-    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
 
     if (dryRun) {
+      const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
       return res.status(200).json({
         success: true,
         mode,
