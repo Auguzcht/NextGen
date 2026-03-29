@@ -4,7 +4,7 @@
   "functions": {
     "api/children/id-export.js": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "rewrites": [

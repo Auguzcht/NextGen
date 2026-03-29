@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import puppeteer from 'puppeteer';
 import puppeteerCore from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+import { PDFDocument } from 'pdf-lib';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { readFileSync } from 'fs';
@@ -27,6 +28,9 @@ const __dirname = dirname(__filename);
 let LOCAL_TEMPLATE_DATA_URL = '';
 
 const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || 'nodado-portfolio.firebasestorage.app';
+
+// Disable WebGL in serverless Chromium to lower memory pressure during PDF generation.
+chromium.setGraphicsMode = false;
 
 function getFirebaseStorage() {
   const firebaseConfig = {
@@ -176,6 +180,66 @@ function fillSnapshotsForPreviewPage(snapshots, target) {
   return filled;
 }
 
+function chunkSnapshots(snapshots, chunkSize) {
+  if (!Array.isArray(snapshots) || snapshots.length === 0) return [];
+
+  const normalizedSize = Number.isFinite(chunkSize) && chunkSize > 0
+    ? Math.floor(chunkSize)
+    : snapshots.length;
+
+  const chunks = [];
+  for (let i = 0; i < snapshots.length; i += normalizedSize) {
+    chunks.push(snapshots.slice(i, i + normalizedSize));
+  }
+  return chunks;
+}
+
+async function mergePdfBuffers(pdfBuffers) {
+  if (!Array.isArray(pdfBuffers) || pdfBuffers.length === 0) {
+    return Buffer.from([]);
+  }
+
+  if (pdfBuffers.length === 1) {
+    return Buffer.from(pdfBuffers[0]);
+  }
+
+  const mergedDocument = await PDFDocument.create();
+
+  for (const pdfBuffer of pdfBuffers) {
+    const sourceDocument = await PDFDocument.load(pdfBuffer);
+    const pageIndexes = sourceDocument.getPageIndices();
+    const copiedPages = await mergedDocument.copyPages(sourceDocument, pageIndexes);
+    copiedPages.forEach((page) => mergedDocument.addPage(page));
+  }
+
+  const mergedBytes = await mergedDocument.save();
+  return Buffer.from(mergedBytes);
+}
+
+async function renderBatchPdfInChunks(snapshots, templateUrl, cardsPerPage, dryRun) {
+  if (!Array.isArray(snapshots) || snapshots.length === 0) {
+    return Buffer.from([]);
+  }
+
+  // Keep chunk size small on serverless to avoid Chromium crashes on large exports.
+  const defaultChunkSize = dryRun ? cardsPerPage : 12;
+  const requestedChunkSize = Number(process.env.ID_EXPORT_RENDER_CHUNK_SIZE || defaultChunkSize);
+  const chunkSize = Number.isFinite(requestedChunkSize) && requestedChunkSize > 0
+    ? Math.floor(requestedChunkSize)
+    : defaultChunkSize;
+
+  const chunks = chunkSnapshots(snapshots, chunkSize);
+  const renderedBuffers = [];
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    const chunkPdf = await renderBatchPdfViaPuppeteer(chunk, templateUrl);
+    renderedBuffers.push(Buffer.from(chunkPdf));
+  }
+
+  return mergePdfBuffers(renderedBuffers);
+}
+
 function buildBatchPrintHtml(snapshots, templateUrl) {
   const cards = snapshots.map((child) => {
     const guardianParts = String(child.guardian_name || '').trim().split(/\s+/);
@@ -272,7 +336,14 @@ async function renderBatchPdfViaPuppeteer(snapshots, templateUrl) {
 
   const browser = runningInServerless
     ? await puppeteerCore.launch({
-        args: chromium.args,
+        args: [
+          ...chromium.args,
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--single-process',
+          '--no-zygote',
+        ],
         defaultViewport: chromium.defaultViewport,
         executablePath: await chromium.executablePath(),
         headless: chromium.headless,
@@ -432,7 +503,7 @@ export default async function handler(req, res) {
       : snapshots;
 
     const templateDataUrl = getLocalTemplateDataUrl();
-    const pdfBuffer = await renderBatchPdfViaPuppeteer(pdfSnapshots, templateDataUrl);
+    const pdfBuffer = await renderBatchPdfInChunks(pdfSnapshots, templateDataUrl, cardsPerPage, dryRun);
     const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
 
     if (dryRun) {
