@@ -440,10 +440,10 @@ const Dashboard = () => {
               {recentActivity.map((activity) => (
                 <motion.div 
                   key={activity.activity_id} 
-                  className="py-4 px-3 flex items-center justify-between hover:bg-gray-50 rounded-md transition-colors"
+                  className="py-4 px-3 flex flex-col items-start gap-3 hover:bg-gray-50 rounded-md transition-colors sm:flex-row sm:items-center sm:justify-between"
                   whileHover={{ backgroundColor: 'rgba(48, 206, 228, 0.05)' }}
                 >
-                  <div className="flex items-center">
+                  <div className="flex w-full items-start sm:items-center">
                     {/* Show child photo or initials */}
                     {activity.type === 'check-in' ? (
                       activity.children?.photo_url ? (
@@ -483,8 +483,8 @@ const Dashboard = () => {
                       )
                     )}
                     
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                    <div className="ml-4 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-2">
                         {/* Show child name */}
                         {activity.type === 'check-in' 
                           ? `${activity.children?.first_name} ${activity.children?.last_name}`
@@ -497,23 +497,23 @@ const Dashboard = () => {
                           }
                         </Badge>
                       </p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <p className="text-xs text-gray-500 flex items-start gap-2 leading-relaxed">
                         {activity.type === 'check-in' ? (
                           <>
-                            <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>
-                            Checked in to {activity.services?.service_name} on {formatDate(activity.attendance_date)}
+                            <span className="mt-1 inline-block h-2 w-2 flex-shrink-0 rounded-full bg-green-400"></span>
+                            <span className="min-w-0">Checked in to {activity.services?.service_name} on {formatDate(activity.attendance_date)}</span>
                           </>
                         ) : (
                           <>
-                            <span className="inline-block w-2 h-2 rounded-full bg-nextgen-orange mr-1"></span>
-                            New registration on {formatDate(activity.registration_date)}
+                            <span className="mt-1 inline-block h-2 w-2 flex-shrink-0 rounded-full bg-nextgen-orange"></span>
+                            <span className="min-w-0">New registration on {formatDate(activity.registration_date)}</span>
                           </>
                         )}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex flex-col items-end text-right">
+                  <div className="flex w-full flex-col items-start gap-0.5 text-left sm:w-auto sm:items-end sm:text-right">
                     {activity.type === 'check-in' ? (
                       <>
                         <span className="text-sm font-medium text-nextgen-blue-dark">
@@ -524,7 +524,7 @@ const Dashboard = () => {
                         </span>
                       </>
                     ) : (
-                      <Badge variant="success">
+                      <Badge variant="success" className="self-start sm:self-auto">
                         New Child
                       </Badge>
                     )}

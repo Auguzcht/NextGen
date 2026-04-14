@@ -32,6 +32,10 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const removeToast = useCallback((id) => {
+    if (!id) {
+      setToasts([]);
+      return;
+    }
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 

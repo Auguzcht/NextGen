@@ -5,6 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createCustomEmailTemplate } from '../../utils/emailTemplates.js';
 import { sendBatchEmails } from '../../services/emailService.js';
 
+const BLOCKED_STAFF_EMAILS = new Set(['admin@example.com']);
+
+const isBlockedStaffEmail = (email) => {
+  if (!email) return false;
+  return BLOCKED_STAFF_EMAILS.has(String(email).trim().toLowerCase());
+};
+
 const EmailComposer = ({ templates }) => {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
@@ -12,7 +19,7 @@ const EmailComposer = ({ templates }) => {
     subject: '',
     body_html: '',
     recipient_type: 'guardians', // guardians, staff, both, individual
-    filter_type: 'all', // all, active, age_group, service
+    filter_type: 'all', // all, active, age_group, staff_role
     filter_value: '',
     selected_recipients: []
   });
@@ -22,7 +29,7 @@ const EmailComposer = ({ templates }) => {
   const [guardians, setGuardians] = useState([]);
   const [staff, setStaff] = useState([]);
   const [ageCategories, setAgeCategories] = useState([]);
-  const [services, setServices] = useState([]);
+  const [staffRoles, setStaffRoles] = useState([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [showMaterialBrowser, setShowMaterialBrowser] = useState(false);
@@ -68,7 +75,7 @@ const EmailComposer = ({ templates }) => {
   useEffect(() => {
     fetchMaterials();
     fetchAgeCategories();
-    fetchServices();
+    fetchStaffRoles();
   }, []);
 
   useEffect(() => {
@@ -141,18 +148,26 @@ const EmailComposer = ({ templates }) => {
     }
   };
 
-  const fetchServices = async () => {
+  const fetchStaffRoles = async () => {
     try {
       const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .order('service_name');
+        .from('staff')
+        .select('role')
+        .not('role', 'is', null)
+        .neq('role', '');
 
       if (error) throw error;
-      setServices(data || []);
+
+      const roles = [...new Set((data || []).map((row) => row.role))].sort((a, b) => a.localeCompare(b));
+      setStaffRoles(roles);
     } catch (error) {
-      console.error('Error fetching services:', error);
+      console.error('Error fetching staff roles:', error);
     }
+  };
+
+  const parseCategoryId = (value) => {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isNaN(parsed) ? null : parsed;
   };
 
   const fetchRecipientCount = async () => {
@@ -167,21 +182,31 @@ const EmailComposer = ({ templates }) => {
 
         if (formData.filter_type === 'active') {
           // Get guardians with active children
-          const { data: activeGuardians } = await supabase
+          const { data: activeGuardians, error: activeGuardiansError } = await supabase
             .from('child_guardian')
             .select('guardian_id, children!inner(is_active)')
             .eq('children.is_active', true);
+
+          if (activeGuardiansError) throw activeGuardiansError;
           
           const guardianIds = [...new Set(activeGuardians?.map(g => g.guardian_id) || [])];
           if (guardianIds.length > 0) {
             query = query.in('guardian_id', guardianIds);
           }
         } else if (formData.filter_type === 'age_group' && formData.filter_value) {
+          const ageCategoryId = parseCategoryId(formData.filter_value);
+          if (ageCategoryId === null) {
+            setRecipientCount(0);
+            return;
+          }
+
           // Get guardians with children in specific age group
-          const { data: guardiansByAge } = await supabase
+          const { data: guardiansByAge, error: guardiansByAgeError } = await supabase
             .from('child_guardian')
             .select('guardian_id, children!inner(age_category_id)')
-            .eq('children.age_category_id', parseInt(formData.filter_value));
+            .eq('children.age_category_id', ageCategoryId);
+
+          if (guardiansByAgeError) throw guardiansByAgeError;
           
           const guardianIds = [...new Set(guardiansByAge?.map(g => g.guardian_id) || [])];
           if (guardianIds.length > 0) {
@@ -197,10 +222,13 @@ const EmailComposer = ({ templates }) => {
         let query = supabase
           .from('staff')
           .select('staff_id', { count: 'exact', head: true })
-          .not('email', 'is', null);
+          .not('email', 'is', null)
+          .neq('email', 'admin@example.com');
 
         if (formData.filter_type === 'active') {
           query = query.eq('is_active', true);
+        } else if (formData.filter_type === 'staff_role' && formData.filter_value) {
+          query = query.eq('role', formData.filter_value);
         }
 
         const { count: staffCount } = await query;
@@ -236,6 +264,7 @@ const EmailComposer = ({ templates }) => {
         .from('staff')
         .select('staff_id, first_name, last_name, email, role')
         .not('email', 'is', null)
+        .neq('email', 'admin@example.com')
         .eq('is_active', true);
 
       if (staffError) throw staffError;
@@ -400,9 +429,10 @@ const EmailComposer = ({ templates }) => {
           }
           return {
             email: r.email,
-            name: name
+            name: name,
+            type: r.type
           };
-        });
+        }).filter((recipient) => !(recipient.type === 'staff' && isBlockedStaffEmail(recipient.email)));
       } else {
         // Fetch recipients based on filters
         if (formData.recipient_type === 'guardians' || formData.recipient_type === 'both') {
@@ -413,24 +443,37 @@ const EmailComposer = ({ templates }) => {
 
           // Apply filters for guardians
           if (formData.filter_type === 'active') {
-            const { data: activeGuardians } = await supabase
+            const { data: activeGuardians, error: activeGuardiansError } = await supabase
               .from('child_guardian')
               .select('guardian_id, children!inner(is_active)')
               .eq('children.is_active', true);
+
+            if (activeGuardiansError) throw activeGuardiansError;
             
             const guardianIds = [...new Set(activeGuardians?.map(g => g.guardian_id) || [])];
             if (guardianIds.length > 0) {
               guardianQuery = guardianQuery.in('guardian_id', guardianIds);
+            } else {
+              guardianQuery = guardianQuery.eq('guardian_id', -1);
             }
           } else if (formData.filter_type === 'age_group' && formData.filter_value) {
-            const { data: guardiansByAge } = await supabase
+            const ageCategoryId = parseCategoryId(formData.filter_value);
+            if (ageCategoryId === null) {
+              throw new Error('Please select a valid age category before sending');
+            }
+
+            const { data: guardiansByAge, error: guardiansByAgeError } = await supabase
               .from('child_guardian')
               .select('guardian_id, children!inner(age_category_id)')
-              .eq('children.age_category_id', parseInt(formData.filter_value));
+              .eq('children.age_category_id', ageCategoryId);
+
+            if (guardiansByAgeError) throw guardiansByAgeError;
             
             const guardianIds = [...new Set(guardiansByAge?.map(g => g.guardian_id) || [])];
             if (guardianIds.length > 0) {
               guardianQuery = guardianQuery.in('guardian_id', guardianIds);
+            } else {
+              guardianQuery = guardianQuery.eq('guardian_id', -1);
             }
           }
 
@@ -447,10 +490,13 @@ const EmailComposer = ({ templates }) => {
           let staffQuery = supabase
             .from('staff')
             .select('staff_id, first_name, last_name, email')
-            .not('email', 'is', null);
+            .not('email', 'is', null)
+            .neq('email', 'admin@example.com');
 
           if (formData.filter_type === 'active') {
             staffQuery = staffQuery.eq('is_active', true);
+          } else if (formData.filter_type === 'staff_role' && formData.filter_value) {
+            staffQuery = staffQuery.eq('role', formData.filter_value);
           }
 
           const { data: staff } = await staffQuery;
@@ -656,7 +702,7 @@ const EmailComposer = ({ templates }) => {
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-6 py-5 border-b border-gray-200">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email Composer</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -664,12 +710,12 @@ const EmailComposer = ({ templates }) => {
             </p>
           </div>
           {recipientCount > 0 && formData.recipient_type !== 'individual' && (
-            <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800">
+            <div className="inline-flex self-start items-center whitespace-nowrap rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800 sm:self-auto">
               {recipientCount} Recipients
             </div>
           )}
           {formData.recipient_type === 'individual' && formData.selected_recipients.length > 0 && (
-            <div className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800">
+            <div className="inline-flex self-start items-center whitespace-nowrap rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800 sm:self-auto">
               <span className="relative mr-2 inline-flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
@@ -680,11 +726,11 @@ const EmailComposer = ({ templates }) => {
         </div>
       </div>
 
-      <form onSubmit={handleSend} className="px-6 py-6">
+      <form onSubmit={handleSend} className="px-4 py-6 sm:px-6">
         <div className="space-y-6">
           {/* Template Selection */}
           <motion.div 
-            className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+            className="bg-white rounded-lg border border-[#571C1F]/10 p-4 shadow-sm sm:p-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
@@ -713,7 +759,7 @@ const EmailComposer = ({ templates }) => {
 
           {/* Recipient Selection */}
           <motion.div 
-            className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+            className="bg-white rounded-lg border border-[#571C1F]/10 p-4 shadow-sm sm:p-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
@@ -731,7 +777,7 @@ const EmailComposer = ({ templates }) => {
                 label="Recipient Type *"
                 name="recipient_type"
                 value={formData.recipient_type}
-                onChange={(e) => setFormData({...formData, recipient_type: e.target.value, selected_recipients: []})}
+                onChange={(e) => setFormData({...formData, recipient_type: e.target.value, filter_type: 'all', filter_value: '', selected_recipients: []})}
                 options={[
                   { value: 'guardians', label: 'Guardians (Parents)' },
                   { value: 'staff', label: 'Staff Members' },
@@ -742,7 +788,7 @@ const EmailComposer = ({ templates }) => {
               />
 
               {formData.recipient_type !== 'individual' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2">
+                <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3 sm:grid sm:grid-cols-2 sm:gap-4 sm:border-0 sm:bg-transparent sm:p-0">
                   <Input
                     type="select"
                     label="Filter By"
@@ -752,9 +798,11 @@ const EmailComposer = ({ templates }) => {
                     options={[
                       { value: 'all', label: 'All' },
                       { value: 'active', label: 'Active Only' },
-                      ...(formData.recipient_type === 'guardians' ? [
-                        { value: 'age_group', label: 'Age Group' },
-                        { value: 'service', label: 'Service' }
+                      ...(formData.recipient_type === 'guardians' || formData.recipient_type === 'both' ? [
+                        { value: 'age_group', label: 'Age Group' }
+                      ] : []),
+                      ...(formData.recipient_type === 'staff' || formData.recipient_type === 'both' ? [
+                        { value: 'staff_role', label: 'Staff Role' }
                       ] : [])
                     ]}
                   />
@@ -776,18 +824,18 @@ const EmailComposer = ({ templates }) => {
                     />
                   )}
 
-                  {formData.filter_type === 'service' && (
+                  {formData.filter_type === 'staff_role' && (
                     <Input
                       type="select"
-                      label="Service"
+                      label="Staff Role"
                       name="filter_value"
                       value={formData.filter_value}
                       onChange={(e) => setFormData({...formData, filter_value: e.target.value})}
                       options={[
-                        { value: '', label: 'Select Service' },
-                        ...services.map((service) => ({
-                          value: service.service_id.toString(),
-                          label: service.service_name
+                        { value: '', label: 'Select Role' },
+                        ...staffRoles.map((role) => ({
+                          value: role,
+                          label: role
                         }))
                       ]}
                     />
@@ -797,9 +845,9 @@ const EmailComposer = ({ templates }) => {
 
               {/* Individual Recipient Selector */}
               {formData.recipient_type === 'individual' && (
-                <div className="mt-4 border border-gray-200 rounded-lg p-4">
+                <div className="mt-3 rounded-lg bg-gray-50/70 p-3 sm:mt-4 sm:border sm:border-gray-200 sm:bg-white sm:p-4">
                   {/* Search and Actions Header */}
-                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+                  <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-end sm:gap-4">
                     <div className="flex-1">
                       <Input
                         type="text"
@@ -812,9 +860,10 @@ const EmailComposer = ({ templates }) => {
                           </svg>
                         }
                         size="md"
+                        className="mb-0"
                       />
                     </div>
-                    <div className="mb-0 w-full flex-shrink-0 sm:mb-4 sm:w-auto">
+                    <div className="w-full flex-shrink-0 sm:mb-4 sm:w-auto">
                       <Button
                         type="button"
                         variant="outline"
@@ -1198,21 +1247,21 @@ const EmailComposer = ({ templates }) => {
                 {selectedMaterials.map((material) => (
                   <div
                     key={material.material_id}
-                    className="flex flex-col gap-3 bg-green-50 border border-green-200 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex items-start justify-between gap-3 rounded-lg border border-green-200 bg-green-50 p-3"
                   >
-                    <div className="flex items-start space-x-3 min-w-0">
+                    <div className="flex min-w-0 items-start space-x-3">
                       <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white">
                         {getMaterialIcon(material.category)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 break-words line-clamp-2">{material.title}</p>
+                        <p className="truncate text-sm font-medium text-gray-900">{material.title}</p>
                         <p className="text-xs text-gray-500">{material.category}</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => toggleMaterial(material)}
-                      className="text-red-600 hover:text-red-700"
+                      className="flex-shrink-0 self-start text-red-600 hover:text-red-700"
                     >
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
 import LoginForm from '../components/auth/LoginForm.jsx';
+import { useToast } from '../components/ui';
 
 // Use the base URL from Vite to handle both development and production paths
 const NextGenLogo = `${import.meta.env.BASE_URL}NextGen-Logo.png`;
 const NextGenLogoSvg = `${import.meta.env.BASE_URL}NextGen-Logo.svg`;
+const POST_LOGOUT_TOAST_KEY = 'nextgen-post-logout-toast';
 
 const LoginPage = () => {
   const [showContent, setShowContent] = useState(false);
@@ -14,6 +16,35 @@ const LoginPage = () => {
   
   const navigate = useNavigate();
   const { user, loginRedirectInProgress } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const rawToast = localStorage.getItem(POST_LOGOUT_TOAST_KEY);
+    if (!rawToast) return;
+
+    localStorage.removeItem(POST_LOGOUT_TOAST_KEY);
+
+    try {
+      const payload = JSON.parse(rawToast);
+      const variant = payload?.variant;
+      const title = payload?.title;
+      const description = payload?.description;
+
+      if (!title) return;
+
+      if (variant === 'success') {
+        toast.success(title, { description });
+      } else if (variant === 'warning') {
+        toast.warning(title, { description });
+      } else if (variant === 'destructive') {
+        toast.error(title, { description });
+      } else {
+        toast.info(title, { description });
+      }
+    } catch (error) {
+      console.error('Failed to parse post-logout toast payload:', error);
+    }
+  }, [toast]);
 
   // Pre-generate positions for abstract shapes to ensure consistency
   const shapeProps = useMemo(() => {

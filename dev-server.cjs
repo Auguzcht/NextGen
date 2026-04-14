@@ -45,10 +45,13 @@ app.use('/api/calcom/webhook', express.json({
 // Regular JSON parsing for other routes
 app.use(express.json());
 
-// Initialize Supabase client
+// Initialize Supabase server client. Prefer service role key for server-side routes.
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.VITE_SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY
 );
 
 // Cal.com Configuration
@@ -58,6 +61,80 @@ const CALCOM_CONFIG = {
   apiBase: process.env.VITE_CALCOM_API_BASE || 'https://api.cal.com/v2',
   apiVersion: '2024-08-13'
 };
+
+function getEnvEmailConfig() {
+  const apiKey =
+    process.env.RESEND_API_KEY ||
+    process.env.EMAIL_API_KEY ||
+    process.env.VITE_RESEND_API_KEY ||
+    process.env.VITE_EMAIL_API_KEY;
+
+  const fromEmail =
+    process.env.EMAIL_FROM ||
+    process.env.FROM_EMAIL ||
+    process.env.VITE_EMAIL_FROM ||
+    process.env.VITE_FROM_EMAIL;
+
+  const fromName =
+    process.env.EMAIL_FROM_NAME ||
+    process.env.FROM_NAME ||
+    process.env.VITE_EMAIL_FROM_NAME ||
+    process.env.VITE_FROM_NAME ||
+    'NXTGen Ministry';
+
+  const provider =
+    process.env.EMAIL_PROVIDER ||
+    process.env.VITE_EMAIL_PROVIDER ||
+    'resend';
+
+  const batchSize = Number.parseInt(
+    process.env.EMAIL_BATCH_SIZE || process.env.VITE_EMAIL_BATCH_SIZE || '100',
+    10
+  );
+
+  if (!apiKey || !fromEmail) {
+    return null;
+  }
+
+  return {
+    provider,
+    api_key: apiKey,
+    from_email: fromEmail,
+    from_name: fromName,
+    batch_size: Number.isNaN(batchSize) ? 100 : batchSize,
+    is_active: true,
+  };
+}
+
+async function loadActiveEmailConfig() {
+  const { data, error } = await supabase
+    .from('email_api_config')
+    .select('*')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (data) {
+    return { emailConfig: data, source: 'database' };
+  }
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching email config from database:', error);
+  }
+
+  const envConfig = getEnvEmailConfig();
+  if (envConfig) {
+    return { emailConfig: envConfig, source: 'environment' };
+  }
+
+  return { emailConfig: null, source: 'none', error };
+}
+
+const BLOCKED_RECIPIENT_EMAILS = new Set(['admin@example.com']);
+
+function isBlockedRecipient(email) {
+  if (!email) return false;
+  return BLOCKED_RECIPIENT_EMAILS.has(String(email).trim().toLowerCase());
+}
 
 function normalizeMaterialIds(materialIds) {
   if (!Array.isArray(materialIds)) return [];
@@ -698,6 +775,7 @@ app.post('/api/email/send-batch', async (req, res) => {
 
   try {
     const { recipients, subject, html, text, templateId, materialIds, recipientType } = req.body;
+    const sanitizedRecipients = (recipients || []).filter((recipient) => !isBlockedRecipient(recipient?.email));
 
     console.log('📧 Send batch request received:', {
       recipients: recipients?.length || 0,
@@ -712,6 +790,13 @@ app.post('/api/email/send-batch', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Recipients array is required and must not be empty'
+      });
+    }
+
+    if (sanitizedRecipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid recipients available after exclusions'
       });
     }
 
@@ -747,18 +832,14 @@ app.post('/api/email/send-batch', async (req, res) => {
       }
     }
 
-    // Get email configuration from database
-    const { data: emailConfig, error: configError } = await supabase
-      .from('email_api_config')
-      .select('*')
-      .eq('is_active', true)
-      .single();
+    // Load active configuration from database, with env fallback for local development
+    const { emailConfig, source, error: configError } = await loadActiveEmailConfig();
 
-    if (configError || !emailConfig) {
+    if (!emailConfig) {
       console.error('Error fetching email config:', configError);
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
-        error: 'Email configuration not found. Please configure your email settings first.'
+        error: 'Email configuration not found. Please configure email_api_config or set local email environment variables.'
       });
     }
 
@@ -770,7 +851,12 @@ app.post('/api/email/send-batch', async (req, res) => {
       });
     }
 
-    console.log(`📧 Smart Email Sending: ${recipients.length} recipients via ${emailConfig.provider} (${recipients.length >= 3 ? 'Batch API' : 'Individual API'})...`);
+    console.log(`📧 Loaded email configuration source: ${source}`);
+
+    if (sanitizedRecipients.length !== recipients.length) {
+      console.log(`📧 Skipped ${recipients.length - sanitizedRecipients.length} blocked recipient(s)`);
+    }
+    console.log(`📧 Smart Email Sending: ${sanitizedRecipients.length} recipients via ${emailConfig.provider} (${sanitizedRecipients.length >= 3 ? 'Batch API' : 'Individual API'})...`);
     console.log(`📧 Subject: ${subject}`);
     if (materials.length > 0) {
       console.log(`📎 Including ${materials.length} material links:`, materials.map(m => m.title).join(', '));
@@ -789,7 +875,7 @@ app.post('/api/email/send-batch', async (req, res) => {
     const emailBatchData = {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
-      recipients: recipients,
+      recipients: sanitizedRecipients,
       subject: subject,
       html: standardizedHtml,
       text: text || null
@@ -852,11 +938,11 @@ app.post('/api/email/send-batch', async (req, res) => {
       }
     }
 
-    console.log(`✅ Successfully sent ${results.success.length} emails, ${results.failed.length} failed using ${emailConfig.provider} ${recipients.length >= 3 ? 'Batch' : 'Individual'} API`);
+    console.log(`✅ Successfully sent ${results.success.length} emails, ${results.failed.length} failed using ${emailConfig.provider} ${sanitizedRecipients.length >= 3 ? 'Batch' : 'Individual'} API`);
 
     return res.status(200).json({
       success: true,
-      message: `Email processing completed using ${emailConfig.provider} ${recipients.length >= 3 ? 'Batch' : 'Individual'} API`,
+      message: `Email processing completed using ${emailConfig.provider} ${sanitizedRecipients.length >= 3 ? 'Batch' : 'Individual'} API`,
       data: {
         total: results.total,
         successful: results.success.length,

@@ -3,6 +3,8 @@ import { toast } from '../components/ui';
 import supabase from '../services/supabase';
 import { clearChangelogSession, markNewLogin } from '../utils/changelog.js';
 
+const POST_LOGOUT_TOAST_KEY = 'nextgen-post-logout-toast';
+
 export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -308,25 +310,35 @@ export const AuthProvider = ({ children }) => {
       
       if (error) {
         console.warn('Logout API error:', error);
-        toast.warning('Logged out with some errors', {
+        localStorage.setItem(POST_LOGOUT_TOAST_KEY, JSON.stringify({
+          variant: 'warning',
+          title: 'Logged out with some errors',
           description: 'You may need to clear browser data.'
-        });
+        }));
       } else {
-        toast.success('Logged out successfully', {
+        localStorage.setItem(POST_LOGOUT_TOAST_KEY, JSON.stringify({
+          variant: 'success',
+          title: 'Logged out successfully',
           description: 'See you next time!'
-        });
+        }));
       }
+
+      // Clear active toasts before navigating away to prevent overlay artifacts.
+      toast.dismiss();
       
       // Get the correct base path based on environment
       const basePath = import.meta.env.DEV ? '/nextgen' : '';
       
       // Use the base path for redirection
-      window.location.href = `${basePath}/login`;
+      window.location.replace(`${basePath}/login`);
     } catch (error) {
       console.error('Logout error:', error);
-      toast.error('Failed to complete logout', {
+      localStorage.setItem(POST_LOGOUT_TOAST_KEY, JSON.stringify({
+        variant: 'destructive',
+        title: 'Failed to complete logout',
         description: 'Please try again or clear your browser data'
-      });
+      }));
+      toast.dismiss();
       
       // Force clear state anyway for better UX
       setUser(null);
@@ -334,7 +346,7 @@ export const AuthProvider = ({ children }) => {
       
       // Also use base path here for error case
       const basePath = import.meta.env.DEV ? '/nextgen' : '';
-      window.location.href = `${basePath}/login`;
+      window.location.replace(`${basePath}/login`);
     }
   };
 

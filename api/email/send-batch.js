@@ -6,8 +6,82 @@ import { createEmailLogEntry } from '../../server/utils/emailLogHelpers.js';
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.VITE_SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY
 );
+
+function getEnvEmailConfig() {
+  const apiKey =
+    process.env.RESEND_API_KEY ||
+    process.env.EMAIL_API_KEY ||
+    process.env.VITE_RESEND_API_KEY ||
+    process.env.VITE_EMAIL_API_KEY;
+
+  const fromEmail =
+    process.env.EMAIL_FROM ||
+    process.env.FROM_EMAIL ||
+    process.env.VITE_EMAIL_FROM ||
+    process.env.VITE_FROM_EMAIL;
+
+  const fromName =
+    process.env.EMAIL_FROM_NAME ||
+    process.env.FROM_NAME ||
+    process.env.VITE_EMAIL_FROM_NAME ||
+    process.env.VITE_FROM_NAME ||
+    'NXTGen Ministry';
+
+  const provider =
+    process.env.EMAIL_PROVIDER ||
+    process.env.VITE_EMAIL_PROVIDER ||
+    'resend';
+
+  const batchSize = Number.parseInt(
+    process.env.EMAIL_BATCH_SIZE || process.env.VITE_EMAIL_BATCH_SIZE || '100',
+    10
+  );
+
+  if (!apiKey || !fromEmail) {
+    return null;
+  }
+
+  return {
+    provider,
+    api_key: apiKey,
+    from_email: fromEmail,
+    from_name: fromName,
+    batch_size: Number.isNaN(batchSize) ? 100 : batchSize,
+    is_active: true,
+  };
+}
+
+async function loadActiveEmailConfig() {
+  const { data, error } = await supabase
+    .from('email_api_config')
+    .select('*')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (data) {
+    return { emailConfig: data, source: 'database' };
+  }
+
+  const envConfig = getEnvEmailConfig();
+  if (envConfig) {
+    return { emailConfig: envConfig, source: 'environment' };
+  }
+
+  return { emailConfig: null, source: 'none', error };
+}
+
+const BLOCKED_RECIPIENT_EMAILS = new Set(['admin@example.com']);
+
+function isBlockedRecipient(email) {
+  if (!email) return false;
+  return BLOCKED_RECIPIENT_EMAILS.has(String(email).trim().toLowerCase());
+}
 
 /**
  * Send Batch Emails API
@@ -33,12 +107,20 @@ export default async function handler(req, res) {
 
   try {
     const { recipients, subject, html, text, templateId, materialIds, recipientType } = req.body;
+    const sanitizedRecipients = (recipients || []).filter((recipient) => !isBlockedRecipient(recipient?.email));
 
     // Validate request
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Recipients array is required and must not be empty'
+      });
+    }
+
+    if (sanitizedRecipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid recipients available after exclusions'
       });
     }
 
@@ -72,14 +154,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // Get email configuration
-    const { data: emailConfig, error: configError } = await supabase
-      .from('email_api_config')
-      .select('*')
-      .eq('is_active', true)
-      .single();
+    // Load active configuration from database, with env fallback
+    const { emailConfig, source, error: configError } = await loadActiveEmailConfig();
 
-    if (configError || !emailConfig) {
+    if (!emailConfig) {
       return res.status(400).json({
         success: false,
         error: 'Email configuration not found. Please configure your email settings first.'
@@ -98,7 +176,11 @@ export default async function handler(req, res) {
 
     // Use the HTML as-is since it's now always a complete template from client
     let standardizedHtml = html;
-    console.log(`📧 Production API - Smart sending: ${recipients.length} recipients via ${emailConfig.provider} (${recipients.length >= 3 ? 'Batch API' : 'Individual API'})`);
+    console.log(`📧 Email config source: ${source}`);
+    if (sanitizedRecipients.length !== recipients.length) {
+      console.log(`📧 Skipped ${recipients.length - sanitizedRecipients.length} blocked recipient(s)`);
+    }
+    console.log(`📧 Production API - Smart sending: ${sanitizedRecipients.length} recipients via ${emailConfig.provider} (${sanitizedRecipients.length >= 3 ? 'Batch API' : 'Individual API'})`);
     console.log('📧 Using pre-processed template from client for recipientType:', recipientType || 'guardians');
     console.log('📎 Materials handled by client-side template processing');
     console.log(`📧 Batch size: ${emailConfig.batch_size}`);
@@ -106,7 +188,7 @@ export default async function handler(req, res) {
     const emailData = {
       fromEmail: emailConfig.from_email,
       fromName: emailConfig.from_name,
-      recipients: recipients,
+      recipients: sanitizedRecipients,
       subject: subject,
       html: standardizedHtml,
       text: text || null

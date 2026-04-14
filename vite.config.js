@@ -35,13 +35,13 @@ export default defineConfig(({ mode }) => ({
         orientation: 'portrait',
         icons: [
           {
-            src: '/nextgen-appstore-images/android/launchericon-192x192.png',
+            src: 'nextgen-appstore-images/android/launchericon-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/nextgen-appstore-images/android/launchericon-512x512.png',
+            src: 'nextgen-appstore-images/android/launchericon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
@@ -87,6 +87,13 @@ export default defineConfig(({ mode }) => ({
     outDir: 'dist',
     sourcemap: true,
     minify: 'terser',
+    terserOptions: {
+      compress: {
+        // Remove all console.* calls and debugger statements in production bundles.
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
     chunkSizeWarningLimit: 1600,
     assetsDir: 'assets',
     publicDir: 'public',
