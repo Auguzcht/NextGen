@@ -9,6 +9,14 @@ import { downloadCalendarCSV, exportCalendarAsImage } from '../../services/calco
 const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+const getShortServiceLabel = (serviceName = '') => {
+  const normalized = serviceName.toLowerCase();
+  if (normalized.includes('first')) return '1st';
+  if (normalized.includes('second')) return '2nd';
+  if (normalized.includes('third')) return '3rd';
+  return serviceName;
+};
+
 const StaffScheduleCalendar = () => {
   const { toast } = useToast();
   const [events, setEvents] = useState([]);
@@ -19,11 +27,19 @@ const StaffScheduleCalendar = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [direction, setDirection] = useState(0); // Track swipe direction
+  const [isMobile, setIsMobile] = useState(false);
   const calendarRef = useRef(null); // Reference to calendar for image export
 
   useEffect(() => {
     fetchZohoEvents();
   }, [currentMonth]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
@@ -237,6 +253,14 @@ const StaffScheduleCalendar = () => {
   };
 
   const days = getDaysInMonth(currentMonth);
+  const activeMonth = currentMonth.getMonth();
+  const activeYear = currentMonth.getFullYear();
+  const mobileDays = days.filter(
+    (day) => day
+      && day.date.getMonth() === activeMonth
+      && day.date.getFullYear() === activeYear
+      && day.events.length > 0
+  );
 
   // Animation variants for month transitions
   const calendarVariants = {
@@ -319,16 +343,16 @@ const StaffScheduleCalendar = () => {
       <Card variant="minimal" className="mb-6" ref={calendarRef}>
         {/* Calendar Header */}
         <motion.div 
-          className="flex items-center justify-between mb-6"
+          className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
         >
-          <div>
+          <div className="min-w-0">
             <AnimatePresence mode="wait">
               <motion.h3 
                 key={`${currentMonth.getMonth()}-${currentMonth.getFullYear()}`}
-                className="text-2xl font-bold text-nextgen-blue-dark"
+                className="text-4xl leading-none font-bold text-nextgen-blue-dark md:text-2xl"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
@@ -338,7 +362,7 @@ const StaffScheduleCalendar = () => {
               </motion.h3>
             </AnimatePresence>
             <motion.p 
-              className="text-sm text-gray-500 mt-1"
+              className="mt-2 text-2xl text-gray-500 md:mt-1 md:text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -347,7 +371,7 @@ const StaffScheduleCalendar = () => {
             </motion.p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end">
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -362,7 +386,7 @@ const StaffScheduleCalendar = () => {
               variant="outline"
               size="sm"
               onClick={handleToday}
-              className="text-xs"
+              className="text-xs px-3"
             >
               Today
             </Button>
@@ -398,34 +422,38 @@ const StaffScheduleCalendar = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.3 }}
         >
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-gray-600 md:max-w-md">
               Export volunteer schedule for {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 md:flex md:gap-2">
               <Button
                 variant="primary"
                 size="md"
                 onClick={handleExportSchedule}
+                className="w-full whitespace-nowrap"
                 icon={
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 }
               >
-                Export as CSV
+                <span className="hidden sm:inline">Export as CSV</span>
+                <span className="sm:hidden">CSV</span>
               </Button>
               <Button
                 variant="outline"
                 size="md"
                 onClick={handleExportImage}
+                className="w-full whitespace-nowrap"
                 icon={
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 }
               >
-                Export as Image
+                <span className="hidden sm:inline">Export as Image</span>
+                <span className="sm:hidden">Image</span>
               </Button>
             </div>
           </div>
@@ -433,7 +461,7 @@ const StaffScheduleCalendar = () => {
 
         {/* Legend */}
         <motion.div 
-          className="flex items-center gap-4 mb-4 text-xs text-gray-600"
+          className="mb-4 grid grid-cols-1 gap-2 text-xs text-gray-600 sm:flex sm:items-center sm:gap-4"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.3 }}
@@ -456,6 +484,115 @@ const StaffScheduleCalendar = () => {
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-nextgen-blue"></div>
           </div>
+        ) : isMobile ? (
+          <motion.div
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {mobileDays.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+                No scheduled volunteers for this month.
+              </div>
+            ) : (
+              mobileDays.map((day) => {
+                const preview = day.events.slice(0, 2).map((evt) => evt.volunteerName).filter(Boolean);
+                const groupedByService = day.events.reduce((acc, evt) => {
+                  const name = evt.serviceName || 'Service';
+                  acc[name] = (acc[name] || 0) + 1;
+                  return acc;
+                }, {});
+                const servicePreview = Object.entries(groupedByService).slice(0, 2);
+                const hasMoreServices = Object.keys(groupedByService).length > 2;
+                const timePreview = day.events[0]?.startTime && day.events[0]?.endTime
+                  ? `${day.events[0].startTime} - ${day.events[0].endTime}`
+                  : '';
+                const avatarPreview = day.events.slice(0, 3);
+                const remainingAvatars = Math.max(day.events.length - avatarPreview.length, 0);
+                return (
+                  <button
+                    key={day.dateStr}
+                    type="button"
+                    onClick={() => handleDateClick(day)}
+                    disabled={day.events.length === 0}
+                    className={`relative w-full rounded-xl border p-4 text-left transition-all ${day.events.length > 0 ? 'border-nextgen-blue/20 bg-white shadow-sm hover:border-nextgen-blue/40 hover:bg-nextgen-blue/5' : 'border-gray-200 bg-gray-50 text-gray-400'} ${day.isSunday ? 'ring-1 ring-green-100' : ''}`}
+                  >
+                    <div className="absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-nextgen-blue/30 to-transparent" />
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-nextgen-blue-dark">
+                          {day.date.toLocaleDateString('en-US', { weekday: 'long' })}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {day.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                        </p>
+                      </div>
+                      <Badge variant={day.events.length > 0 ? 'primary' : 'secondary'} size="xs">
+                        {day.events.length} {day.events.length === 1 ? 'Volunteer' : 'Volunteers'}
+                      </Badge>
+                    </div>
+
+                    {servicePreview.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {servicePreview.map(([serviceName, count]) => (
+                          <span
+                            key={`${day.dateStr}-${serviceName}`}
+                            className="inline-flex items-center rounded-full border border-nextgen-blue/20 bg-nextgen-blue/10 px-2 py-0.5 text-[11px] font-medium text-nextgen-blue-dark"
+                          >
+                            {getShortServiceLabel(serviceName)}: {count}
+                          </span>
+                        ))}
+                        {hasMoreServices && (
+                          <span className="text-[11px] text-gray-500">+ more services</span>
+                        )}
+                      </div>
+                    )}
+
+                    {(timePreview || avatarPreview.length > 0) && (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        {timePreview ? (
+                          <div className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>{timePreview}</span>
+                          </div>
+                        ) : <span />}
+
+                        {avatarPreview.length > 0 && (
+                          <div className="flex items-center -space-x-2">
+                            {avatarPreview.map((evt, idx) => (
+                              <div key={`${day.dateStr}-avatar-${idx}`} className="h-7 w-7 rounded-full ring-2 ring-white overflow-hidden bg-gray-200 shadow-sm">
+                                {evt.profileImage ? (
+                                  <img src={evt.profileImage} alt={evt.volunteerName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className={`h-full w-full bg-gradient-to-br ${evt.profileGradient || 'from-nextgen-blue to-nextgen-blue-dark'} flex items-center justify-center text-[10px] font-semibold text-white`}>
+                                    {evt.firstName?.charAt(0) || evt.volunteerName?.charAt(0) || 'V'}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            {remainingAvatars > 0 && (
+                              <div className="ml-1 h-7 min-w-[28px] rounded-full bg-gray-100 text-gray-700 ring-2 ring-white shadow-sm px-1.5 inline-flex items-center justify-center text-[10px] font-semibold">
+                                +{remainingAvatars}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {preview.length > 0 && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        {preview.join(', ')}{day.events.length > preview.length ? ` +${day.events.length - preview.length} more` : ''}
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </motion.div>
         ) : (
           <motion.div 
             className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"

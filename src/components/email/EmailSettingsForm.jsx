@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Badge, useToast } from '../ui';
+import { Button, useToast } from '../ui';
 import Input from '../ui/Input';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sendTestEmail } from '../../services/emailService';
@@ -113,7 +113,7 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-6 py-5 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email API Configuration</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -121,9 +121,17 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
             </p>
           </div>
           {emailConfig?.is_active && (
-            <Badge variant="success" size="sm">
+            <div
+              className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800"
+              title="Email service is active"
+              data-status="active"
+            >
+              <span className="relative mr-2 inline-flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+              </span>
               Active
-            </Badge>
+            </div>
           )}
         </div>
       </div>
@@ -378,8 +386,8 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
                     Send a test email to verify your configuration is working correctly
                   </p>
                   
-                  <div className="flex items-end space-x-3">
-                    <div className="w-1/2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:space-x-3">
+                    <div className="w-full sm:w-1/2">
                       <Input
                         type="email"
                         id="test_email"
@@ -396,7 +404,7 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
                       onClick={handleTestEmail}
                       disabled={isSendingTest || !formData.api_key || !formData.from_email}
                       isLoading={isSendingTest}
-                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                      className="w-full border-purple-300 text-purple-700 hover:bg-purple-50 sm:w-auto"
                     >
                       Send Test
                     </Button>
@@ -408,10 +416,11 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
         </div>
 
         {/* Form Actions */}
-        <div className="flex justify-end space-x-3 pt-5 border-t border-gray-200">
+        <div className="flex flex-col gap-3 pt-5 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-3">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => {
               if (emailConfig) {
                 setFormData(emailConfig);
@@ -425,6 +434,7 @@ const EmailSettingsForm = ({ emailConfig, onUpdate, loading }) => {
             variant="primary"
             disabled={isSaving}
             isLoading={isSaving}
+            className="w-full sm:w-auto"
           >
             Save Settings
           </Button>

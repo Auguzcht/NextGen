@@ -45,14 +45,14 @@ const EmailTemplatesManager = ({ templates, onUpdate, loading }) => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email Templates</h3>
           <p className="mt-1 text-sm text-gray-500">
             Create and manage reusable email templates for guardians and staff
           </p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
           <Badge variant="info" size="sm">
             {templates.length} Template{templates.length !== 1 ? 's' : ''}
           </Badge>
@@ -61,6 +61,7 @@ const EmailTemplatesManager = ({ templates, onUpdate, loading }) => {
             variant="primary"
             size="sm"
             onClick={handleAdd}
+            className="sm:w-auto"
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

@@ -59,6 +59,42 @@ const CALCOM_CONFIG = {
   apiVersion: '2024-08-13'
 };
 
+function normalizeMaterialIds(materialIds) {
+  if (!Array.isArray(materialIds)) return [];
+  return materialIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function buildEmailLogEntry({
+  templateId = null,
+  recipientEmail,
+  guardianId = null,
+  subject = null,
+  status,
+  messageId = null,
+  errorMessage = null,
+  materialIds = [],
+  notes = null,
+}) {
+  const normalizedMaterialIds = normalizeMaterialIds(materialIds);
+
+  return {
+    template_id: templateId,
+    recipient_email: recipientEmail,
+    guardian_id: guardianId,
+    subject,
+    provider_message_id: messageId || null,
+    material_ids: normalizedMaterialIds.length > 0 ? JSON.stringify(normalizedMaterialIds) : null,
+    material_ids_json: normalizedMaterialIds.length > 0 ? normalizedMaterialIds : null,
+    materials_count: normalizedMaterialIds.length,
+    sent_date: new Date().toISOString(),
+    status,
+    error_message: errorMessage || null,
+    notes,
+  };
+}
+
 // Simple inline handlers for development
 // In production, Vercel uses the actual serverless functions
 
@@ -255,13 +291,15 @@ app.post('/api/email/send-test', async (req, res) => {
     // Log the test email
     await supabase
       .from('email_logs')
-      .insert({
-        template_id: null,
-        recipient_email: testEmail,
-        sent_date: new Date().toISOString(),
+      .insert(buildEmailLogEntry({
+        templateId: null,
+        recipientEmail: testEmail,
+        subject: 'NXTGen Ministry - Test Email',
         status: 'sent',
-        notes: 'Test email sent successfully'
-      });
+        messageId: result.id || null,
+        materialIds: [],
+        notes: `DEV MODE - Test email sent successfully | Message ID: ${result.id || 'N/A'}`,
+      }));
 
     return res.status(200).json({
       success: true,
@@ -612,13 +650,15 @@ app.post('/api/email/send-child-qr', async (req, res) => {
     try {
       await supabase
         .from('email_logs')
-        .insert({
-          recipient_email: guardianEmail,
+        .insert(buildEmailLogEntry({
+          templateId: null,
+          recipientEmail: guardianEmail,
           subject: emailData.subject,
           status: 'sent',
-          sent_date: new Date().toISOString(),
-          notes: `DEV MODE - Child QR Code | Message ID: ${result.id || 'N/A'}`
-        });
+          messageId: result.id || null,
+          materialIds: [],
+          notes: `DEV MODE - Child QR Code | Message ID: ${result.id || 'N/A'}`,
+        }));
     } catch (logError) {
       console.warn('Failed to log email:', logError);
       // Don't fail the request if logging fails
@@ -767,13 +807,16 @@ app.post('/api/email/send-batch', async (req, res) => {
     // Log successful emails
     if (results.success.length > 0) {
       const logEntries = results.success.map(item => ({
-        template_id: templateId || null,
-        recipient_email: item.email,
-        guardian_id: item.guardianId || null,
-        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
-        sent_date: new Date().toISOString(),
-        status: 'sent',
-        notes: `DEV MODE - Message ID: ${item.messageId || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`
+        ...buildEmailLogEntry({
+          templateId: templateId || null,
+          recipientEmail: item.email,
+          guardianId: item.guardianId || null,
+          subject,
+          status: 'sent',
+          messageId: item.messageId || item.id || null,
+          materialIds: materialIds || [],
+          notes: `DEV MODE - Message ID: ${item.messageId || item.id || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`,
+        }),
       }));
 
       const { error: logError } = await supabase
@@ -788,13 +831,16 @@ app.post('/api/email/send-batch', async (req, res) => {
     // Log failed emails
     if (results.failed.length > 0) {
       const failedLogEntries = results.failed.map(item => ({
-        template_id: templateId || null,
-        recipient_email: item.email,
-        guardian_id: item.guardianId || null,
-        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
-        sent_date: new Date().toISOString(),
-        status: 'failed',
-        notes: `DEV MODE - Error: ${item.error}`
+        ...buildEmailLogEntry({
+          templateId: templateId || null,
+          recipientEmail: item.email,
+          guardianId: item.guardianId || null,
+          subject,
+          status: 'failed',
+          errorMessage: item.error || null,
+          materialIds: materialIds || [],
+          notes: `DEV MODE - Error: ${item.error}`,
+        }),
       }));
 
       const { error: logError } = await supabase

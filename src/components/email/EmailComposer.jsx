@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import supabase from '../../services/supabase.js';
 import { Button, Input, Badge, Modal, useToast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,12 +31,39 @@ const EmailComposer = ({ templates }) => {
   const [filteredGuardians, setFilteredGuardians] = useState([]);
   const [filteredStaff, setFilteredStaff] = useState([]);
   const [activeContentTab, setActiveContentTab] = useState('editor');
+  const [mobileContentTabsOpen, setMobileContentTabsOpen] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [mobilePreviewViewportHeight, setMobilePreviewViewportHeight] = useState(360);
+  const mobilePreviewViewportRef = useRef(null);
   
   // Material browser filters
   const [materialSearchQuery, setMaterialSearchQuery] = useState('');
   const [materialCategoryFilter, setMaterialCategoryFilter] = useState('all');
   const [materialSortFilter, setMaterialSortFilter] = useState('recent');
+  const MOBILE_PREVIEW_SCALE = 0.42;
+
+  useEffect(() => {
+    const element = mobilePreviewViewportRef.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      setMobilePreviewViewportHeight(element.clientHeight || 360);
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [activeContentTab]);
 
   useEffect(() => {
     fetchMaterials();
@@ -620,10 +647,16 @@ const EmailComposer = ({ templates }) => {
     return icons[category] || icons['Lesson'];
   };
 
+  const activeContentTabLabel = activeContentTab === 'preview' ? 'Live Preview' : 'Content Editor';
+  const mobilePreviewIframeHeight = Math.max(
+    700,
+    Math.ceil((mobilePreviewViewportHeight - 8) / MOBILE_PREVIEW_SCALE) + 40
+  );
+
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-6 py-5 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email Composer</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -631,14 +664,18 @@ const EmailComposer = ({ templates }) => {
             </p>
           </div>
           {recipientCount > 0 && formData.recipient_type !== 'individual' && (
-            <Badge variant="info" size="xxs">
+            <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800">
               {recipientCount} Recipients
-            </Badge>
+            </div>
           )}
           {formData.recipient_type === 'individual' && formData.selected_recipients.length > 0 && (
-            <Badge variant="success" size="xxs">
+            <div className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800">
+              <span className="relative mr-2 inline-flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+              </span>
               {formData.selected_recipients.length} Selected
-            </Badge>
+            </div>
           )}
         </div>
       </div>
@@ -705,7 +742,7 @@ const EmailComposer = ({ templates }) => {
               />
 
               {formData.recipient_type !== 'individual' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2">
                   <Input
                     type="select"
                     label="Filter By"
@@ -762,7 +799,7 @@ const EmailComposer = ({ templates }) => {
               {formData.recipient_type === 'individual' && (
                 <div className="mt-4 border border-gray-200 rounded-lg p-4">
                   {/* Search and Actions Header */}
-                  <div className="flex items-end gap-4 mb-4">
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
                     <div className="flex-1">
                       <Input
                         type="text"
@@ -777,13 +814,13 @@ const EmailComposer = ({ templates }) => {
                         size="md"
                       />
                     </div>
-                    <div className="flex-shrink-0 mb-4">
+                    <div className="mb-0 w-full flex-shrink-0 sm:mb-4 sm:w-auto">
                       <Button
                         type="button"
                         variant="outline"
                         size="md"
                         onClick={handleSelectAllFiltered}
-                        className="whitespace-nowrap h-[42px]"
+                        className="h-[42px] w-full whitespace-nowrap sm:w-auto"
                       >
                         {(() => {
                           const allFilteredKeys = [
@@ -950,7 +987,57 @@ const EmailComposer = ({ templates }) => {
 
             {/* Content Tabs */}
             <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8 px-6">
+              <div className="px-4 py-3 sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileContentTabsOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-md bg-nextgen-blue px-3 py-2.5 text-white"
+                >
+                  <span className="text-sm font-medium">{activeContentTabLabel}</span>
+                  <svg className={`h-4 w-4 transition-transform ${mobileContentTabsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {mobileContentTabsOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-1 overflow-hidden rounded-md border border-gray-100"
+                    >
+                      {activeContentTab !== 'editor' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveContentTab('editor');
+                            setMobileContentTabsOpen(false);
+                          }}
+                          className="block w-full px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-nextgen-blue/5"
+                        >
+                          Content Editor
+                        </button>
+                      )}
+                      {activeContentTab !== 'preview' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveContentTab('preview');
+                            setMobileContentTabsOpen(false);
+                          }}
+                          className="block w-full px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-nextgen-blue/5"
+                        >
+                          Live Preview
+                        </button>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <nav className="-mb-px hidden space-x-6 overflow-x-auto px-6 sm:flex">
                 <button
                   type="button"
                   onClick={() => setActiveContentTab('editor')}
@@ -1003,7 +1090,7 @@ const EmailComposer = ({ templates }) => {
                 />
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h5 className="text-sm font-medium text-gray-700">Email Preview</h5>
                     <div className="text-xs text-gray-500">
                       {selectedMaterials.length > 0 && (
@@ -1014,19 +1101,37 @@ const EmailComposer = ({ templates }) => {
                     </div>
                   </div>
                   
-                  <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto" style={{ height: '500px' }}>
+                  <div className="h-[62dvh] min-h-[360px] max-h-[560px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[500px]">
                     {formData.subject || formData.body_html ? (
-                      <div 
-                        className="p-4 email-preview-content"
-                        dangerouslySetInnerHTML={{ 
-                          __html: generatePreviewHtml()
-                        }}
-                        style={{
-                          fontSize: '14px',
-                          lineHeight: '1.5',
-                          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                        }}
-                      />
+                      <>
+                        <div ref={mobilePreviewViewportRef} className="relative h-full overflow-auto sm:hidden">
+                          <iframe
+                            className="pointer-events-none absolute left-1/2 top-2 w-[760px] -translate-x-1/2 origin-top border-0"
+                            srcDoc={generatePreviewHtml()}
+                            title="Email Preview Mobile"
+                            style={{
+                              height: `${mobilePreviewIframeHeight}px`,
+                              transform: `translateX(-50%) scale(${MOBILE_PREVIEW_SCALE})`,
+                              transformOrigin: 'top center'
+                            }}
+                          />
+                        </div>
+
+                        <div className="hidden h-full sm:block">
+                          <iframe
+                            className="w-full h-full border-0"
+                            srcDoc={generatePreviewHtml()}
+                            title="Email Preview"
+                            style={{
+                              pointerEvents: 'none',
+                              transform: 'scale(0.5)',
+                              transformOrigin: 'top left',
+                              width: '200%',
+                              height: '200%'
+                            }}
+                          />
+                        </div>
+                      </>
                     ) : (
                       <div className="flex items-center justify-center h-full text-gray-500">
                         <div className="text-center">
@@ -1069,7 +1174,7 @@ const EmailComposer = ({ templates }) => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.3 }}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h4 className="text-md font-medium text-nextgen-blue-dark flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -1081,6 +1186,7 @@ const EmailComposer = ({ templates }) => {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowMaterialBrowser(!showMaterialBrowser)}
+                className="w-full sm:w-auto"
               >
                 {showMaterialBrowser ? 'Hide' : 'Browse'} Materials
               </Button>
@@ -1092,14 +1198,14 @@ const EmailComposer = ({ templates }) => {
                 {selectedMaterials.map((material) => (
                   <div
                     key={material.material_id}
-                    className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3"
+                    className="flex flex-col gap-3 bg-green-50 border border-green-200 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-start space-x-3 min-w-0">
                       <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white">
                         {getMaterialIcon(material.category)}
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{material.title}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 break-words line-clamp-2">{material.title}</p>
                         <p className="text-xs text-gray-500">{material.category}</p>
                       </div>
                     </div>
@@ -1142,7 +1248,7 @@ const EmailComposer = ({ templates }) => {
                         fullWidth
                       />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
                         type="select"
                         value={materialCategoryFilter}
@@ -1151,7 +1257,7 @@ const EmailComposer = ({ templates }) => {
                           { value: 'all', label: 'All Types' },
                           ...materialCategories.map(cat => ({ value: cat, label: cat }))
                         ]}
-                        className="w-30"
+                        className="w-full sm:w-32"
                       />
                       <Input
                         type="select"
@@ -1162,7 +1268,7 @@ const EmailComposer = ({ templates }) => {
                           { value: 'title', label: 'Title A-Z' },
                           { value: 'category', label: 'Category' }
                         ]}
-                        className="w-30"
+                        className="w-full sm:w-32"
                       />
                     </div>
                   </div>
@@ -1180,21 +1286,21 @@ const EmailComposer = ({ templates }) => {
                         {filteredBrowseMaterials.map((material) => (
                         <label
                           key={material.material_id}
-                          className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer"
+                          className="flex items-start p-2 hover:bg-gray-50 rounded cursor-pointer"
                         >
                           <input
                             type="checkbox"
                             checked={selectedMaterials.some(m => m.material_id === material.material_id)}
                             onChange={() => toggleMaterial(material)}
-                            className="h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
+                            className="mt-1 h-4 w-4 text-nextgen-blue focus:ring-nextgen-blue border-gray-300 rounded"
                           />
-                          <div className="ml-3 flex items-center space-x-3 flex-1">
+                          <div className="ml-3 flex items-start space-x-3 flex-1 min-w-0">
                             <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white">
                               {getMaterialIcon(material.category)}
                             </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-900">{material.title}</p>
-                              <div className="flex items-center space-x-2 mt-1">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 break-words line-clamp-2">{material.title}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                 <Badge variant="primary" size="xxs">{material.category}</Badge>
                                 {material.age_categories && (
                                   <Badge variant="info" size="xxs">{material.age_categories.category_name}</Badge>
@@ -1213,10 +1319,11 @@ const EmailComposer = ({ templates }) => {
           </motion.div>
 
           {/* Form Actions */}
-          <div className="flex justify-end space-x-3 pt-5 border-t border-gray-200">
+          <div className="flex flex-col gap-3 pt-5 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-3">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setFormData({
                   template_id: '',
@@ -1237,6 +1344,7 @@ const EmailComposer = ({ templates }) => {
               variant="primary"
               disabled={isSending}
               isLoading={isSending}
+              className="w-full sm:w-auto"
             >
               Send Emails
             </Button>

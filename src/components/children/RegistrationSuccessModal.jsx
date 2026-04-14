@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Button, Modal, useToast, HoverCard, HoverCardContent } from '../ui';
+import { Button, Modal, useToast } from '../ui';
 import QRCode from '../common/QRCode';
 import PropTypes from 'prop-types';
 import { getPrintableIdValidation } from '../../utils/childIdMapper';
+import ChildActionButtonGroup from './ChildActionButtonGroup.jsx';
 
 const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => {
   const { toast } = useToast();
@@ -77,9 +78,10 @@ const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => 
       size="lg"
       variant="primary"
       closeButton={true}
+      bodyScrollable={false}
     >
-      <div className="p-4">
-        <div className="flex flex-col items-center text-center mb-6">
+      <div className="p-2 sm:p-4">
+        <div className="flex flex-col items-center text-center mb-4 sm:mb-6">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
@@ -93,82 +95,54 @@ const RegistrationSuccessModal = ({ isOpen, onClose, childData, onPrintID }) => 
           </p>
         </div>
         
-        <div className="bg-gray-50 rounded-lg p-6 flex items-center justify-center flex-col">
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-4">
+        <div className="bg-gray-50 rounded-lg p-4 sm:p-6 flex items-center justify-center flex-col">
+          <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200 mb-3 sm:mb-4">
             <QRCode 
               value={childData.formalId || 'unknown-id'} 
-              size={150}
+              size={130}
               bgColor="#ffffff"
               fgColor="#30cee4"
               level="H"
               showLogo={true}
-              logoSize={35}
+              logoSize={28}
             />
           </div>
           <p className="text-sm text-gray-500 mb-1">Child's ID: <span className="font-semibold">{childData.formalId}</span></p>
           <p className="text-sm text-gray-500">Scan this code for quick check-in</p>
         </div>
         
-        <div className="mt-8 flex flex-col gap-3">
-          <HoverCard openDelay={100} closeDelay={100}>
-            {({ open, handleOpen, handleClose, triggerRef, position, updatePosition }) => (
-              <div
-                ref={triggerRef}
-                className="relative w-full"
-                onMouseEnter={() => {
-                  updatePosition('bottom');
-                  handleOpen();
-                }}
-                onMouseLeave={handleClose}
-              >
-                <Button 
-                  variant="primary"
-                  fullWidth
-                  onClick={onPrintID}
-                  disabled={!printableValidation.isValid}
-                  icon={
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-                    </svg>
-                  }
-                >
-                  Print ID Card
-                </Button>
-                {!printableValidation.isValid && (
-                  <HoverCardContent open={open} side="bottom" position={position}>
-                    <div className="flex flex-col gap-1">
-                      <h4 className="font-medium text-sm">Print ID unavailable</h4>
-                      <p className="text-xs text-gray-600">Missing: {printableValidation.missingFields.join(', ')}</p>
-                    </div>
-                  </HoverCardContent>
-                )}
-              </div>
-            )}
-          </HoverCard>
-          
-          <Button 
-            variant="secondary"
-            fullWidth
-            onClick={handleSendEmail}
-            disabled={isSendingEmail || !childData.guardianEmail}
-            icon={
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-              </svg>
-            }
-          >
-            {isSendingEmail ? (
-              <span className="flex items-center justify-center">
-                Sending
-                <svg className="animate-spin ml-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <div className="mt-5 sm:mt-8 flex flex-col gap-3">
+          <ChildActionButtonGroup
+            primaryAction={{
+              label: 'Print ID',
+              onClick: onPrintID,
+              disabled: !printableValidation.isValid,
+              icon: (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
-              </span>
-            ) : (
-              'Send QR to Email'
-            )}
-          </Button>
+              ),
+              hoverTitle: !printableValidation.isValid ? 'Print ID unavailable' : 'Print child ID card',
+              hoverDescription: !printableValidation.isValid
+                ? `Missing: ${printableValidation.missingFields.join(', ')}`
+                : 'Open printable ID layout for this child.',
+            }}
+            secondaryAction={{
+              label: isSendingEmail ? 'Sending...' : 'Send QR',
+              onClick: handleSendEmail,
+              disabled: !childData.guardianEmail || isSendingEmail,
+              loading: isSendingEmail,
+              icon: (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              ),
+              hoverTitle: childData.guardianEmail ? 'Send QR to guardian email' : 'Email unavailable',
+              hoverDescription: childData.guardianEmail
+                ? `Send to ${childData.guardianEmail}`
+                : 'Add a guardian email to enable this action.',
+            }}
+          />
           
           <Button 
             variant="outline"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import supabase from '../services/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -24,6 +24,8 @@ const AttendancePage = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [hasSearchSettled, setHasSearchSettled] = useState(false);
   const [error, setError] = useState(null);
   const [showCheckOutAllDialog, setShowCheckOutAllDialog] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
@@ -56,6 +58,7 @@ const AttendancePage = () => {
   
   // Image caching
   const { cacheImages, isInvalidImage, markInvalidImage } = useImageCache();
+  const activeSearchRequestRef = useRef(0);
 
   // Fetch services on mount
   useEffect(() => {
@@ -71,7 +74,14 @@ const AttendancePage = () => {
 
   // Debounce search query
   useEffect(() => {
-    setSearching(!!searchQuery);
+    // Match email history behavior: spinner indicates debounce window only.
+    if (searchQuery === '') {
+      setSearching(false);
+      setDebouncedSearchQuery('');
+      return;
+    }
+
+    setSearching(true);
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
       setSearching(false);
@@ -85,8 +95,11 @@ const AttendancePage = () => {
     if (debouncedSearchQuery && selectedService) {
       searchChildren();
     } else {
+      activeSearchRequestRef.current += 1;
       setSearchResults([]);
       setSelectedChildren([]); // Clear selections when search is cleared
+      setIsSearchLoading(false);
+      setHasSearchSettled(false);
     }
   }, [debouncedSearchQuery, selectedService, selectedDate]);
 
@@ -212,9 +225,13 @@ const AttendancePage = () => {
 
   // Search for children to check in
   const searchChildren = async () => {
-    if (!debouncedSearchQuery.trim() || !selectedService) return;
-    
-    setSearching(true);
+    const queryText = debouncedSearchQuery.trim();
+    if (!queryText || !selectedService) return;
+
+    const requestId = ++activeSearchRequestRef.current;
+    setIsSearchLoading(true);
+    setHasSearchSettled(false);
+
     try {
       // First check if any matching children are already checked in
       const checkedInIds = checkedInList.map(item => item.children?.child_id);
@@ -225,11 +242,13 @@ const AttendancePage = () => {
           *,
           age_categories (category_name)
         `)
-        .or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,formal_id.ilike.%${debouncedSearchQuery}%,nickname.ilike.%${debouncedSearchQuery}%`)
+        .or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,formal_id.ilike.%${queryText}%,nickname.ilike.%${queryText}%`)
         .eq('is_active', true)
         .limit(5); // Limit to 5 results for better UX
 
       if (error) throw error;
+
+      if (requestId !== activeSearchRequestRef.current) return;
       
       // Filter out already checked-in children
       const filteredResults = (data || []).filter(
@@ -237,6 +256,7 @@ const AttendancePage = () => {
       );
       
       setSearchResults(filteredResults);
+      setHasSearchSettled(true);
       
       // Cache search result photos
       if (filteredResults.length > 0) {
@@ -246,10 +266,15 @@ const AttendancePage = () => {
         cacheImages(photoUrls);
       }
     } catch (error) {
+      if (requestId !== activeSearchRequestRef.current) return;
       console.error('Error searching children:', error);
       setError('Failed to search children');
+      setSearchResults([]);
+      setHasSearchSettled(true);
     } finally {
-      setSearching(false);
+      if (requestId === activeSearchRequestRef.current) {
+        setIsSearchLoading(false);
+      }
     }
   };
 
@@ -595,9 +620,31 @@ const AttendancePage = () => {
 
   // Search results component
   const SearchResultsList = () => {
+    if (isSearchLoading) {
+      return (
+        <div className="mt-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            <div className="h-4 w-36 animate-pulse rounded bg-gray-200" />
+          </div>
+          <div className="space-y-2">
+            {[...Array(3)].map((_, index) => (
+              <div key={index} className="flex items-center gap-3 p-2">
+                <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
+                <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="h-4 w-48 animate-pulse rounded bg-gray-200" />
+                  <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     if (searchResults.length === 0) {
-      // If actively searching but no results found, show "No results" message
-      if (debouncedSearchQuery && !searching) {
+      // Show no-result state only after current search request has settled.
+      if (debouncedSearchQuery && hasSearchSettled) {
         return (
           <div className="mt-4 bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-center">
             <p className="text-gray-500">No matching children found</p>
@@ -677,7 +724,7 @@ const AttendancePage = () => {
                 <div className="font-medium text-gray-900 truncate">
                   {child.first_name} {child.last_name}
                 </div>
-                <div className="text-xs text-gray-500 flex items-center gap-1">
+                <div className="text-xs text-gray-500 flex items-center">
                   <span>{calculateAge(child.birthdate)} yrs</span>
                   {child.age_categories?.category_name && (
                     <Badge variant="primary" size="xs">
@@ -755,7 +802,7 @@ const AttendancePage = () => {
       sortKey: "children.first_name"
     },
     {
-      header: "Age / Group",
+      header: "Age",
       cell: (row) => (
         <div className="flex items-center gap-2">
           <span className="text-gray-900">{calculateAge(row.children?.birthdate)} yrs</span>
@@ -1181,7 +1228,7 @@ const AttendancePage = () => {
                             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
                           </svg>
                         }
-                        endIcon={searching ? (
+                        endIcon={searching || isSearchLoading ? (
                           <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -1192,7 +1239,8 @@ const AttendancePage = () => {
                               setSearchQuery('');
                               setSelectedChildren([]);
                             }}
-                            className="text-gray-400 hover:text-gray-600"
+                            className="inline-flex h-5 w-5 items-center justify-center text-gray-400 hover:text-gray-600 mt-1"
+                            type="button"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -1319,6 +1367,13 @@ const AttendancePage = () => {
         onClose={() => {
           setIsViewModalOpen(false);
           setSelectedChildForView(null);
+        }}
+        onEdit={() => {
+          const childToEdit = selectedChildForView;
+          setIsViewModalOpen(false);
+          setSelectedChildForView(null);
+          setSelectedChildForEdit(childToEdit);
+          setIsEditModalOpen(true);
         }}
         onPrintID={() => {
           const mappedData = {

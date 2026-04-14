@@ -1,9 +1,95 @@
 // NextGen Ministry Management System - Version Changelog
 // This file tracks all version updates and changes for display in the application
 
-export const CURRENT_VERSION = '1.2.5';
+export const CURRENT_VERSION = '1.3.0';
 
 export const CHANGELOG = [
+  {
+    version: '1.3.0',
+    date: '2026-04-15',
+    title: 'Major Update: Mobile Optimization & PWA Integration',
+    type: 'major',
+    changes: [
+      {
+        category: 'Mobile-First Form & Modal Overhaul',
+        icon: 'Smartphone',
+        updates: [
+          'Refactored core create/edit flows to use mobile-first modal shells with safer viewport sizing and improved touch behavior',
+          'Standardized form spacing rhythm across major modals to reduce inconsistent gaps and stacked-field jitter',
+          'Improved footer action ergonomics with responsive button grouping for easier thumb access',
+          'Adjusted profile settings modal into a fully responsive stacked layout with better small-screen field alignment and stable controls'
+        ]
+      },
+      {
+        category: 'Pagination & List Usability',
+        icon: 'ClipboardCheck',
+        updates: [
+          'Redesigned mobile pagination on major list pages to prevent control cramming and preserve readable metadata',
+          'Applied responsive alignment rules so pagination is centered on mobile and right-aligned on desktop for better scan patterns',
+          'Improved horizontal control overflow handling for narrow viewports without sacrificing desktop density'
+        ]
+      },
+      {
+        category: 'Volunteer Schedule Mobile Redesign',
+        icon: 'Calendar',
+        updates: [
+          'Introduced dedicated mobile agenda-style schedule experience while preserving desktop month-grid behavior',
+          'Increased event card information density with service chips, time previews, and richer volunteer summaries',
+          'Improved service label compaction to 1st/2nd/3rd for tighter layouts and clearer scanning',
+          'Enhanced day-card visual separation and corrected empty-Sunday rendering so 0-volunteer placeholders no longer appear in mobile list view',
+          'Refined schedule detail modal responsiveness and badge alignment for consistent hierarchy on small screens'
+        ]
+      },
+      {
+        category: 'Avatar Groups & Visual Clarity',
+        icon: 'Users',
+        updates: [
+          'Implemented shadcn-inspired stacked avatar grouping with overflow counters for dense volunteer lists',
+          'Improved avatar fallback rendering and compact count presentation to avoid card overflow',
+          'Polished mobile card hierarchy to reduce empty areas and increase actionable context per row'
+        ]
+      },
+      {
+        category: 'Header, Notifications & Toast Hardening',
+        icon: 'Zap',
+        updates: [
+          'Fixed notification dropdown clipping on mobile by introducing viewport-safe positioning behavior',
+          'Improved toast container constraints and word-wrapping to prevent off-screen truncation on smaller devices',
+          'Applied responsive safety rules to interactive overlays for better reliability across mixed screen sizes'
+        ]
+      },
+      {
+        category: 'Changelog Navigation System Refresh',
+        icon: 'FileText',
+        updates: [
+          'Redesigned changelog navigation with breadcrumb context and a nested version control group for faster version switching',
+          'Replaced verbose previous/next labels with compact arrow controls and improved selector width/truncation behavior',
+          'Resolved mobile wrapping/cutoff issues in changelog header and footer regions with responsive spacing and non-wrapping badge treatments',
+          'Improved timeline card responsiveness to prevent title compression and maintain readable action placement on phones'
+        ]
+      },
+      {
+        category: 'PWA Integration & Mobile Runtime Readiness',
+        icon: 'Rocket',
+        updates: [
+          'Aligned UI patterns and interaction surfaces with PWA-first mobile constraints to improve installed-app feel',
+          'Improved safe-area and viewport-height handling in key overlays/modal experiences for better full-screen behavior',
+          'Strengthened mobile interaction consistency to support reliable field operations in progressive web app usage contexts'
+        ]
+      },
+      {
+        category: 'Quality, Stability & Regression Prevention',
+        icon: 'Wrench',
+        updates: [
+          'Executed iterative multi-pass UI fixes across forms, pagination, schedule views, and overlay components',
+          'Applied targeted visual consistency updates without changing established desktop workflows',
+          'Validated updated components after each pass to reduce integration regressions and maintain release stability'
+        ]
+      }
+    ],
+    summary: 'Version 1.3.0 is a major mobile optimization milestone centered on real-world usability. The release modernizes key workflows with responsive modal/form behavior, significantly improves schedule and pagination ergonomics on phones, hardens overlays like notifications and toasts against clipping, refreshes changelog navigation, and reinforces PWA-ready interaction patterns for smoother ministry operations across devices.',
+    breaking: false
+  },
   {
     version: '1.2.5',
     date: '2026-03-29',

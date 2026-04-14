@@ -9,6 +9,7 @@ export { default as Table } from './Table';
 export { default as NextGenChart } from './Chart';
 export { default as Calendar } from './Calendar';
 export { default as DatePickerOverlay } from './DatePickerOverlay';
+export { default as DateRangePickerOverlay } from './DateRangePickerOverlay';
 
 // New shadcn-inspired components
 export { Alert as AlertNew, AlertTitle, AlertDescription } from './AlertNew';

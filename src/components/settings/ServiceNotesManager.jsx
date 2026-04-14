@@ -123,7 +123,7 @@ const ServiceNotesManager = ({ services }) => {
       header: "Actions",
       accessor: "actions",
       cell: (row) => (
-        <div className="flex justify-start items-center space-x-2">
+        <div className="flex justify-start items-center space-x-1 sm:space-x-2">
           <Button
             variant="ghost"
             size="xs"
@@ -139,7 +139,7 @@ const ServiceNotesManager = ({ services }) => {
               </svg>
             }
           >
-            View
+            <span className="hidden sm:inline">View</span>
           </Button>
           <Button
             variant="danger"
@@ -154,7 +154,7 @@ const ServiceNotesManager = ({ services }) => {
               </svg>
             }
           >
-            Delete
+            <span className="hidden sm:inline">Delete</span>
           </Button>
         </div>
       )
@@ -164,7 +164,7 @@ const ServiceNotesManager = ({ services }) => {
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-md mt-6">
       <div className="px-4 py-5 sm:p-6">
-        <div className="flex justify-between items-center mb-5">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Service Notes</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -175,6 +175,7 @@ const ServiceNotesManager = ({ services }) => {
             onClick={() => setShowNotesForm(true)}
             variant="primary"
             size="sm"
+            className="w-full sm:w-auto"
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

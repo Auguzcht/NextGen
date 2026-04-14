@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createChildQREmailTemplate } from '../../src/utils/emailTemplates.js';
 import { sendEmail } from '../../server/utils/emailProviders.js';
 import { generateAndUploadQR, deleteOldQRCodes } from '../../server/utils/qrGenerator.js';
+import { createEmailLogEntry } from '../../server/utils/emailLogHelpers.js';
 
 // Use non-VITE prefixed vars in production, fallback to VITE_ for development
 const supabase = createClient(
@@ -138,13 +139,15 @@ export default async function handler(req, res) {
     try {
       await supabase
         .from('email_logs')
-        .insert({
-          recipient_email: guardianEmail,
+        .insert(createEmailLogEntry({
+          templateId: null,
+          recipientEmail: guardianEmail,
           subject: emailData.subject,
           status: 'sent',
-          sent_date: new Date().toISOString(),
-          notes: `Child QR Code | Message ID: ${result.messageId || 'N/A'}`
-        });
+          messageId: result.messageId || result.id || null,
+          materialIds: [],
+          notes: `Child QR Code | Message ID: ${result.messageId || result.id || 'N/A'}`,
+        }));
     } catch (logError) {
       console.warn('Failed to log email:', logError);
       // Don't fail the request if logging fails

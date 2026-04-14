@@ -171,9 +171,9 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
 
   // Render modal using portal to ensure it's at the root level
   const modalContent = (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4">
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl w-[calc(100vw-1rem)] sm:w-full max-w-2xl max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
@@ -181,7 +181,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Section */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Service' : 'Add New Service'}
           </h2>
@@ -196,7 +196,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
         </div>
 
         {/* Form Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {/* Info Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md">
             <div className="flex">
@@ -219,7 +219,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
             <motion.div 
-              className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+              className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
@@ -262,7 +262,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
 
             {/* Schedule */}
             <motion.div 
-              className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+              className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.1 }}
@@ -271,7 +271,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
                 Schedule
               </h3>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
                   type="time"
                   label="Start Time"
@@ -293,7 +293,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
 
             {/* Description */}
             <motion.div 
-              className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+              className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.2 }}
@@ -303,7 +303,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
               </h3>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Description
                 </label>
                 <textarea
@@ -312,7 +312,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
                   value={formData.description}
                   onChange={handleInputChange}
                   placeholder="Brief description of the service"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
+                  className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-nextgen-blue focus:border-nextgen-blue sm:text-sm"
                 />
               </div>
             </motion.div>
@@ -320,13 +320,14 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
         </div>
 
         {/* Form Actions */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 sticky bottom-0">
-          <div className="flex justify-end space-x-3">
+        <div className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-gray-50 sticky bottom-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={isSaving}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -336,6 +337,7 @@ const ServiceForm = ({ onClose, onSuccess, isEdit = false, initialData = null })
               onClick={handleSubmit}
               disabled={isSaving}
               isLoading={isSaving}
+              className="w-full sm:w-auto"
             >
               {isEdit ? 'Save Changes' : 'Add Service'}
             </Button>

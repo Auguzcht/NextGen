@@ -9,9 +9,9 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
   const volunteers = selectedDate.events || [];
 
   return createPortal(
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+    <div className="fixed inset-0 z-[9999] bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4" onClick={onClose}>
       <motion.div
-        className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl max-w-3xl w-[calc(100vw-1rem)] sm:w-full max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
@@ -19,13 +19,13 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-semibold text-nextgen-blue-dark">
+        <div className="flex justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <h2 className="text-base sm:text-xl font-semibold text-nextgen-blue-dark pr-3">
             {selectedDate ? `Volunteer Schedule for ${selectedDate.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : ''}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="inline-flex h-10 w-10 items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -34,13 +34,13 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
         </div>
 
         <motion.div 
-          className="p-6"
+          className="p-4 sm:p-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
           {/* Summary Stats */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
             <motion.div 
               className="bg-nextgen-blue/5 p-4 rounded-lg"
               initial={{ opacity: 0, y: 10 }}
@@ -90,14 +90,14 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
                 >
                   {/* Service Header */}
                   <div className="bg-gradient-to-r from-nextgen-blue/10 to-nextgen-blue/5 px-4 py-3 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h4 className="text-lg font-semibold text-nextgen-blue-dark">{serviceName}</h4>
                         <p className="text-sm text-gray-600">
                           Sunday • {serviceVolunteers[0]?.startTime || 'Time TBD'}
                         </p>
                       </div>
-                      <Badge variant="primary" size="sm">
+                      <Badge variant="primary" size="sm" className="self-start sm:self-auto whitespace-nowrap">
                         {serviceVolunteers.length} {serviceVolunteers.length === 1 ? 'Volunteer' : 'Volunteers'}
                       </Badge>
                     </div>
@@ -113,8 +113,8 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
                         transition={{ delay: 0.3 + (serviceIdx * 0.1) + (idx * 0.05) }}
                         className="p-4 hover:bg-gray-50 transition-colors"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-start gap-3">
                             {/* Volunteer Avatar */}
                             <div className="h-10 w-10 rounded-full overflow-hidden shadow-md flex-shrink-0">
                               {volunteer.profileImage ? (
@@ -137,9 +137,9 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
                             </div>
 
                             {/* Volunteer Info */}
-                            <div>
+                            <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
+                                <p className="font-semibold text-gray-900 break-words">
                                   {volunteer.volunteerName}
                                 </p>
                                 {volunteer.isRegisteredStaff && (
@@ -168,7 +168,7 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
                                 {volunteer.volunteerEmail && (
                                   <>
                                     <span className="text-gray-300">•</span>
-                                    <span className="text-xs text-gray-500">{volunteer.volunteerEmail}</span>
+                                    <span className="text-xs text-gray-500 break-all">{volunteer.volunteerEmail}</span>
                                   </>
                                 )}
                                 {/* Phone */}
@@ -183,7 +183,7 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
                           </div>
 
                           {/* Time indicator */}
-                          <div className="flex items-center gap-1 text-gray-500">
+                          <div className="flex items-center gap-1 text-gray-500 sm:justify-end">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
@@ -193,7 +193,7 @@ const StaffScheduleDetailModal = ({ isOpen, onClose, selectedDate, groupAssignme
 
                         {/* Description/Notes */}
                         {volunteer.description && (
-                          <div className="mt-3 pl-13">
+                          <div className="mt-3 pl-0 sm:pl-12">
                             <div className="bg-gray-50 rounded-md p-2 border-l-2 border-nextgen-blue">
                               <p className="text-sm text-gray-700 italic">{volunteer.description}</p>
                             </div>

@@ -81,7 +81,7 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
       accessor: "actions",
       maxWidth: "180px",
       cell: (row) => (
-        <div className="flex justify-end items-center space-x-2">
+        <div className="flex justify-end items-center space-x-1 sm:space-x-2">
           <Button
             variant="ghost"
             size="xs"
@@ -93,7 +93,7 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
               </svg>
             }
           >
-            Edit
+            <span className="hidden sm:inline">Edit</span>
           </Button>
           <Button
             variant="danger"
@@ -107,7 +107,7 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
               </svg>
             }
           >
-            Delete
+            <span className="hidden sm:inline">Delete</span>
           </Button>
         </div>
       )
@@ -117,7 +117,7 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
   return (
     <div className="w-full max-w-full overflow-hidden">
       <div className="mb-6">
-        <div className="flex justify-between items-center mb-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Age Categories</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -128,6 +128,7 @@ const AgeGroupSettings = ({ ageCategories, onUpdate, loading }) => {
             onClick={() => setShowForm(true)}
             variant="primary"
             size="sm"
+            className="w-full sm:w-auto"
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

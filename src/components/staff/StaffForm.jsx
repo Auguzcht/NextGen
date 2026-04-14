@@ -546,16 +546,16 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
   ];
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4">
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl w-[calc(100vw-1rem)] sm:w-full max-w-2xl max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
       >
         {/* Header Section */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Staff Member' : 'Add New Staff Member'}
           </h2>
@@ -571,7 +571,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
         {/* Show saved draft indicator */}
         {!isEdit && isRestoredDraft && (
-          <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-6 mt-4 rounded-md">
+          <div className="bg-green-50 border-l-4 border-green-400 p-3 sm:p-4 mx-4 sm:mx-6 mt-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -604,7 +604,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
         )}
 
         {/* Form Content */}
-        <div className="p-6 relative">
+        <div className="p-4 sm:p-6 relative">
           {/* Info Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md backdrop-blur-sm shadow-sm">
             <div className="flex">
@@ -628,7 +628,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
             <div className="grid grid-cols-1 gap-4">
               {/* Photo Section - Full width */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
@@ -691,7 +691,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
               {/* Personal Information Section */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
@@ -700,7 +700,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                   Personal Information
                 </h3>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:gap-4">
                   <Input
                     label="First Name *"
                     name="first_name"
@@ -719,7 +719,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:gap-4 mt-4">
                   <Input
                     type="email"
                     label="Email *"
@@ -746,7 +746,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
               {/* Role and Access Section */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
@@ -757,7 +757,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                 
                 <div className="space-y-4">
                   <div>
-                    <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
                       Role *
                     </label>
                     <select
@@ -773,7 +773,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-2 text-sm text-gray-500">
                       {roleOptions.find(r => r.value === formData.role)?.description}
                     </p>
                   </div>
@@ -799,7 +799,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
 
               {/* Login Credentials Section - Available for all roles */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.3 }}
@@ -887,13 +887,14 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
         </div>
 
         {/* Form Actions - Bottom fixed section */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-          <div className="flex justify-end space-x-3">
+        <div className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-gray-50 sticky bottom-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={isSaving}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -903,7 +904,7 @@ const StaffForm = ({ onClose, onSuccess, isEdit = false, initialData = null }) =
               onClick={handleSubmit}
               disabled={isSaving}
               isLoading={isSaving}
-              className="relative"
+              className="relative w-full sm:w-auto"
             >
               {isEdit ? 'Save Changes' : 'Add Staff Member'}
             </Button>

@@ -66,7 +66,7 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
     <>
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center mb-5">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Services</h3>
               <p className="mt-1 text-sm text-gray-500">
@@ -77,6 +77,7 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
               onClick={() => setIsAddModalOpen(true)}
               variant="primary"
               size="sm"
+              className="w-full sm:w-auto"
               icon={
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -110,7 +111,7 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
                   transition={{ duration: 0.3 }}
                   className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start space-x-4 flex-1">
                       {/* Simple Service Icon */}
                       <div className="h-12 w-12 rounded-lg bg-nextgen-blue/10 flex items-center justify-center flex-shrink-0">
@@ -151,7 +152,7 @@ const ServiceSettingsForm = ({ services, onUpdate, loading }) => {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center space-x-2 ml-4">
+                    <div className="ml-0 flex items-center space-x-2 sm:ml-4">
                       <Button
                         variant="ghost"
                         size="xs"

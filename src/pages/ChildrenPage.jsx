@@ -381,8 +381,8 @@ const ChildrenPage = () => {
     };
 
     return (
-      <div className="flex items-center justify-between mt-4">
-        <div>
+      <div className="mt-4 flex flex-col items-center gap-3 sm:items-end">
+        <div className="w-full text-center sm:text-right">
           <p className="text-sm text-gray-700">
             Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
             <span className="font-medium">
@@ -391,13 +391,13 @@ const ChildrenPage = () => {
             of <span className="font-medium">{totalPages * itemsPerPage}</span> results
           </p>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex w-full items-center justify-center gap-1 overflow-x-auto pb-1 sm:justify-end">
           <Button
             variant="outline"
             size="sm"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            className="px-3 py-2"
+            className="px-2 sm:px-3 py-2"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -415,7 +415,7 @@ const ChildrenPage = () => {
                 variant={currentPage === page ? "primary" : "outline"}
                 size="sm"
                 onClick={() => handlePageChange(page)}
-                className="min-w-[40px] px-3 py-2"
+                className="min-w-[36px] sm:min-w-[40px] px-2 sm:px-3 py-2"
               >
                 {page}
               </Button>
@@ -427,7 +427,7 @@ const ChildrenPage = () => {
             size="sm"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
-            className="px-3 py-2"
+            className="px-2 sm:px-3 py-2"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -863,6 +863,10 @@ const ChildrenPage = () => {
           onClose={() => {
             setIsViewModalOpen(false);
             setSelectedChild(null); // Add this line to clean up
+          }}
+          onEdit={() => {
+            setIsViewModalOpen(false);
+            setIsEditModalOpen(true);
           }}
           onPrintID={() => {
             const mapped = mapChildToPrintableData(selectedChild);

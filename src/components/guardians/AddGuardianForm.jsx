@@ -472,16 +472,16 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4">
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl w-[calc(100vw-1rem)] sm:w-full max-w-2xl max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
       >
         {/* Header Section */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Guardian Information' : 'Add New Guardian'}
           </h2>
@@ -497,7 +497,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
 
         {/* Show saved draft indicator */}
         {!isEdit && isRestoredDraft && (
-          <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-6 mt-4 rounded-md">
+          <div className="bg-green-50 border-l-4 border-green-400 p-3 sm:p-4 mx-4 sm:mx-6 mt-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -530,7 +530,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
         )}
 
         {/* Form Content */}
-        <div className="p-6 relative">
+        <div className="p-4 sm:p-6 relative">
           {/* Info Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md backdrop-blur-sm shadow-sm">
             <div className="flex">
@@ -554,7 +554,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
             <div className="grid grid-cols-1 gap-4">
               {/* Guardian Information Section */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
@@ -564,7 +564,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                 </h3>
                 
                 {/* Guardian Name Row */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:gap-4 mb-4">
                   <Input
                     label="First Name"
                     name="firstName"
@@ -584,7 +584,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                 </div>
 
                 {/* Contact Info Row */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                   <Input
                     type="tel"
                     label="Phone Number"
@@ -627,7 +627,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
 
               {/* Associated Children Section */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
@@ -671,7 +671,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
                       <p className="font-medium">No children found</p>
-                      <p className="text-sm mt-1">
+                      <p className="text-sm mt-2">
                         {childrenSearchQuery ? 'Try adjusting your search terms' : 'No children available to associate'}
                       </p>
                     </div>
@@ -732,13 +732,14 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
             </div>
 
             {/* Form Actions - Bottom fixed section */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-              <div className="flex justify-end space-x-3">
+            <div className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-gray-50 sticky bottom-0">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={handleClose}
                   disabled={loading}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
@@ -747,7 +748,7 @@ const AddGuardianForm = ({ onClose, onSuccess, isEdit = false, initialData = nul
                   variant="primary"
                   disabled={loading}
                   isLoading={loading}
-                  className="relative"
+                  className="relative w-full sm:w-auto"
                 >
                   {isEdit ? 'Save Changes' : 'Add Guardian'}
                 </Button>

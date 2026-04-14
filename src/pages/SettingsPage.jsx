@@ -11,13 +11,14 @@ import ServiceNotesManager from '../components/settings/ServiceNotesManager.jsx'
 import AgeGroupSettings from '../components/settings/AgeGroupSettings.jsx';
 import MaterialsManager from '../components/settings/MaterialsManager.jsx';
 import { Card, Button, Spinner } from '../components/ui';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const SettingsPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { staffProfile, user } = useAuth();
   const [activeTab, setActiveTab] = useState('services');
+  const [mobileTabsOpen, setMobileTabsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailConfig, setEmailConfig] = useState(null);
   const [emailTemplates, setEmailTemplates] = useState([]);
@@ -46,8 +47,17 @@ const SettingsPage = () => {
   // Update URL when tab changes
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    setMobileTabsOpen(false);
     navigate(`/settings?tab=${tab}`, { replace: true });
   };
+
+  const visibleTabs = [
+    { id: 'services', label: 'Services' },
+    { id: 'age-groups-materials', label: 'Age Groups & Materials' },
+    ...(hasRole('Administrator') ? [{ id: 'email', label: 'Email Management' }] : []),
+  ];
+
+  const activeTabLabel = visibleTabs.find((tab) => tab.id === activeTab)?.label || 'Settings';
 
   useEffect(() => {
     if (activeTab === 'email') {
@@ -250,7 +260,46 @@ const SettingsPage = () => {
         }
       >
         <div className="border-b border-gray-200 -mt-2">
-          <div className="flex space-x-2 md:space-x-6">
+          <div className="md:hidden px-2 py-2">
+            <button
+              type="button"
+              onClick={() => setMobileTabsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between rounded-md bg-nextgen-blue px-3 py-2.5 text-white"
+              aria-expanded={mobileTabsOpen}
+              aria-controls="settings-mobile-tabs"
+            >
+              <span className="text-sm font-medium">{activeTabLabel}</span>
+              <svg className={`h-4 w-4 transition-transform ${mobileTabsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <AnimatePresence initial={false}>
+              {mobileTabsOpen && (
+                <motion.div
+                  id="settings-mobile-tabs"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="mt-1 overflow-hidden rounded-md border border-gray-100"
+                >
+                  {visibleTabs.filter((tab) => tab.id !== activeTab).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => handleTabChange(tab.id)}
+                      className="block w-full px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-nextgen-blue/5"
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="hidden md:flex md:space-x-2 lg:space-x-6">
             <Button
               variant={activeTab === 'services' ? 'primary' : 'ghost'}
               size="sm"

@@ -340,19 +340,20 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
       title="Profile Settings"
       size="5xl"
       variant="primary"
+      mobileFullHeight
     >
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-3 gap-6 max-h-[calc(90vh-200px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3"
         style={{
           scrollbarWidth: 'thin',
           scrollbarColor: '#CBD5E0 #F7FAFC'
         }}
         >
           {/* Left Column - Profile Photo & Account Info */}
-          <div className="col-span-1 space-y-6">
+          <div className="col-span-1 space-y-4 sm:space-y-6">
             {/* Profile Photo Display */}
             <motion.div
-              className="flex flex-col items-center mt-12"
+              className="flex flex-col items-center"
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
@@ -402,7 +403,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
 
             {/* Account Information */}
             <motion.div 
-              className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-nextgen-blue/20 p-5 shadow-sm"
+              className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-nextgen-blue/20 p-4 sm:p-5 shadow-sm"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.2 }}
@@ -452,12 +453,12 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           </div>
 
           {/* Right Column - Personal Info & Password */}
-          <div className="col-span-2 space-y-6">
+          <div className="col-span-1 space-y-4 sm:space-y-6 lg:col-span-2">
               {/* Personal Information */}
-              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
-                <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Personal Information</h4>
+              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-4 sm:p-6 shadow-sm">
+                <h4 className="mb-4 text-xl sm:text-lg font-medium text-nextgen-blue-dark">Personal Information</h4>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Input
                     label="First Name *"
                     name="first_name"
@@ -474,9 +475,6 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                     error={errors.last_name}
                     required
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-4">
                   <Input
                     type="email"
                     label="Email *"
@@ -502,12 +500,12 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
               </div>
 
               {/* Password Section */}
-              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-6 shadow-sm">
+              <div className="bg-white rounded-lg border border-nextgen-blue/10 p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <svg className="w-5 h-5 text-nextgen-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  <h4 className="text-lg font-medium text-nextgen-blue-dark">Password & Security</h4>
+                  <h4 className="text-xl sm:text-lg font-medium text-nextgen-blue-dark">Password & Security</h4>
                 </div>
 
                 <div className="space-y-4">
@@ -524,7 +522,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                     <button
                       type="button"
                       onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
+                      className="absolute right-3 top-10 sm:top-9 text-gray-400 hover:text-gray-600 transition-colors"
                     >
                       {showCurrentPassword ? (
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -553,7 +551,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
+                      className="absolute right-3 top-10 sm:top-9 text-gray-400 hover:text-gray-600 transition-colors"
                     >
                       {showNewPassword ? (
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -581,7 +579,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600 transition-colors"
+                      className="absolute right-3 top-10 sm:top-9 text-gray-400 hover:text-gray-600 transition-colors"
                     >
                       {showConfirmPassword ? (
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -616,11 +614,13 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+          <div className="sticky bottom-0 z-10 -mx-4 mt-2 border-t border-gray-200 bg-white/95 px-4 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:mt-6 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4 lg:col-span-3">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
+              className="w-full sm:w-auto"
               disabled={isLoading}
             >
               Cancel
@@ -628,6 +628,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
             <Button
               type="submit"
               variant="primary"
+              className="w-full sm:w-auto"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -642,6 +643,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                 'Save Changes'
               )}
             </Button>
+            </div>
           </div>
         </form>
 

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Modal, Badge, Button, HoverCard, HoverCardContent } from '../ui';
+import { Modal, Badge } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import QRCode from '../common/QRCode';
 import { getPrintableIdValidation } from '../../utils/childIdMapper';
+import ChildActionButtonGroup from './ChildActionButtonGroup.jsx';
 
-const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
+const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR, onEdit }) => {
   const [showQR, setShowQR] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   
   // Auto transition timer
   useEffect(() => {
@@ -17,6 +19,13 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
     
     return () => clearInterval(interval);
   }, [isOpen]);
+
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth < 640);
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
 
   if (!child) return null;
 
@@ -86,14 +95,14 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
         size="xl"
       >
         <motion.div 
-          className="grid grid-cols-3 gap-6 p-6"
+          className="grid grid-cols-1 gap-4 p-1 sm:p-2 lg:grid-cols-3 lg:gap-6 lg:p-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
           {/* Left Column - Photo with auto QR transition */}
           <motion.div 
-            className="col-span-1"
+            className="order-1 lg:col-span-1"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
@@ -130,14 +139,14 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
                       {child.formal_id ? (
                         <>
                           <div className="flex items-center justify-center w-full h-full">
-                            <div className="bg-white p-3 rounded-lg shadow-sm border border-nextgen-blue/10 flex items-center justify-center">
+                            <div className="bg-white p-2 sm:p-3 rounded-lg shadow-sm border border-nextgen-blue/10 flex items-center justify-center">
                               <QRCode 
                                 value={child.formal_id} 
-                                size={80}
+                                size={isMobile ? 160 : 96}
                                 level="H"
                                 fgColor="#30cee4"
                                 showLogo={true}
-                                logoSize={20}
+                                logoSize={isMobile ? 30 : 22}
                                 className="mx-auto"
                               />
                             </div>
@@ -185,75 +194,66 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
                 <h3 className="text-lg font-bold text-nextgen-blue-dark mb-3">
                   {child.first_name} {child.middle_name} {child.last_name}
                 </h3>
-                
-                <HoverCard openDelay={100} closeDelay={100}>
-                  {({ open, handleOpen, handleClose, triggerRef, position, updatePosition }) => (
-                    <div
-                      ref={triggerRef}
-                      className="relative w-full"
-                      onMouseEnter={() => {
-                        updatePosition('bottom');
-                        handleOpen();
-                      }}
-                      onMouseLeave={handleClose}
-                    >
-                      <Button 
-                        variant="primary" 
-                        size="sm" 
-                        onClick={handlePrintID}
-                        disabled={!printableValidation.isValid}
-                        fullWidth
-                        className="flex items-center justify-center"
-                      >
-                        <div className="flex items-center whitespace-nowrap">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                          </svg>
-                          <span>Print ID</span>
-                        </div>
-                      </Button>
-                      {!printableValidation.isValid && (
-                        <HoverCardContent open={open} side="bottom" position={position}>
-                          <div className="flex flex-col gap-1">
-                            <h4 className="font-medium text-sm">Print ID unavailable</h4>
-                            <p className="text-xs text-gray-600">Missing: {printableValidation.missingFields.join(', ')}</p>
-                          </div>
-                        </HoverCardContent>
-                      )}
-                    </div>
-                  )}
-                </HoverCard>
-
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  onClick={handleShowQR}
-                  disabled={!child.formal_id}
-                  fullWidth
-                  className="flex items-center justify-center"
-                >
-                  <div className="flex items-center whitespace-nowrap">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                    </svg>
-                    <span>Show QR</span>
-                  </div>
-                </Button>
+                <ChildActionButtonGroup
+                  primaryAction={{
+                    label: 'Print ID',
+                    onClick: handlePrintID,
+                    disabled: !printableValidation.isValid,
+                    icon: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      </svg>
+                    ),
+                    hoverTitle: !printableValidation.isValid ? 'Print ID unavailable' : 'Print child ID card',
+                    hoverDescription: !printableValidation.isValid
+                      ? `Missing: ${printableValidation.missingFields.join(', ')}`
+                      : 'Open printable ID format for this child.',
+                  }}
+                  secondaryAction={{
+                    label: 'Show QR',
+                    onClick: handleShowQR,
+                    disabled: !child.formal_id,
+                    icon: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                    ),
+                    hoverTitle: child.formal_id ? 'Show QR details' : 'QR unavailable',
+                    hoverDescription: child.formal_id
+                      ? 'Open the QR summary modal for this child.'
+                      : 'This child does not have a formal ID yet.',
+                  }}
+                  editAction={
+                    onEdit
+                      ? {
+                          label: 'Edit Child',
+                          onClick: onEdit,
+                          icon: (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          ),
+                          hoverTitle: 'Edit profile details',
+                          hoverDescription: 'Open this child in the edit form.',
+                        }
+                      : undefined
+                  }
+                />
               </div>
             </div>
           </motion.div>
 
           {/* Right Column - Details */}
-          <div className="col-span-2 space-y-6">
+          <div className="order-2 space-y-4 lg:col-span-2 lg:space-y-6">
             {/* Basic Information Box */}
             <motion.div 
-              className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm"
+              className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm sm:p-6"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.15 }}
             >
               <h4 className="text-lg font-medium text-nextgen-blue-dark mb-4">Basic Information</h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Age</p>
                   <p className="mt-1 text-gray-900">{calculateAge(child.birthdate)} years old</p>
@@ -302,7 +302,7 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
             {/* Guardian Information Box */}
             {child.child_guardian && (
               <motion.div 
-                className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm sm:p-6"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
@@ -311,14 +311,16 @@ const ChildDetailView = ({ child, isOpen, onClose, onPrintID, onShowQR }) => {
                 <div className="bg-gray-50 p-4 rounded-lg">
                   {getPrimaryGuardian(child.child_guardian) && (
                     <>
-                      <div className="flex justify-between items-start">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
                         <div>
                           <p className="font-medium text-gray-900">
                             {getPrimaryGuardian(child.child_guardian).first_name} {getPrimaryGuardian(child.child_guardian).last_name}
                           </p>
                           <p className="text-sm text-gray-500">{getPrimaryGuardian(child.child_guardian).relationship || 'Guardian'}</p>
                         </div>
-                        <Badge variant="success" size="sm">Primary</Badge>
+                        <div className="self-start">
+                          <Badge variant="success" size="sm">Primary</Badge>
+                        </div>
                       </div>
                       <div className="mt-2 text-sm text-gray-600">
                         {getPrimaryGuardian(child.child_guardian).phone_number && (

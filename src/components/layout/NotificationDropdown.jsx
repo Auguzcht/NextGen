@@ -117,7 +117,7 @@ const NotificationDropdown = ({ isOpen, onToggle, onClose }) => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50"
+            className="fixed left-2 right-2 top-20 z-50 w-auto max-w-none overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl sm:absolute sm:right-0 sm:left-auto sm:top-auto sm:mt-2 sm:w-96"
           >
             <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-nextgen-blue/5 to-nextgen-orange/5">
               <h3 className="font-semibold text-gray-900">Recent Activity</h3>

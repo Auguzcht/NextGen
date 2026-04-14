@@ -230,10 +230,13 @@ const Table = ({
 
   // Get primary column (usually name) - first column with 'name' in header or accessor
   const getPrimaryColumn = () => {
-    return columns.find(col => 
-      (typeof col.header === 'string' && col.header.toLowerCase().includes('name')) ||
-      (typeof col.accessor === 'string' && col.accessor.toLowerCase().includes('name'))
-    ) || columns[1] || columns[0]; // fallback to second or first column
+    return (
+      columns.find(col => col.mobilePrimary) ||
+      columns.find(col => typeof col.header === 'string' && (col.header.toLowerCase().includes('name') || col.header.toLowerCase().includes('title'))) ||
+      columns.find(col => typeof col.accessor === 'string' && ['name', 'title'].includes(col.accessor.toLowerCase())) ||
+      columns[0] ||
+      columns[1]
+    );
   };
 
   // Get actions column
@@ -478,7 +481,8 @@ Table.propTypes = {
       maxWidth: PropTypes.string,
       sortable: PropTypes.bool,
       sortKey: PropTypes.string,
-      noWrap: PropTypes.bool
+      noWrap: PropTypes.bool,
+      mobilePrimary: PropTypes.bool
     })
   ),
   isLoading: PropTypes.bool,

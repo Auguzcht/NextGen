@@ -109,7 +109,7 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ toast }}>
       {children}
       {createPortal(
-        <div className="fixed top-4 right-4 z-[10000] flex max-h-screen w-full flex-col gap-2 pointer-events-none md:max-w-[420px]">
+        <div className="fixed inset-x-2 top-4 z-[10000] flex max-h-screen flex-col gap-2 pointer-events-none sm:inset-x-auto sm:right-4 sm:w-full sm:max-w-[420px]">
           <AnimatePresence>
             {toasts.map((toastItem) => (
               <Toast key={toastItem.id} toast={toastItem} onClose={() => removeToast(toastItem.id)} />
@@ -152,11 +152,11 @@ const Toast = ({ toast, onClose }) => {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       transition={{ duration: 0.3, type: 'spring', stiffness: 500, damping: 30 }}
-      className={`pointer-events-auto relative flex w-full items-center justify-between space-x-3 overflow-hidden rounded-xl border p-4 pr-10 shadow-lg backdrop-blur-sm transition-all ${
+      className={`pointer-events-auto relative flex w-full max-w-full items-center justify-between space-x-3 overflow-hidden rounded-xl border p-4 pr-10 shadow-lg backdrop-blur-sm transition-all ${
         variantStyles[variant] || variantStyles.default
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         {Icon && (
           variant === 'loading' ? (
             <Icon className="h-5 w-5 mt-0.5 flex-shrink-0 animate-spin" />
@@ -164,9 +164,9 @@ const Toast = ({ toast, onClose }) => {
             <Icon className="h-5 w-5 mt-0.5 flex-shrink-0" />
           )
         )}
-        <div className="grid gap-1 flex-1">
-          {title && <div className="text-sm font-semibold">{title}</div>}
-          {description && <div className="text-sm opacity-90">{description}</div>}
+        <div className="grid min-w-0 flex-1 gap-1">
+          {title && <div className="text-sm font-semibold break-words">{title}</div>}
+          {description && <div className="text-sm opacity-90 break-words">{description}</div>}
           {action && <div className="mt-2">{action}</div>}
         </div>
       </div>

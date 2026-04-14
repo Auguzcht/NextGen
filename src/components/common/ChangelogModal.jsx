@@ -7,7 +7,8 @@ import { CHANGELOG, CURRENT_VERSION } from '../../utils/changelog';
 import { 
   Bot, Users, Shield, Mail, Calendar, Library, ClipboardCheck, 
   UserCheck, Palette, Server, Bug, Zap, Smartphone, ScanLine, IdCard, ShieldCheck, Wrench,
-  Settings, Sparkles, Code2, FileText, BarChart3, FilePenLine, Plug, KeyRound, Lock, Flame, Database, Rocket
+  Settings, Sparkles, Code2, FileText, BarChart3, FilePenLine, Plug, KeyRound, Lock, Flame, Database, Rocket,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
@@ -18,6 +19,11 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
   // Memoize version data lookup
   const versionData = useMemo(() => 
     CHANGELOG.find(v => v.version === selectedVersion) || CHANGELOG[0],
+    [selectedVersion]
+  );
+
+  const selectedVersionIndex = useMemo(
+    () => CHANGELOG.findIndex((v) => v.version === selectedVersion),
     [selectedVersion]
   );
 
@@ -112,6 +118,24 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
 
   if (!isOpen) return null;
 
+  const hasOlderVersion = selectedVersionIndex >= 0 && selectedVersionIndex < CHANGELOG.length - 1;
+  const hasNewerVersion = selectedVersionIndex > 0;
+
+  const goToOlderVersion = () => {
+    if (!hasOlderVersion) return;
+    setSelectedVersion(CHANGELOG[selectedVersionIndex + 1].version);
+  };
+
+  const goToNewerVersion = () => {
+    if (!hasNewerVersion) return;
+    setSelectedVersion(CHANGELOG[selectedVersionIndex - 1].version);
+  };
+
+  const getVersionOptionLabel = (entry) => {
+    const raw = `v${entry.version} - ${entry.title}`;
+    return raw.length > 42 ? `${raw.slice(0, 42)}...` : raw;
+  };
+
   return (
     <AnimatePresence mode="wait">
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -132,33 +156,33 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.98 }}
           transition={{ duration: 0.15 }}
-          className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl"
+          className="relative max-h-[92dvh] w-[calc(100vw-0.75rem)] max-w-4xl overflow-y-auto rounded-xl bg-white shadow-2xl sm:w-full"
         >
           {/* Header */}
-          <div className="border-b border-gray-200 bg-gradient-to-r from-nextgen-blue to-nextgen-blue-dark px-6 py-5 rounded-t-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-white/10 rounded-xl">
+          <div className="rounded-t-lg border-b border-gray-200 bg-gradient-to-r from-nextgen-blue to-nextgen-blue-dark px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                  <div className="rounded-xl bg-white/10 p-2.5 sm:p-3">
                     <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-2xl font-bold text-white">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <h2 className="text-5xl sm:text-2xl font-bold text-white leading-tight">
                         {viewMode === 'timeline' ? 'Patch History' : 'What\'s New'}
                       </h2>
                       {viewMode === 'single' && (
                         <Badge 
                           variant="white" 
                           size="sm" 
-                          className="bg-white/20 text-white border-white/30"
+                          className="bg-white/20 text-white border-white/30 whitespace-nowrap shrink-0"
                         >
                           v{versionData.version}
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm text-white/80 mt-1">
+                    <p className="mt-1 text-base sm:text-sm text-white/80 leading-snug pr-1 sm:pr-0">
                       {viewMode === 'timeline' 
                         ? `Complete history of all ${CHANGELOG.length} releases`
                         : versionData.title
@@ -168,7 +192,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                 </div>
                 <button
                   onClick={onClose}
-                  className="text-white/80 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10"
+                  className="shrink-0 rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -177,13 +201,26 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                 </div>
 
                 {/* View Mode Toggle & Version Selector */}
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-4 space-y-3">
+                  <div className="inline-flex max-w-full items-center rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-white/90">
+                    <span className="font-medium">Changelog</span>
+                    <span className="mx-2 text-white/60">/</span>
+                    <span className="font-medium">{viewMode === 'timeline' ? 'History' : 'Latest'}</span>
+                    {viewMode === 'single' && (
+                      <>
+                        <span className="mx-2 text-white/60">/</span>
+                        <span className="truncate">v{selectedVersion}</span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 overflow-x-hidden sm:flex sm:items-center sm:justify-between">
                   {/* View Mode Toggle */}
-                  <div className="flex gap-1 bg-white/10 rounded-lg p-1">
+                  <div className="flex gap-1 rounded-lg bg-white/10 p-1 w-full sm:w-auto">
                     <button
                       onClick={() => setViewMode('single')}
                       className={`
-                        px-3 py-1.5 rounded-md text-sm font-medium transition-all
+                        flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-all
                         ${viewMode === 'single'
                           ? 'bg-white text-nextgen-blue shadow-sm'
                           : 'text-white hover:bg-white/10'
@@ -195,7 +232,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                     <button
                       onClick={() => setViewMode('timeline')}
                       className={`
-                        px-3 py-1.5 rounded-md text-sm font-medium transition-all
+                        flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-all
                         ${viewMode === 'timeline'
                           ? 'bg-white text-nextgen-blue shadow-sm'
                           : 'text-white hover:bg-white/10'
@@ -206,38 +243,61 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                     </button>
                   </div>
 
-                  {/* Version Selector - Only show in single mode */}
+                  {/* Version Navigator - Only show in single mode */}
                   {viewMode === 'single' && CHANGELOG.length > 1 && (
-                    <div className="flex gap-2 flex-wrap">
-                      {CHANGELOG.map((v) => (
+                    <div className="w-full sm:w-auto">
+                      <div className="inline-flex w-full items-center overflow-hidden rounded-lg border border-white/35 bg-white/95 shadow-sm sm:w-auto">
                         <button
-                          key={v.version}
-                          onClick={() => setSelectedVersion(v.version)}
-                          className={`
-                            px-3 py-1.5 rounded-lg text-sm font-medium transition-all
-                            ${selectedVersion === v.version
-                              ? 'bg-white text-nextgen-blue shadow-md'
-                              : 'bg-white/10 text-white hover:bg-white/20'
-                            }
-                          `}
+                          type="button"
+                          onClick={goToOlderVersion}
+                          disabled={!hasOlderVersion}
+                          className="inline-flex h-9 w-11 items-center justify-center text-nextgen-blue-dark transition-colors hover:bg-nextgen-blue/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label="Go to older version"
                         >
-                          v{v.version}
+                          <ChevronLeft className="h-4 w-4" />
                         </button>
-                      ))}
+
+                        <div className="h-9 w-px bg-nextgen-blue/15" />
+
+                        <select
+                          value={selectedVersion}
+                          onChange={(e) => setSelectedVersion(e.target.value)}
+                          className="h-9 w-0 min-w-0 flex-1 truncate bg-transparent px-3 text-sm font-medium text-nextgen-blue-dark outline-none focus:bg-white sm:w-[320px] md:w-[380px]"
+                        >
+                          {CHANGELOG.map((v) => (
+                            <option key={v.version} value={v.version}>
+                              {getVersionOptionLabel(v)}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="h-9 w-px bg-nextgen-blue/15" />
+
+                        <button
+                          type="button"
+                          onClick={goToNewerVersion}
+                          disabled={!hasNewerVersion}
+                          className="inline-flex h-9 w-11 items-center justify-center text-nextgen-blue-dark transition-colors hover:bg-nextgen-blue/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label="Go to newer version"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
 
               {/* Body - Scrollable */}
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {viewMode === 'single' ? (
                   <>
                     {/* Single Version View */}
                     {/* Release Info */}
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <Badge {...getTypeBadge(versionData.type)} size="md">
+                    <div className="mb-6 border-b border-gray-200 pb-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <Badge {...getTypeBadge(versionData.type)} size="md" className="whitespace-nowrap self-start">
                           {getTypeBadge(versionData.type).label}
                         </Badge>
                         <span className="text-sm text-gray-600">
@@ -304,13 +364,13 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                         >
                           {/* Timeline Line */}
                           {versionIndex < CHANGELOG.length - 1 && (
-                            <div className="absolute left-6 top-16 w-0.5 h-full bg-gradient-to-b from-nextgen-blue/30 to-transparent"></div>
+                            <div className="absolute left-6 top-16 hidden h-full w-0.5 bg-gradient-to-b from-nextgen-blue/30 to-transparent sm:block"></div>
                           )}
                           
                           {/* Version Card */}
-                          <div className="flex gap-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                             {/* Timeline Dot */}
-                            <div className="flex-shrink-0 mt-2">
+                            <div className="mt-1 flex flex-shrink-0 items-center gap-3 sm:mt-2 sm:block">
                               <div className={`
                                 w-12 h-12 rounded-full flex items-center justify-center shadow-lg
                                 ${versionIndex === 0 
@@ -320,16 +380,17 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                               `}>
                                 <span className="text-sm font-bold">v{version.version}</span>
                               </div>
+                              <div className="h-px flex-1 bg-nextgen-blue/20 sm:hidden" />
                             </div>
                             
                             {/* Content */}
-                            <div className="flex-1 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-sm">
                               {/* Version Header */}
-                              <div className="flex items-start justify-between gap-4 mb-4">
+                              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                                 <div className="flex-1 min-w-0">
-                                  <h3 className="text-xl font-bold text-gray-900">{version.title}</h3>
+                                  <h3 className="text-3xl sm:text-xl font-bold text-gray-900 leading-tight">{version.title}</h3>
                                   <div className="flex items-center gap-3 mt-2">
-                                    <Badge {...getTypeBadge(version.type)} size="sm">
+                                    <Badge {...getTypeBadge(version.type)} size="sm" className="whitespace-nowrap">
                                       {getTypeBadge(version.type).label}
                                     </Badge>
                                     <span className="text-sm text-gray-500">
@@ -346,7 +407,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                                     setSelectedVersion(version.version);
                                     setViewMode('single');
                                   }}
-                                  className="flex-shrink-0 flex items-center gap-2 px-4 py-2 text-nextgen-blue hover:text-white hover:bg-nextgen-blue border border-nextgen-blue rounded-lg transition-all text-sm font-medium"
+                                  className="flex w-full flex-shrink-0 items-center justify-center gap-2 rounded-lg border border-nextgen-blue px-4 py-2 text-sm font-medium text-nextgen-blue transition-all hover:bg-nextgen-blue hover:text-white sm:w-auto"
                                 >
                                   View Details
                                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -397,8 +458,8 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
               </div>
 
               {/* Footer - Fixed at bottom */}
-              <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 rounded-b-lg">
-                <div className="flex items-center justify-between">
+              <div className="rounded-b-lg border-t border-gray-200 bg-gray-50 px-4 py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">NXTGen Ministry</span> · 
                     {viewMode === 'timeline' 
@@ -406,11 +467,12 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                       : ` Version ${versionData.version}`
                     }
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
                     {viewMode === 'timeline' && (
                       <Button
                         variant="outline"
                         size="sm"
+                        className="w-full sm:w-auto whitespace-nowrap"
                         onClick={() => {
                           setSelectedVersion(CURRENT_VERSION);
                           setViewMode('single');
@@ -422,6 +484,7 @@ const ChangelogModal = ({ isOpen, onClose, version = CURRENT_VERSION }) => {
                     <Button
                       variant="primary"
                       onClick={onClose}
+                      className="w-full sm:w-auto whitespace-nowrap"
                       icon={
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

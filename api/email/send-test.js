@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, validateEmailConfig } from '../../server/utils/emailProviders.js';
 import { createTestEmailTemplate } from '../../src/utils/emailTemplates.js';
+import { createEmailLogEntry } from '../../server/utils/emailLogHelpers.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -108,13 +109,15 @@ Sent at ${new Date().toLocaleString()}`
     // Log the test email
     await supabase
       .from('email_logs')
-      .insert({
-        template_id: null,
-        recipient_email: testEmail,
-        sent_date: new Date().toISOString(),
+      .insert(createEmailLogEntry({
+        templateId: null,
+        recipientEmail: testEmail,
+        subject: emailData.subject,
         status: 'sent',
-        notes: 'Test email sent successfully'
-      });
+        messageId: result.id || result.messageId || null,
+        materialIds: [],
+        notes: `Test email sent successfully | Message ID: ${result.id || result.messageId || 'N/A'}`,
+      }));
 
     return res.status(200).json({
       success: true,
@@ -131,13 +134,15 @@ Sent at ${new Date().toLocaleString()}`
     try {
       await supabase
         .from('email_logs')
-        .insert({
-          template_id: null,
-          recipient_email: req.body.testEmail,
-          sent_date: new Date().toISOString(),
+        .insert(createEmailLogEntry({
+          templateId: null,
+          recipientEmail: req.body.testEmail,
+          subject: 'NXTGen Ministry - Test Email Configuration',
           status: 'failed',
-          notes: `Test email failed: ${error.message}`
-        });
+          errorMessage: error.message || 'Unknown error',
+          materialIds: [],
+          notes: `Test email failed: ${error.message}`,
+        }));
     } catch (logError) {
       console.error('Failed to log error:', logError);
     }

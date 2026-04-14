@@ -14,20 +14,23 @@ const Modal = ({
   closeOnClickOutside = true,
   variant = 'default',
   closeButton = true,
+  mobileFullHeight = false,
+  stickyFooter = false,
+  bodyScrollable = true,
 }) => {
   const modalRef = useRef(null);
 
   // Size classes with better responsive handling
   const sizes = {
-    sm: 'w-full max-w-sm mx-4',
-    md: 'w-full max-w-md mx-4',
-    lg: 'w-full max-w-lg mx-4',
-    xl: 'w-full max-w-xl mx-4',
-    '2xl': 'w-full max-w-2xl mx-4',
-    '3xl': 'w-full max-w-3xl mx-4',
-    '4xl': 'w-full max-w-4xl mx-4',
-    '5xl': 'w-full max-w-5xl mx-4',
-    'full': 'w-[95vw] max-w-full mx-auto',
+    sm: 'w-[calc(100vw-1rem)] max-w-sm sm:mx-4',
+    md: 'w-[calc(100vw-1rem)] max-w-md sm:mx-4',
+    lg: 'w-[calc(100vw-1rem)] max-w-lg sm:mx-4',
+    xl: 'w-[calc(100vw-1rem)] max-w-xl sm:mx-4',
+    '2xl': 'w-[calc(100vw-1rem)] max-w-2xl sm:mx-4',
+    '3xl': 'w-[calc(100vw-1rem)] max-w-3xl sm:mx-4',
+    '4xl': 'w-[calc(100vw-1rem)] max-w-4xl sm:mx-4',
+    '5xl': 'w-[calc(100vw-1rem)] max-w-5xl sm:mx-4',
+    'full': 'w-[calc(100vw-1rem)] max-w-none sm:w-[95vw] sm:max-w-full',
   };
   
   // Variants using NextGen color palette
@@ -109,7 +112,7 @@ const Modal = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[9999] overflow-hidden flex items-center justify-center p-2 sm:p-4"
+          className="fixed inset-0 z-[9999] overflow-hidden flex items-center justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4"
           initial="hidden"
           animate="visible"
           exit="exit"
@@ -126,7 +129,7 @@ const Modal = ({
           
           <motion.div
             ref={modalRef}
-            className={`${sizes[size]} rounded-lg shadow-2xl z-10 flex flex-col max-h-[90vh] ${variants[variant]}`}
+            className={`${sizes[size]} rounded-lg shadow-2xl z-10 flex flex-col ${mobileFullHeight ? 'h-[92dvh] sm:h-auto sm:max-h-[92dvh]' : 'max-h-[92dvh]'} ${variants[variant]}`}
             variants={modalVariants}
             style={{ overflowX: 'hidden' }}
           >
@@ -155,7 +158,7 @@ const Modal = ({
                 {closeButton && (
                   <motion.button
                     onClick={onClose}
-                    className="rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors ml-4"
+                    className="ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors"
                     aria-label="Close"
                     initial={{ opacity: 0, rotate: 45 }}
                     animate={{ opacity: 1, rotate: 0 }}
@@ -174,7 +177,7 @@ const Modal = ({
             )}
             
             <motion.div 
-              className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-grow"
+              className={`px-4 sm:px-6 py-4 sm:py-5 flex-grow ${bodyScrollable ? 'overflow-y-auto' : 'overflow-hidden'}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
@@ -187,7 +190,7 @@ const Modal = ({
             
             {footer && (
               <motion.div 
-                className="px-4 sm:px-6 py-3 sm:py-4 border-t border-nextgen-blue/20 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 flex-shrink-0"
+                className={`px-4 sm:px-6 py-3 sm:py-4 border-t border-nextgen-blue/20 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 flex-shrink-0 ${stickyFooter ? 'sticky bottom-0 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80' : ''}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
@@ -200,7 +203,7 @@ const Modal = ({
             {!title && closeButton && (
               <motion.button
                 onClick={onClose}
-                className="absolute top-4 right-4 rounded-full p-1.5 text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors"
+                className="absolute top-3 right-3 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:text-nextgen-blue hover:bg-nextgen-blue/10 transition-colors"
                 aria-label="Close"
                 initial={{ opacity: 0, rotate: 45 }}
                 animate={{ opacity: 1, rotate: 0 }}
@@ -231,7 +234,10 @@ Modal.propTypes = {
   size: PropTypes.oneOf(['sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', 'full']),
   closeOnClickOutside: PropTypes.bool,
   variant: PropTypes.oneOf(['default', 'primary', 'secondary', 'glass']),
-  closeButton: PropTypes.bool
+  closeButton: PropTypes.bool,
+  mobileFullHeight: PropTypes.bool,
+  stickyFooter: PropTypes.bool,
+  bodyScrollable: PropTypes.bool
 };
 
 export default Modal;

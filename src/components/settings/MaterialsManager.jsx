@@ -146,7 +146,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
       
       // Age group filter
       const matchesAgeGroup = ageGroupFilter === 'all' || 
-        material.age_category_id?.toString() === ageGroupFilter;
+        material.category_id?.toString() === ageGroupFilter;
       
       return matchesSearch && matchesCategory && matchesAgeGroup;
     });
@@ -201,21 +201,19 @@ const MaterialsManager = ({ ageCategories = [] }) => {
     {
       header: 'Title',
       accessor: 'title',
+      mobilePrimary: true,
       sortable: true,
       sortKey: 'title',
       noWrap: false,
       maxWidth: "350px",
       cell: (material) => (
         <div className="flex items-center">
-          <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal flex items-center justify-center text-white mr-3">
+          <div className="mr-3 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-nextgen-blue to-nextgen-teal text-white sm:h-10 sm:w-10">
             {getCategoryIcon(material.category)}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 truncate">{material.title}</div>
-            {material.description && (
-              <div className="text-xs text-gray-500 line-clamp-1">{material.description}</div>
-            )}
-            <div className="flex items-center gap-1.5 mt-1">
+            <div className="text-sm font-medium text-gray-900 break-words line-clamp-2 sm:truncate">{material.title}</div>
+            <div className="mt-1 hidden items-center gap-1.5 sm:flex">
               {material.link_type === 'external' ? (
                 <Badge variant="info" size="sm">
                   External URL
@@ -267,7 +265,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
       header: 'Actions',
       accessor: 'actions',
       cell: (material) => (
-        <div className="flex justify-end items-center space-x-2">
+        <div className="flex justify-end items-center space-x-1 sm:space-x-2">
           {material.file_url && (
             <a
               href={material.file_url}
@@ -295,7 +293,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
                   )
                 }
               >
-                {material.link_type === 'external' ? 'Open Link' : material.file_url.includes('drive.google.com') ? 'View' : 'Open'}
+                <span className="hidden sm:inline">{material.link_type === 'external' ? 'Open Link' : material.file_url.includes('drive.google.com') ? 'View' : 'Open'}</span>
               </Button>
             </a>
           )}
@@ -310,7 +308,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
               </svg>
             }
           >
-            Edit
+            <span className="hidden sm:inline">Edit</span>
           </Button>
           <Button
             variant="danger"
@@ -324,7 +322,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
               </svg>
             }
           >
-            Delete
+            <span className="hidden sm:inline">Delete</span>
           </Button>
         </div>
       )
@@ -495,7 +493,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
   return (
     <div className="w-full max-w-full overflow-hidden">
       <div className="mb-6">
-        <div className="flex justify-between items-center mb-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Materials Library</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -506,6 +504,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
             onClick={() => setShowForm(true)}
             variant="primary"
             size="sm"
+            className="w-full sm:w-auto"
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -524,7 +523,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2 lg:grid-cols-5 lg:gap-3">
           <div className="lg:col-span-2">
             <Input
               type="text"
@@ -545,6 +544,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
               ) : null}
               size="sm"
               fullWidth
+              className="mb-1"
               style={{ height: '42px' }}
             />
           </div>
@@ -559,6 +559,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
               ...categories.map(cat => ({ value: cat, label: cat }))
             ]}
             size="sm"
+            className="mb-1"
           />
           
           <Input
@@ -569,13 +570,14 @@ const MaterialsManager = ({ ageCategories = [] }) => {
             options={[
               { value: 'all', label: 'All Age Groups' },
               ...ageCategories
-                .filter(cat => cat.age_category_id)
+                .filter(cat => cat.category_id)
                 .map(cat => ({ 
-                  value: cat.age_category_id.toString(), 
+                  value: cat.category_id.toString(), 
                   label: cat.category_name 
                 }))
             ]}
             size="sm"
+            className="mb-1"
           />
           
           <div>
@@ -594,6 +596,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               }
+              className="w-full sm:w-auto"
               style={{ height: '42px', paddingLeft: '12px', paddingRight: '12px' }}
             >
               Clear
@@ -601,7 +604,7 @@ const MaterialsManager = ({ ageCategories = [] }) => {
           </div>
         </div>
         
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-500">
             {filteredMaterials.length} material{filteredMaterials.length !== 1 ? 's' : ''} found
             {totalPages > 1 && (

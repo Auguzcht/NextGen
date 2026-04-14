@@ -311,6 +311,36 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
     );
   };
 
+  const renderMobilePagination = () => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="mt-4 flex items-center justify-between gap-2 px-4 pb-4 md:hidden">
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1"
+        >
+          Previous
+        </Button>
+        <p className="text-xs text-gray-500">
+          Page {currentPage} of {totalPages}
+        </p>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1"
+        >
+          Next
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <Card variant="minimal">
       <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
@@ -334,17 +364,102 @@ const WeeklyReportsList = ({ onGenerateReport, triggerRefresh }) => {
         </div>
       ) : (
         <>
-          <Table
-            data={reports}
-            columns={columns}
-            isLoading={loading}
-            noDataMessage="No weekly reports found"
-            highlightOnHover={true}
-            variant="primary"
-            className="border-0"
-          />
-          
-          {renderPagination()}
+          <div className="hidden md:block">
+            <Table
+              data={reports}
+              columns={columns}
+              isLoading={loading}
+              noDataMessage="No weekly reports found"
+              highlightOnHover={true}
+              variant="primary"
+              className="border-0"
+            />
+          </div>
+
+          <div className="space-y-3 p-4 md:hidden">
+            {reports.map((report) => (
+              <motion.div
+                key={report.report_id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-md border border-gray-200 bg-white p-3"
+              >
+                <p className="text-sm font-semibold text-gray-900 leading-6">
+                  {formatDate(report.week_start_date, { month: 'short', day: 'numeric' })} - {formatDate(report.week_end_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-gray-600">
+                  <div>
+                    <p className="font-medium">Total</p>
+                    <p>{report.total_attendance}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Unique</p>
+                    <p>{report.unique_children}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">First</p>
+                    <p>{report.first_timers}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  {report.report_pdf_url ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => handleViewReport(report.report_pdf_url)}
+                        className="flex-1"
+                      >
+                        View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={async () => {
+                          const toastId = toast.loading('Preparing download...');
+
+                          try {
+                            const response = await fetch(report.report_pdf_url);
+                            if (!response.ok) throw new Error('Failed to fetch PDF');
+
+                            const blob = await response.blob();
+                            const blobUrl = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = blobUrl;
+                            link.download = `weekly-report-${report.week_start_date}.pdf`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+
+                            toast.dismiss(toastId);
+                            toast.success('Download Started', {
+                              description: 'Your report is being downloaded'
+                            });
+                          } catch (error) {
+                            toast.dismiss(toastId);
+                            toast.error('Download Failed', {
+                              description: 'Could not download the report. Please try again.'
+                            });
+                          }
+                        }}
+                        className="flex-1"
+                      >
+                        Download
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-gray-400">No PDF Available</span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="hidden md:block">{renderPagination()}</div>
+          {renderMobilePagination()}
         </>
       )}
     </Card>

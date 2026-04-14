@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchEmails, validateEmailConfig } from '../../server/utils/emailProviders.js';
 import { createCustomEmailTemplate } from '../../src/utils/emailTemplates.js';
+import { createEmailLogEntry } from '../../server/utils/emailLogHelpers.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -224,11 +225,15 @@ export default async function handler(req, res) {
     // Log successful emails
     if (results.success.length > 0) {
       const logEntries = results.success.map(result => ({
-        template_id: template_id || null,
-        recipient_email: result.recipient,
-        sent_date: new Date().toISOString(),
-        status: 'sent',
-        notes: `Sent via EmailComposer - Subject: ${subject}`
+        ...createEmailLogEntry({
+          templateId: template_id || null,
+          recipientEmail: result.recipient || result.email,
+          subject,
+          status: 'sent',
+          messageId: result.messageId || result.id || null,
+          materialIds: material_ids,
+          notes: `Sent via EmailComposer - Message ID: ${result.messageId || result.id || 'N/A'}`,
+        }),
       }));
 
       await supabase
@@ -239,11 +244,15 @@ export default async function handler(req, res) {
     // Log failed emails
     if (results.failed.length > 0) {
       const failedLogEntries = results.failed.map(failure => ({
-        template_id: template_id || null,
-        recipient_email: failure.recipient,
-        sent_date: new Date().toISOString(),
-        status: 'failed',
-        notes: `Failed via EmailComposer: ${failure.error} - Subject: ${subject}`
+        ...createEmailLogEntry({
+          templateId: template_id || null,
+          recipientEmail: failure.recipient || failure.email,
+          subject,
+          status: 'failed',
+          errorMessage: failure.error || null,
+          materialIds: material_ids,
+          notes: `Failed via EmailComposer: ${failure.error}`,
+        }),
       }));
 
       await supabase

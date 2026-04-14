@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 // https://vitejs.dev/config/
@@ -13,6 +14,44 @@ export default defineConfig(({ mode }) => ({
       include: "**/*.{jsx,js,ts,tsx}",
       // Auto-import React in all JSX files
       jsxImportSource: 'react',
+    }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      devOptions: {
+        enabled: true,
+      },
+      includeAssets: ['NextGen-Logo.svg', 'NextGen-Logo.png'],
+      manifest: {
+        id: '/',
+        name: 'NXTGen Ministry Management',
+        short_name: 'NXTGen',
+        description: 'NXTGen Ministry management app with attendance, staff scheduling, reporting, and operations tools.',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#f3f4f6',
+        theme_color: '#30cee4',
+        orientation: 'portrait',
+        icons: [
+          {
+            src: '/nextgen-appstore-images/android/launchericon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
+            src: '/nextgen-appstore-images/android/launchericon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      },
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
+      }
     })
   ],
   

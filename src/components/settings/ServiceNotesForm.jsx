@@ -231,11 +231,11 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
 
   const modalContent = (
     <div 
-      className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4"
       onClick={handleClose}
     >
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl w-[calc(100vw-1rem)] sm:w-full max-w-3xl max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
@@ -243,7 +243,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Section */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {showServiceList ? 'Select Service for Notes' : `Service Notes${existingNoteId ? ' - Edit' : ' - Add'}`}
           </h2>
@@ -259,7 +259,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {showServiceList ? (
             <>
               <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md backdrop-blur-sm shadow-sm">
@@ -287,7 +287,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   <p className="text-gray-500">No services with attendance found.</p>
-                  <p className="text-sm text-gray-400 mt-1">Services will appear here after children are checked in.</p>
+                  <p className="text-sm text-gray-400 mt-2">Services will appear here after children are checked in.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -318,7 +318,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                           >
                             <div>
                               <p className="text-sm font-medium text-gray-900">{service.service_name}</p>
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-gray-500 mt-2">
                                 {formatDate(service.service_date, { month: 'long', day: 'numeric', year: 'numeric' })} • {service.day_of_week}
                               </p>
                             </div>
@@ -353,7 +353,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                           >
                             <div>
                               <p className="text-sm font-medium text-gray-900">{service.service_name}</p>
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-gray-500 mt-2">
                                 {formatDate(service.service_date, { month: 'long', day: 'numeric', year: 'numeric' })} • {service.day_of_week}
                               </p>
                             </div>
@@ -398,7 +398,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                       <p className="text-sm font-semibold text-nextgen-blue-dark">
                         {selectedService?.service_name}
                       </p>
-                      <p className="text-xs text-gray-600 mt-1">
+                      <p className="text-xs text-gray-600 mt-2">
                         {formatDate(selectedService?.service_date, { month: 'long', day: 'numeric', year: 'numeric' })} • {selectedService?.day_of_week}
                       </p>
                     </div>
@@ -419,7 +419,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                 </motion.div>
 
                 <motion.div 
-                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                  className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
@@ -437,7 +437,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                 </motion.div>
 
                 <motion.div 
-                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                  className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.15 }}
@@ -469,7 +469,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                 </motion.div>
 
                 <motion.div 
-                  className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                  className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.2 }}
@@ -492,13 +492,14 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
           )}
         </div>
 
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 sticky bottom-0">
-          <div className="flex justify-end space-x-3">
+        <div className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-gray-50 sticky bottom-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={showServiceList ? handleClose : handleBack}
               disabled={isSaving}
+              className="w-full sm:w-auto"
             >
               {showServiceList ? 'Cancel' : 'Back'}
             </Button>
@@ -509,6 +510,7 @@ const ServiceNotesForm = ({ onClose, onSuccess }) => {
                 onClick={handleSubmit}
                 disabled={isSaving}
                 isLoading={isSaving}
+                className="w-full sm:w-auto"
               >
                 {existingNoteId ? 'Save Changes' : 'Save Notes'}
               </Button>

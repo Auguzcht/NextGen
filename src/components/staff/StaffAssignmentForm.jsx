@@ -301,16 +301,16 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4">
       <motion.div 
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl w-[calc(100vw-1rem)] sm:w-full max-w-2xl max-h-[92dvh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
       >
         {/* Header Section */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-nextgen-blue-dark">
             {isEdit ? 'Edit Staff Assignment' : 'Assign Staff Member'}
           </h2>
@@ -327,7 +327,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
         {/* Show saved draft indicator */}
         {!isEdit && isRestoredDraft && (
-          <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-6 mt-4 rounded-md">
+          <div className="bg-green-50 border-l-4 border-green-400 p-3 sm:p-4 mx-4 sm:mx-6 mt-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -360,7 +360,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
         )}
 
         {/* Form Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {/* Info Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-l-4 border-nextgen-blue p-4 mb-6 rounded-r-md backdrop-blur-sm shadow-sm">
             <div className="flex">
@@ -388,7 +388,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Staff and Service Selection */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
@@ -399,7 +399,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                 
                 <div className="space-y-4">
                   <div>
-                    <label htmlFor="staff_id" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="staff_id" className="block text-sm font-medium text-gray-700 mb-2">
                       Staff Member *
                     </label>
                     <select
@@ -418,7 +418,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                       ))}
                     </select>
                     {errors.staff_id && (
-                      <p className="mt-1 text-sm text-red-600">{errors.staff_id}</p>
+                      <p className="mt-2 text-sm text-red-600">{errors.staff_id}</p>
                     )}
                   </div>
 
@@ -454,7 +454,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                       )}
                     </div>
                     {errors.service_ids && (
-                      <p className="mt-1 text-sm text-red-600">{errors.service_ids}</p>
+                      <p className="mt-2 text-sm text-red-600">{errors.service_ids}</p>
                     )}
                     {formData.service_ids && formData.service_ids.length > 0 && (
                       <p className="mt-2 text-sm text-nextgen-blue">
@@ -467,7 +467,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
               {/* Date and Role */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
@@ -478,7 +478,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="assignment_date" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="assignment_date" className="block text-sm font-medium text-gray-700 mb-2">
                       Assignment Date *
                     </label>
                     <DatePickerOverlay
@@ -498,7 +498,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                   </div>
 
                   <div>
-                    <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
                       Role *
                     </label>
                     <select
@@ -516,9 +516,9 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                       ))}
                     </select>
                     {errors.role && (
-                      <p className="mt-1 text-sm text-red-600">{errors.role}</p>
+                      <p className="mt-2 text-sm text-red-600">{errors.role}</p>
                     )}
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-2 text-sm text-gray-500">
                       {roleOptions.find(r => r.value === formData.role)?.description}
                     </p>
                   </div>
@@ -527,7 +527,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
 
               {/* Notes */}
               <motion.div 
-                className="bg-white rounded-lg border border-[#571C1F]/10 p-6 shadow-sm"
+                className="bg-white rounded-lg border border-[#571C1F]/10 p-4 sm:p-6 shadow-sm"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
@@ -537,7 +537,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                 </h3>
                 
                 <div>
-                  <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-2">
                     Notes (Optional)
                   </label>
                   <textarea
@@ -546,7 +546,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
                     rows="3"
                     value={formData.notes}
                     onChange={handleInputChange}
-                    className="shadow-sm focus:ring-nextgen-blue focus:border-nextgen-blue mt-1 block w-full sm:text-sm border border-gray-300 rounded-md px-3 py-2"
+                    className="shadow-sm focus:ring-nextgen-blue focus:border-nextgen-blue mt-2 block w-full sm:text-sm border border-gray-300 rounded-md px-3 py-2"
                     placeholder="Any special instructions or notes for this assignment..."
                   ></textarea>
                 </div>
@@ -556,13 +556,14 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
         </div>
 
         {/* Form Actions - Bottom fixed section */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-          <div className="flex justify-end space-x-3">
+        <div className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-gray-50 sticky bottom-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={submitting || loading}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -572,7 +573,7 @@ const StaffAssignmentForm = ({ isOpen, onClose, onSuccess, isEdit = false, initi
               onClick={handleSubmit}
               disabled={submitting || loading}
               isLoading={submitting}
-              className="relative"
+              className="relative w-full sm:w-auto"
             >
               {isEdit ? 'Update Assignment' : 'Assign Staff'}
             </Button>

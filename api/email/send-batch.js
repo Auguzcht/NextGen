@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchEmails, validateEmailConfig } from '../../server/utils/emailProviders.js';
 import { createCustomEmailTemplate } from '../../src/utils/emailTemplates.js';
+import { createEmailLogEntry } from '../../server/utils/emailLogHelpers.js';
 
 // Use non-VITE prefixed vars in production
 const supabase = createClient(
@@ -123,13 +124,16 @@ export default async function handler(req, res) {
     // Log successful emails
     if (results.success.length > 0) {
       const successLogs = results.success.map(item => ({
-        template_id: templateId || null,
-        recipient_email: item.email,
-        guardian_id: item.guardianId || null,
-        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
-        sent_date: new Date().toISOString(),
-        status: 'sent',
-        notes: `Message ID: ${item.messageId || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`
+        ...createEmailLogEntry({
+          templateId: templateId || null,
+          recipientEmail: item.email,
+          guardianId: item.guardianId || null,
+          subject,
+          status: 'sent',
+          messageId: item.messageId || item.id || null,
+          materialIds,
+          notes: `Message ID: ${item.messageId || item.id || 'N/A'}${materials.length > 0 ? ` | Materials: ${materials.length}` : ''}`,
+        }),
       }));
 
       await supabase
@@ -140,13 +144,16 @@ export default async function handler(req, res) {
     // Log failed emails
     if (results.failed.length > 0) {
       const failedLogs = results.failed.map(item => ({
-        template_id: templateId || null,
-        recipient_email: item.email,
-        guardian_id: item.guardianId || null,
-        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
-        sent_date: new Date().toISOString(),
-        status: 'failed',
-        notes: `Error: ${item.error}`
+        ...createEmailLogEntry({
+          templateId: templateId || null,
+          recipientEmail: item.email,
+          guardianId: item.guardianId || null,
+          subject,
+          status: 'failed',
+          errorMessage: item.error || null,
+          materialIds,
+          notes: `Error: ${item.error}`,
+        }),
       }));
 
       await supabase
@@ -157,13 +164,16 @@ export default async function handler(req, res) {
     // Log skipped emails (invalid/placeholder addresses)
     if (results.skipped && results.skipped.length > 0) {
       const skippedLogs = results.skipped.map(item => ({
-        template_id: templateId || null,
-        recipient_email: item.email,
-        guardian_id: item.guardianId || null,
-        material_ids: materialIds && materialIds.length > 0 ? JSON.stringify(materialIds) : null,
-        sent_date: new Date().toISOString(),
-        status: 'failed',
-        notes: `Skipped: ${item.reason}`
+        ...createEmailLogEntry({
+          templateId: templateId || null,
+          recipientEmail: item.email,
+          guardianId: item.guardianId || null,
+          subject,
+          status: 'failed',
+          errorMessage: item.reason || 'Skipped recipient',
+          materialIds,
+          notes: `Skipped: ${item.reason}`,
+        }),
       }));
 
       await supabase

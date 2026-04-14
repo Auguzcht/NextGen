@@ -54,7 +54,7 @@ const Dialog = ({ open, onOpenChange, children }) => {
           />
           
           {/* Dialog Container */}
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">
             {childrenWithProps}
           </div>
         </>
@@ -73,18 +73,18 @@ const DialogContent = React.forwardRef(
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2, type: 'spring', stiffness: 400, damping: 25 }}
-        className={`relative z-10 w-full max-w-lg rounded-xl border border-gray-200/60 bg-white shadow-2xl overflow-hidden ${className || ''}`}
+        className={`relative z-10 w-[calc(100vw-1rem)] max-w-lg max-h-[92dvh] rounded-xl border border-gray-200/60 bg-white shadow-2xl overflow-hidden ${className || ''}`}
         onClick={(e) => e.stopPropagation()}
         {...props}
       >
-        <div className="p-6">
+        <div className="overflow-y-auto p-4 sm:p-6 max-h-[92dvh]">
           {children}
         </div>
         {showCloseButton && onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 rounded-md p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nextgen-blue focus:ring-offset-2"
+            className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nextgen-blue focus:ring-offset-2"
           >
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>

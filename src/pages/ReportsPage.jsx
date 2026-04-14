@@ -6,7 +6,7 @@ import ReportChart from '../components/reports/ReportChart.jsx';
 import AttendancePatternChart from '../components/reports/AttendancePatternChart.jsx';
 import ServiceComparisonChart from '../components/reports/ServiceComparisonChart.jsx';
 import WeeklyReportsList from '../components/reports/WeeklyReportsList.jsx';
-import { Card, Button, Input, Badge, NextGenChart, useToast } from '../components/ui';
+import { Card, Button, Input, Badge, NextGenChart, DateRangePickerOverlay, useToast } from '../components/ui';
 import { formatDate, getMonthDateRange, getWeekDateRange } from '../utils/dateUtils.js';
 import { generateWeeklyReportPDF } from '../utils/pdfGenerator.js';
 import { storage } from '../services/firebase.js';
@@ -18,6 +18,7 @@ const ReportsPage = () => {
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(true);
   const [reportType, setReportType] = useState('dashboard');
+  const [mobileTabsOpen, setMobileTabsOpen] = useState(false);
   const [timeRange, setTimeRange] = useState('weekly');
   const [reportData, setReportData] = useState({
     attendance: [],
@@ -819,10 +820,13 @@ const ReportsPage = () => {
   // Handlers for tab switching
   const handleTabChange = (tab) => {
     setReportType(tab);
+    setMobileTabsOpen(false);
     if (['attendance', 'growth', 'age'].includes(tab)) {
       updateChartData(tab, reportData.attendance, reportData.growth, reportData.age);
     }
   };
+
+  const activeTab = tabs.find((tab) => tab.id === reportType) || tabs[0];
 
   // Add this function to your ReportsPage component
   const updateChartData = useCallback((type, attendanceData, growthData, ageData) => {
@@ -1302,18 +1306,19 @@ const ReportsPage = () => {
           {/* Improved Filters Section */}
         <div className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm mb-6">
           {/* Header with title and action buttons */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-lg font-medium text-nextgen-blue-dark">
               Data Filters
             </h3>
             
             {/* Action Buttons - Positioned in the header */}
-            <div>
+            <div className="w-full sm:w-auto">
               {reportType !== 'dashboard' && reportType !== 'weekly' && (
                 <Button 
                   variant="primary"
                   onClick={exportData}
                   disabled={loading}
+                  className="w-full sm:w-auto"
                 >
                   <svg className="h-4 w-4 mr-2 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1327,6 +1332,7 @@ const ReportsPage = () => {
                   variant="primary"
                   onClick={handleGenerateReport}
                   disabled={loading}
+                  className="w-full sm:w-auto"
                 >
                   <svg className="h-4 w-4 mr-2 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1338,9 +1344,9 @@ const ReportsPage = () => {
           </div>
 
           {/* First row - 4 column grid layout to utilize all space */}
-          <div className="grid grid-cols-4 gap-4 mb-1">
+          <div className="mb-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 lg:gap-4">
             {/* Time Interval */}
-            <div>
+            <div className="lg:col-span-1">
               <label htmlFor="time-interval" className="block text-sm font-medium text-gray-700 mb-1">
                 Time Interval
               </label>
@@ -1357,43 +1363,34 @@ const ReportsPage = () => {
               />
             </div>
             
-            {/* Start Date */}
-            <div>
-              <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date
+            {/* Date Range */}
+            <div className="mb-4 md:col-span-2 lg:col-span-1 lg:mb-0">
+              <label htmlFor="reports-date-range" className="block text-sm font-medium text-gray-700 mb-1">
+                Date Range
               </label>
-              <Input
-                type="date"
-                id="start-date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            
-            {/* End Date */}
-            <div>
-              <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-1">
-                End Date
-              </label>
-              <Input
-                type="date"
-                id="end-date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+              <DateRangePickerOverlay
+                id="reports-date-range"
+                value={{ from: startDate, to: endDate }}
+                onChange={(range) => {
+                  const nextFrom = range?.from || '';
+                  const nextTo = range?.to || range?.from || '';
+                  setStartDate(nextFrom);
+                  setEndDate(nextTo);
+                }}
               />
             </div>
             
             {/* Quick Select - More compact layout */}
-            <div>
+            <div className="lg:col-span-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Quick Select
               </label>
-              <div className="flex flex-wrap gap-1 h-[38px]">
+              <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap sm:h-[38px]">
                 <Button 
                   variant="outline" 
                   size="xs"
                   onClick={() => handleDatePreset('last7days')}
-                  className="text-xs px-2 py-1"
+                  className="px-2 py-1 text-xs"
                 >
                   7d
                 </Button>
@@ -1401,7 +1398,7 @@ const ReportsPage = () => {
                   variant="outline" 
                   size="xs"
                   onClick={() => handleDatePreset('last30days')}
-                  className="text-xs px-2 py-1"
+                  className="px-2 py-1 text-xs"
                 >
                   30d
                 </Button>
@@ -1409,7 +1406,7 @@ const ReportsPage = () => {
                   variant="outline" 
                   size="xs"
                   onClick={() => handleDatePreset('thisMonth')}
-                  className="text-xs px-2 py-1"
+                  className="px-2 py-1 text-xs"
                 >
                   This Month
                 </Button>
@@ -1417,7 +1414,7 @@ const ReportsPage = () => {
                   variant="outline" 
                   size="xs"
                   onClick={() => handleDatePreset('last3months')}
-                  className="text-xs px-2 py-1"
+                  className="px-2 py-1 text-xs"
                 >
                   3 Months
                 </Button>
@@ -1426,11 +1423,11 @@ const ReportsPage = () => {
           </div>
 
           {/* Second row - Current period indicator */}
-          <div className="bg-nextgen-blue/5 px-3 py-2 rounded-md flex items-center">
-            <svg className="h-4 w-4 mr-2 text-nextgen-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex items-start rounded-md bg-nextgen-blue/5 px-3 py-2 sm:items-center mt-4">
+            <svg className="mr-2 mt-0.5 h-4 w-4 shrink-0 text-nextgen-blue sm:mt-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-sm text-nextgen-blue-dark">
+            <span className="text-sm leading-snug text-nextgen-blue-dark">
               <span className="font-medium">Current Period:</span> {formatDate(startDate, { month: 'short', day: 'numeric' })} - {formatDate(endDate, { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
@@ -1439,13 +1436,56 @@ const ReportsPage = () => {
           {/* Modern Tab Navigation */}
           <div className="mb-6 overflow-hidden">
             <div className="bg-white rounded-lg shadow-sm">
-              <div className="flex overflow-x-auto scrollbar-hide p-1">
+              <div className="sm:hidden p-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileTabsOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-md bg-nextgen-blue px-3 py-2.5 text-white shadow"
+                  aria-expanded={mobileTabsOpen}
+                  aria-controls="reports-mobile-tabs"
+                >
+                  <span className="flex items-center">
+                    <span className="mr-2">{activeTab.icon}</span>
+                    <span className="text-sm font-medium">{activeTab.label}</span>
+                  </span>
+                  <svg className={`h-4 w-4 transition-transform ${mobileTabsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {mobileTabsOpen && (
+                    <motion.div
+                      id="reports-mobile-tabs"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-1 overflow-hidden rounded-md border border-gray-100"
+                    >
+                      {tabs.filter((tab) => tab.id !== reportType).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => handleTabChange(tab.id)}
+                          className="flex w-full items-center px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-nextgen-blue/5"
+                        >
+                          <span className="mr-2">{tab.icon}</span>
+                          <span className="font-medium">{tab.label}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="hidden sm:flex sm:flex-wrap sm:gap-1 sm:p-1">
                 {tabs.map((tab) => (
                   <motion.button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
                     className={`
-                      flex items-center px-4 py-2.5 rounded-md transition-all duration-200 whitespace-nowrap mx-0.5
+                      flex items-center rounded-md px-4 py-2.5 transition-all duration-200 whitespace-nowrap mx-0.5
                       ${reportType === tab.id
                         ? 'bg-nextgen-blue text-white shadow-md'
                         : 'text-gray-700 hover:bg-nextgen-blue/5'}
@@ -1801,8 +1841,9 @@ const ReportsPage = () => {
                           <p className="text-gray-500">No weekly reports available</p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-gray-200">
+                        <>
+                          <div className="hidden overflow-x-auto md:block">
+                            <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                               <tr>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1888,18 +1929,74 @@ const ReportsPage = () => {
                                 </motion.tr>
                               ))}
                             </tbody>
-                          </table>
-                          
+                            </table>
+                          </div>
+
+                          <div className="space-y-3 md:hidden">
+                            {weeklyReports.slice(0, 5).map((report) => (
+                              <div key={report.report_id} className="rounded-md border border-gray-200 p-3">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {formatDate(report.week_start_date, { month: 'short', day: 'numeric' })} - {formatDate(report.week_end_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                                <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-gray-600">
+                                  <div>
+                                    <p className="font-medium">Total</p>
+                                    <p>{report.total_attendance}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">Unique</p>
+                                    <p>{report.unique_children}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">First</p>
+                                    <p>{report.first_timers}</p>
+                                  </div>
+                                </div>
+                                <div className="mt-3">
+                                  {report.report_pdf_url ? (
+                                    <button
+                                      onClick={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+
+                                        try {
+                                          let urlToOpen = report.report_pdf_url;
+
+                                          if (!urlToOpen.startsWith('http')) {
+                                            const storageRef = ref(storage, urlToOpen);
+                                            urlToOpen = await getDownloadURL(storageRef);
+                                          }
+
+                                          window.open(urlToOpen, '_blank', 'noopener,noreferrer');
+                                        } catch (error) {
+                                          toast.error('PDF Error', {
+                                            description: 'Unable to open PDF. Please try again.'
+                                          });
+                                        }
+                                      }}
+                                      className="text-sm font-medium text-nextgen-blue hover:text-nextgen-blue-dark"
+                                    >
+                                      View PDF
+                                    </button>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">No PDF</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
                           <div className="mt-4 text-right">
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleTabChange('weekly')}
+                              className="w-full sm:w-auto"
                             >
                               View All Reports
                             </Button>
                           </div>
-                        </div>
+                        </>
                       )}
                     </div>
                   </Card>

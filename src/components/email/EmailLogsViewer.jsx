@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../services/supabase.js';
-import { Table, Badge, Input, Button } from '../ui';
+import { Table, Badge, Input, Button, DateRangePickerOverlay } from '../ui';
 import { formatDate } from '../../utils/dateUtils.js';
 import { motion } from 'framer-motion';
 
@@ -25,6 +25,7 @@ const EmailLogsViewer = () => {
   useEffect(() => {
     // Don't set timer for empty strings or when explicitly clearing
     if (filters.searchEmail === '') {
+      setIsSearching(false);
       setDebouncedSearchEmail('');
       return;
     }
@@ -50,6 +51,8 @@ const EmailLogsViewer = () => {
   const fetchLogs = async () => {
     setLoading(true);
     try {
+      const searchTerm = debouncedSearchEmail.trim();
+
       // Base query for both count and data
       let baseQuery = supabase.from('email_logs');
 
@@ -58,10 +61,10 @@ const EmailLogsViewer = () => {
         baseQuery = baseQuery.eq('status', filters.status);
       }
 
-      if (filters.recipient_type === 'guardians') {
-        baseQuery = baseQuery.not('guardian_id', 'is', null);
-      } else if (filters.recipient_type === 'direct') {
-        baseQuery = baseQuery.is('guardian_id', null);
+      if (filters.recipient_type === 'template') {
+        baseQuery = baseQuery.not('template_id', 'is', null);
+      } else if (filters.recipient_type === 'custom') {
+        baseQuery = baseQuery.is('template_id', null);
       }
 
       if (filters.startDate) {
@@ -69,92 +72,16 @@ const EmailLogsViewer = () => {
       }
 
       if (filters.endDate) {
-        baseQuery = baseQuery.lte('sent_date', filters.endDate);
+        // Include full local day for end date against timestamp without time zone.
+        baseQuery = baseQuery.lte('sent_date', `${filters.endDate}T23:59:59.999`);
       }
 
-      // Handle search - need to get all matching records first for proper pagination
-      let searchQuery = baseQuery;
-      if (debouncedSearchEmail) {
-        const searchTerm = debouncedSearchEmail.trim();
-        
-        // Get all email logs with guardians to filter properly
-        const { data: allLogs, error: searchError } = await supabase
-          .from('email_logs')
-          .select(`
-            *,
-            guardians (first_name, last_name)
-          `);
-
-        if (searchError) throw searchError;
-
-        // Filter client-side for accurate search across email and guardian names
-        const filteredLogs = allLogs.filter(log => {
-          const searchLower = searchTerm.toLowerCase();
-          const emailMatch = log.recipient_email.toLowerCase().includes(searchLower);
-          const guardianMatch = log.guardians ? 
-            (log.guardians.first_name?.toLowerCase().includes(searchLower) ||
-             log.guardians.last_name?.toLowerCase().includes(searchLower)) : false;
-          
-          return emailMatch || guardianMatch;
-        });
-
-        // Apply other filters to the search results
-        let finalFiltered = filteredLogs;
-
-        if (filters.status !== 'all') {
-          finalFiltered = finalFiltered.filter(log => log.status === filters.status);
-        }
-
-        if (filters.recipient_type === 'guardians') {
-          finalFiltered = finalFiltered.filter(log => log.guardian_id !== null);
-        } else if (filters.recipient_type === 'direct') {
-          finalFiltered = finalFiltered.filter(log => log.guardian_id === null);
-        }
-
-        if (filters.startDate) {
-          finalFiltered = finalFiltered.filter(log => log.sent_date >= filters.startDate);
-        }
-
-        if (filters.endDate) {
-          finalFiltered = finalFiltered.filter(log => log.sent_date <= filters.endDate);
-        }
-
-        // Sort by date
-        finalFiltered.sort((a, b) => new Date(b.sent_date) - new Date(a.sent_date));
-
-        setTotalCount(finalFiltered.length);
-        setTotalPages(Math.ceil(finalFiltered.length / itemsPerPage));
-
-        // Apply pagination
-        const from = (currentPage - 1) * itemsPerPage;
-        const to = from + itemsPerPage;
-        const paginatedResults = finalFiltered.slice(from, to);
-
-        // Fetch templates for the paginated results
-        const logIds = paginatedResults.map(log => log.log_id);
-        const { data: enrichedLogs, error: enrichError } = await supabase
-          .from('email_logs')
-          .select(`
-            *,
-            email_templates (template_name),
-            guardians (first_name, last_name)
-          `)
-          .in('log_id', logIds);
-
-        if (enrichError) throw enrichError;
-
-        // Maintain the order from filtered results
-        const orderedLogs = paginatedResults.map(paginatedLog => 
-          enrichedLogs.find(enriched => enriched.log_id === paginatedLog.log_id)
-        );
-
-        setLogs(orderedLogs);
-        return;
+      if (searchTerm) {
+        baseQuery = baseQuery.ilike('recipient_email', `%${searchTerm}%`);
       }
 
-      // No search - use normal server-side pagination
       const { count, error: countError } = await baseQuery
-        .select('*', { count: 'exact', head: true });
+        .select('log_id', { count: 'exact', head: true });
 
       if (countError) throw countError;
 
@@ -167,9 +94,17 @@ const EmailLogsViewer = () => {
 
       const { data, error } = await baseQuery
         .select(`
-          *,
-          email_templates (template_name),
-          guardians (first_name, last_name)
+          log_id,
+          template_id,
+          recipient_email,
+          sent_date,
+          status,
+          notes,
+          provider_message_id,
+          materials_count,
+          material_ids_json,
+          error_message,
+          email_templates (template_name)
         `)
         .order('sent_date', { ascending: false })
         .range(from, to);
@@ -222,7 +157,7 @@ const EmailLogsViewer = () => {
     };
 
     return (
-      <div className="flex items-center justify-between mt-4">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-gray-700">
             Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
@@ -232,7 +167,7 @@ const EmailLogsViewer = () => {
             of <span className="font-medium">{totalCount}</span> results
           </p>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex w-full items-center justify-between space-x-1 overflow-x-auto sm:w-auto sm:justify-start">
           <Button
             variant="outline"
             size="sm"
@@ -283,64 +218,55 @@ const EmailLogsViewer = () => {
     {
       header: "Date",
       cell: (row) => (
-        <div className="text-xs">
-          <div className="font-medium text-gray-900">
-            {formatDate(row.sent_date, { month: 'short', day: 'numeric' })}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-gray-900">
+            {formatDate(row.sent_date, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
-          <div className="text-gray-500">
-            {formatDate(row.sent_date, { hour: '2-digit', minute: '2-digit' })}
+          <div className="text-sm text-gray-500">
+            {formatDate(row.sent_date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
       ),
-      width: "80px"
+      width: "280px",
+      mobilePrimary: true
     },
     {
       header: "Recipient",
       cell: (row) => {
-        const isGuardian = row.guardian_id && row.guardians;
-        
         return (
-          <div className="min-w-0">
-            <div className="flex items-center space-x-1">
-              {isGuardian ? (
-                <>
-                  <Badge variant="info" size="xxs">G</Badge>
-                  <span className="text-xs font-medium text-gray-900 truncate">
-                    {row.guardians.first_name} {row.guardians.last_name}
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs font-medium text-gray-900">Direct Email</span>
-              )}
-            </div>
-            <div className="text-xs text-gray-500 truncate" title={row.recipient_email}>
+          <div className="min-w-0 space-y-1">
+            <div className="text-sm font-semibold text-gray-900">Direct Email</div>
+            <div className="text-sm text-gray-500 break-all" title={row.recipient_email}>
               {row.recipient_email}
             </div>
           </div>
         );
       },
-      width: "140px"
+      width: "260px"
     },
     {
-      header: "Subject",
+      header: "Type",
       cell: (row) => (
-        <div className="text-xs text-gray-900 truncate max-w-[120px]" title={row.subject || 'No subject'}>
-          {row.subject || '-'}
-        </div>
+        <Badge variant={row.template_id ? 'info' : 'secondary'} size="xs">
+          {row.template_id ? 'Template' : 'Custom'}
+        </Badge>
       ),
       width: "120px"
     },
     {
       header: "Template/Files",
       cell: (row) => {
-        const materialIds = row.material_ids ? JSON.parse(row.material_ids) : [];
+        const materialCount = Number.isInteger(row.materials_count)
+          ? row.materials_count
+          : (Array.isArray(row.material_ids_json) ? row.material_ids_json.length : 0);
+
         return (
-          <div className="text-xs">
-            <div>
+          <div className="space-y-1">
+            <div className="min-w-0">
               {row.email_templates?.template_name ? (
-                <Badge variant="secondary" size="xxs" title={row.email_templates.template_name}>
-                  {row.email_templates.template_name.length > 8 
-                    ? row.email_templates.template_name.substring(0, 8) + '...' 
+                <Badge variant="secondary" size="xxs" title={row.email_templates.template_name} className="max-w-full truncate">
+                  {row.email_templates.template_name.length > 18
+                    ? row.email_templates.template_name.substring(0, 18) + '...'
                     : row.email_templates.template_name
                   }
                 </Badge>
@@ -348,15 +274,15 @@ const EmailLogsViewer = () => {
                 <span className="text-gray-500 text-xs">Custom</span>
               )}
             </div>
-            {materialIds.length > 0 && (
+            {materialCount > 0 && (
               <div className="text-xs text-gray-500 mt-0.5">
-                📎 {materialIds.length}
+                Files: {materialCount}
               </div>
             )}
           </div>
         );
       },
-      width: "90px"
+      width: "220px"
     },
     {
       header: "Status",
@@ -372,32 +298,34 @@ const EmailLogsViewer = () => {
           {row.status}
         </Badge>
       ),
-      width: "70px"
+      width: "120px"
     },
     {
       header: "Notes",
-      cell: (row) => (
-        <span className="text-xs text-gray-600 truncate max-w-[100px] block" title={row.notes || ''}>
-          {row.notes || '-'}
-        </span>
-      ),
-      width: "100px"
+      cell: (row) => {
+        const messageId = row.provider_message_id || null;
+        const fallback = row.error_message || row.notes || '-';
+
+        return (
+          <span className="text-sm text-gray-600 truncate max-w-[180px] block" title={messageId ? `Message ID: ${messageId}` : fallback}>
+            {messageId ? `Message ID: ${messageId.slice(0, 8)}...` : fallback}
+          </span>
+        );
+      },
+      width: "200px"
     }
   ];
 
   return (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-6 py-5 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg leading-6 font-medium text-nextgen-blue-dark">Email History</h3>
             <p className="mt-1 text-sm text-gray-500">
               Track all sent emails to guardians and staff members
             </p>
           </div>
-          <Badge variant="info" size="sm">
-            {totalCount} Log{totalCount !== 1 ? 's' : ''}
-          </Badge>
         </div>
       </div>
 
@@ -408,7 +336,7 @@ const EmailLogsViewer = () => {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-8">
           <Input
             type="select"
             label="Status"
@@ -422,6 +350,7 @@ const EmailLogsViewer = () => {
               { value: 'failed', label: 'Failed' }
             ]}
             size="sm"
+            className="mb-1"
             style={{ height: '42px' }}
           />
 
@@ -433,32 +362,30 @@ const EmailLogsViewer = () => {
             onChange={(e) => setFilters({...filters, recipient_type: e.target.value})}
             options={[
               { value: 'all', label: 'All' },
-              { value: 'guardians', label: 'Guardians' },
-              { value: 'direct', label: 'Direct' }
+              { value: 'template', label: 'Template' },
+              { value: 'custom', label: 'Custom' }
             ]}
             size="sm"
+            className="mb-1"
             style={{ height: '42px' }}
           />
 
-          <Input
-            type="date"
-            label="Start Date"
-            name="startDate"
-            value={filters.startDate}
-            onChange={(e) => setFilters({...filters, startDate: e.target.value})}
-            size="sm"
-            style={{ height: '42px' }}
-          />
-
-          <Input
-            type="date"
-            label="End Date"
-            name="endDate"
-            value={filters.endDate}
-            onChange={(e) => setFilters({...filters, endDate: e.target.value})}
-            size="sm"
-            style={{ height: '42px' }}
-          />
+          <div className="col-span-2 md:col-span-1 lg:col-span-2">
+            <label htmlFor="email-history-date-range" className="block text-sm font-medium text-gray-700 mb-1">
+              Date Range
+            </label>
+            <DateRangePickerOverlay
+              id="email-history-date-range"
+              value={{ from: filters.startDate, to: filters.endDate }}
+              onChange={(range) =>
+                setFilters({
+                  ...filters,
+                  startDate: range?.from || '',
+                  endDate: range?.to || range?.from || '',
+                })
+              }
+            />
+          </div>
 
           <div className="col-span-2 lg:col-span-2">
             <Input
@@ -467,8 +394,9 @@ const EmailLogsViewer = () => {
               type="text"
               value={filters.searchEmail}
               onChange={(e) => setFilters({...filters, searchEmail: e.target.value})}
-              placeholder="Search by email or guardian name..."
+              placeholder="Search by email or name..."
               size="sm"
+              className="mb-1"
               style={{ height: '42px' }}
               endIcon={isSearching ? (
                 <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -497,6 +425,7 @@ const EmailLogsViewer = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               }
+              className="min-w-1"
               style={{ height: '42px', paddingLeft: '12px', paddingRight: '12px' }}
             >
               Clear
@@ -504,7 +433,7 @@ const EmailLogsViewer = () => {
           </div>
         </div>
 
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-500">
             {totalCount} log{totalCount !== 1 ? 's' : ''} total
             {logs.length > 0 && totalPages > 1 && (
@@ -552,7 +481,9 @@ const EmailLogsViewer = () => {
               <Table
                 columns={columns}
                 data={logs}
-                loading={loading}
+                isLoading={loading}
+                mobileCollapsible
+                mobileBreakpoint={768}
               />
             </motion.div>
           </div>
